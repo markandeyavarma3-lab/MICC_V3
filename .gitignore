@@ -1,0 +1,34 @@
+# Data and databases — never in git.
+# Verified by tests/test_repo_hygiene.py, which greps `git ls-files` rather than
+# trusting this file: MICCV2 had db/app_state.sqlite tracked despite an
+# equivalent rule here, because .gitignore does not untrack what is already in.
+/data/
+/db/
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+/secrets/
+*.token.json
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Logs and generated reports
+/logs/
+/docs/reports/generated/
+
+# OS
+.DS_Store
