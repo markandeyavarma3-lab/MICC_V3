@@ -1,0 +1,40 @@
+[project]
+name = "institutional-research"
+version = "0.1.0"
+description = "Research platform for disclosed institutional activity in Indian equities. Paper research only — no orders, no live trading."
+requires-python = ">=3.14"
+license = { text = "MIT" }
+
+dependencies = [
+    "duckdb==1.4.1",
+    "pandas==2.3.3",
+    "numpy==2.3.4",
+    "pyarrow==24.0.0",
+    "scipy==1.16.2",
+    "requests==2.32.5",
+    "pyyaml==6.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.4.2",
+    "pytest-cov==7.0.0",
+    "ruff==0.14.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers"
+markers = [
+    "needs_data: requires data/ and db/ to be populated",
+    "slow: takes more than 10 seconds",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
