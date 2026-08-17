@@ -1,0 +1,142 @@
+# confounds.yml — the standing checklist every event study runs, whether or not
+# anyone thought of it.
+#
+# WHY THIS EXISTS.
+#
+# On 2026-08-16 the bulk-deal effect at 1 day looked like -0.33%. Then a
+# random-stock control on the same dates lost 0.236% — meaning 71% OF THE
+# ONE-DAY EFFECT WAS OPEN-TO-CLOSE MICROSTRUCTURE, not signal.
+#
+# I found that because I happened to think of it. That is the problem. The
+# quality of a result should not depend on which controls occurred to the person
+# running it that afternoon, and "I checked the obvious things" is not a
+# methodology — it is a mood.
+#
+# So the checklist is declared here, in advance, and every event study runs all
+# of it. A confound that does not apply is marked NOT_APPLICABLE with a written
+# reason, which is a different and much more useful artefact than silence.
+#
+# The predecessor's failure mode was subtler than skipping controls: it ran
+# plenty. It just never ran the SAME set twice, so no two results were comparable
+# and no result could be trusted more than the attention span of the day it was
+# produced.
+
+version: 1
+
+# Every confound below is mandatory for studies of the listed kinds. `blocking`
+# means a study cannot reach a verdict until the confound is measured — not that
+# it must be absent, only that it must be quantified and reported.
+confounds:
+
+  - id: microstructure
+    applies_to: [event_study]
+    blocking: true
+    question: "How much of the effect is open-to-close drift that any stock would
+      have shown on the same dates?"
+    method: random_stock_control
+    detail: "Draw matched-count random stocks on the IDENTICAL dates and measure
+      their return over the identical window. Subtract."
+    measured_precedent: "2026-08-16: random stocks lost 0.236% at 1 session, which
+      was 71% of the apparent 1-day bulk-deal effect."
+    report_as: percent_of_raw_effect_explained
+
+  - id: volatility
+    applies_to: [event_study]
+    blocking: true
+    question: "Do these names simply move more than average, in both directions?"
+    method: volatility_matched_peers
+    detail: "Match on trailing 60-session realised volatility within the same
+      liquidity tier. Deal names are systematically more volatile than the
+      universe, so an unmatched comparison flatters any negative result."
+    measured_precedent: "2026-08-16: vol-matched peers lost 0.274%, leaving
+      -0.805% event-specific at t -3.93."
+    report_as: residual_effect_after_matching
+
+  - id: size
+    applies_to: [event_study, portfolio]
+    blocking: true
+    question: "Is this a size effect wearing an event costume?"
+    method: dgtw_characteristic_match
+    detail: "Size quintile from PIT market cap. Note that a crude size match alone
+      cut cohort SD 8.55% -> 5.91% and MDE 1.52% -> 1.05%, so this is a POWER
+      LEVER, not only a control."
+
+  - id: momentum_reversal
+    applies_to: [event_study]
+    blocking: true
+    question: "Are we rediscovering short-term reversal?"
+    method: pre_event_return_correlation
+    detail: "Correlate pre-event 21-session return against the forward window, and
+      inspect pre-event quintiles. A monotonic quintile pattern implicates
+      reversal; a U-shape does not."
+    measured_precedent: "2026-08-16: correlation +0.008, quintiles U-shaped ->
+      reversal REJECTED as the explanation."
+
+  - id: liquidity
+    applies_to: [event_study, portfolio]
+    blocking: true
+    question: "Does the effect survive where it can actually be traded?"
+    method: liquidity_tier_split
+    detail: "top100 / top500_ex100 / off500 by ADV20. An effect living only in
+      off-500 names is an effect you cannot take. Finding 001 was STRONGER in
+      liquid names, which is the unusual and encouraging direction."
+
+  - id: time_concentration
+    applies_to: [event_study, seasonality]
+    blocking: true
+    question: "Is this one year pretending to be twenty?"
+    method: era_split_and_effect_stability
+    detail: "Split by era and report the effect in each. A result carried by a
+      single regime is a regime observation, not an effect."
+    measured_precedent: "2026-08-16: 2011-15 t -0.54, 2016-20 t -2.60, 2021-26
+      t -2.25. Absent in the first era."
+
+  - id: sector_concentration
+    applies_to: [event_study, portfolio]
+    blocking: true
+    question: "Is this one sector's story?"
+    method: sector_share_and_leave_one_out
+    detail: "PIT sector shares of the event set against the universe, plus a
+      leave-one-sector-out re-run. Cheap, and it has killed real-looking results
+      elsewhere."
+
+  - id: survivorship
+    applies_to: [event_study, portfolio, seasonality]
+    blocking: true
+    question: "Are dead names in the sample, and priced honestly?"
+    method: dead_symbol_inclusion_check
+    detail: "Confirm the spine carries delisted names — 1,497 of them — and that
+      the delisting recovery factor is applied. The predecessor's 45% event
+      attrition looked like survivorship and was in fact naming mismatch; both
+      must be excluded separately."
+
+  - id: same_day_roundtrip
+    applies_to: [event_study]
+    blocking: true
+    question: "Is this market-making churn rather than institutional intent?"
+    method: prop_hft_exclusion_sensitivity
+    detail: "Bulk deals are 54.8% same-day round-trip; block deals 0.7%. Report N
+      and effect with and without PROP_HFT names, because a filter touching 44%
+      of the data must be visible."
+
+  - id: dilution
+    applies_to: [portfolio]
+    blocking: true
+    question: "What fraction of the book does this signal actually touch?"
+    method: fraction_of_book_affected
+    detail: "COMPUTED AT DESIGN TIME, before registration. Finding 001's 1.2%
+      explained the entire gap between an event t of -3.93 and a portfolio t of
+      -0.25. Had it been computed first, the study would have been redesigned
+      rather than run."
+    blocking_threshold: 0.05
+    on_below_threshold: "the study must state its expected portfolio impact
+      explicitly and justify running at all"
+
+# A confound may be skipped only by declaring it inapplicable, in writing, at
+# registration. Silence is not an option the schema permits.
+skip_policy:
+  allowed: true
+  requires: written_reason
+  recorded_as: NOT_APPLICABLE
+  # The reason is stored and shown in the report next to the confound name, so a
+  # weak excuse is as visible as a strong one.
