@@ -170,3 +170,17 @@ deferred:
   - id: corporate_announcements
     trigger: "an event-study extension is registered; note the insider-cluster
       family was KILLED across 4 studies in the predecessor and is NOT newly promising"
+  - id: kite_connect
+    trigger: "the single-stock-futures short study is registered (needs the F&O
+      instrument master and lot sizes for the ~210 SSF names), OR intraday
+      resolution finer than daily high/low is required for excursions"
+    assessed: "2026-08-17. Owner had already paid for access. Measured state: 2
+      days of raw archive (2026-08-06, 2026-08-13, 3.0 MB), access token expired
+      2026-08-14 07:30 IST. instruments.csv carries 114,225 rows across 10,027
+      NSE and 12,763 BSE instruments and HAS NO ISIN COLUMN, so it does not close
+      the 27% symbol-to-ISIN gap measured for the split.
+      DECISIVE POINT: Kite does not serve bulk or block deals, which are the
+      object of study. Every planned study runs without it. Recommendation was
+      therefore NOT to pay a recurring fee at this time.
+      MICCV2 holds ~970 lines of working read-only Kite code (auth/login/archive/
+      indices) that ports in an afternoon if the trigger fires."

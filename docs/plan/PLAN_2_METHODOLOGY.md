@@ -159,10 +159,9 @@ self-assigns and no existing name ever moves.
 Equities co-move through sector and market beta, so an effect discovered in
 `EXPLORE` leaks into `CONFIRM` via common factors. The honest quantity is the
 effective sample size under the standard design effect,
-`n_eff = n / (1 + (n−1)·ρ̄)`. At ρ̄ = 0.20, 2,100 confirmation names are worth
-about **five** independent observations. **Every MDE in this plan is computed as
-if names were independent and is therefore optimistic** — reported alongside
-power, not in a footnote.
+`n_eff = n / (1 + (n−1)·ρ̄)`. This bounds how much **independent evidence**
+`CONFIRM` supplies; it is not an MDE correction — see §6.5a for why an earlier
+draft of this section claimed otherwise and was wrong.
 
 Enforcement is `ConfirmationGuard`, which raises on any `CONFIRM` read outside a
 registered experiment with a frozen spec, and caps each experiment at one touch.
@@ -717,6 +716,69 @@ This is the discipline MICCV2's exp_002 got right and it is the difference
 between "fundamentals do not work" and "we could not tell". With 80 buys for
 SBI Mutual Fund at a 12-month horizon, the honest answer is almost certainly the
 latter, and the study should say so in advance.
+
+### 6.5a Serial correlation — the correction that was actually needed
+
+**A correction to an earlier draft of this plan, recorded rather than quietly
+edited.** §3.1a previously asserted that *"every MDE in this plan is computed as
+if names were independent and is therefore optimistic."* That was **wrong**, and
+wrong in the direction of overstating this project's own rigour problem.
+
+`power.py` collapses to monthly cohort means before computing anything, which
+defeats cross-sectional dependence *by construction* — one month is one
+observation regardless of how many events fall inside it. Measured at the
+10-session horizon on 16,445 real events:
+
+| estimator | MDE |
+|---|---|
+| naive, events treated as independent | 0.076% ← never actually done |
+| monthly cohort, what the code does | 0.621% |
+| serial-corrected, what was missing | **0.660%** |
+
+The 8× penalty was already being paid. What was genuinely missing is **serial**
+correlation *across* months, corrected with a Bartlett-kernel variance inflation
+(Newey–West lag rule `4(n/100)^(2/9)`, K = 5 at n = 247):
+
+| horizon | ρ₁ | inflation | n_eff of 247 | observed | MDE corrected |
+|---|---|---|---|---|---|
+| 1s | 0.086 | 1.62 | 152.2 | **+0.691%** | 0.191% |
+| 5s | 0.133 | 1.29 | 192.1 | −0.010% | 0.423% |
+| 10s | 0.122 | 1.13 | 219.3 | −0.603% | 0.660% |
+| 21s | 0.111 | 1.16 | 212.2 | **−1.061%** | 0.968% |
+
+A 6–27% correction, not a factor of three.
+
+**Two findings fall out of the table itself.**
+
+*The sign flips with horizon.* +0.691% at one session, −0.603% at ten, −1.061% at
+twenty-one. Pop then fade — the signature of temporary price impact reversing,
+which is what a corpus that is 54.8% same-day round-trip should produce.
+
+*Finding 001's effect sits below its own floor here.* At 10 sessions the observed
+−0.603% is under the 0.660% MDE. `exp_001` measured −0.805% against
+**volatility-matched** peers, and it was that benchmark's lower dispersion that
+bought the power. Against a plain market benchmark the same effect is not
+detectable. This is §5's characteristic-matching argument arriving as a
+measurement rather than an assertion.
+
+#### An open defect: the bound is not horizon-scaled
+
+`research.yml` carries a single `plausible_effect_bound_monthly: 0.005`, and the
+`UNDERPOWERED` rule compares every horizon's MDE against it. **That comparison is
+only dimensionally valid at ~21 sessions.** Judging a 1-session MDE against a
+monthly bound is a unit error, and it currently makes short horizons look powered
+when they may not be.
+
+Which repair is correct depends on a modelling choice that has not been made:
+
+- **Event view** — disclosure causes a one-off repricing, so the effect is fixed
+  regardless of horizon and a single bound is right. "Per month" is then a
+  misnomer and should read "per event".
+- **Rate view** — skill is persistent, so the effect accrues per unit time and
+  the bound must scale with horizon. Under this reading **every horizon in the
+  table above is UNDERPOWERED**, including the two currently marked detectable.
+
+Flagged here as open. It is an owner decision and gets a decision record.
 
 ### 6.6 The two gates — an event study is not a strategy test
 

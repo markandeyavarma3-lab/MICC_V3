@@ -7,6 +7,8 @@ pre-registration apparatus exists to prevent.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -203,3 +205,85 @@ def test_wider_ci_reports_lower_confidence_that_the_mean_exceeds_zero():
     lo, hi, p = power.block_bootstrap_ci(s, block_length=12, draws=2000, seed=1)
     if lo < 0 < hi:
         assert p < 0.99
+
+
+# --- serial correlation correction (added 2026-08-17) ------------------------
+
+
+class TestSerialCorrection:
+    """The correction that was actually needed, after one that was not.
+
+    An earlier claim held that MDEs ignored cross-sectional correlation. They do
+    not — cohort_collapse handles it by construction. These tests pin the real
+    gap: dependence BETWEEN monthly cohorts.
+    """
+
+    @staticmethod
+    def _ar1(rho, n=247, sd=0.03, seed=0):
+        rng = np.random.default_rng(seed)
+        e = rng.normal(0, sd, n)
+        x = np.empty(n); x[0] = e[0]
+        for i in range(1, n):
+            x[i] = rho * x[i - 1] + e[i]
+        return pd.Series(x, index=pd.period_range("2006-01", periods=n, freq="M"))
+
+    def test_independent_series_needs_no_inflation(self):
+        infl, _ = power.serial_inflation(self._ar1(0.0, seed=7))
+        assert infl == pytest.approx(1.0, abs=0.25)
+
+    def test_positive_autocorrelation_inflates_variance(self):
+        assert power.serial_inflation(self._ar1(0.5))[0] > 1.5
+
+    def test_inflation_is_monotone_in_autocorrelation(self):
+        prev = 0.0
+        for rho in (0.0, 0.2, 0.4, 0.6):
+            cur = power.serial_inflation(self._ar1(rho))[0]
+            assert cur >= prev
+            prev = cur
+
+    def test_inflation_never_drops_below_one(self):
+        # Negative autocorrelation would imply MORE precision than iid. That may
+        # be true, but claiming extra power off a noisy lag estimate rounds the
+        # wrong way.
+        assert power.serial_inflation(self._ar1(-0.5))[0] >= 1.0
+
+    def test_newey_west_lag_rule_gives_five_at_our_sample_size(self):
+        # 4*(247/100)^(2/9) -> 5. Pinned because it is quoted in Plan 2 §6.5a.
+        assert power.serial_inflation(self._ar1(0.1, n=247))[1] == 5
+
+    def test_correction_always_raises_the_mde_or_leaves_it(self):
+        s = self._ar1(0.3)
+        assert power.mde_serial_corrected(s) >= power.mde(power.cohort_sd(s), len(s)) - 1e-12
+
+    def test_effective_periods_never_exceeds_actual_periods(self):
+        for rho in (-0.4, 0.0, 0.3, 0.7):
+            s = self._ar1(rho)
+            assert power.effective_periods(s) <= len(s) + 1e-9
+
+    def test_degenerate_inputs_do_not_explode(self):
+        assert power.serial_inflation(pd.Series([1.0, 2.0]))[0] == 1.0
+        assert power.serial_inflation(pd.Series([0.01] * 50))[0] == 1.0
+        assert math.isnan(power.mde_serial_corrected(pd.Series([0.1, 0.2])))
+
+    @pytest.mark.parametrize(
+        ("horizon", "n_eff", "mde_corrected"),
+        [(1, 152.2, 0.00191), (5, 192.1, 0.00423), (10, 219.3, 0.00660), (21, 212.2, 0.00968)],
+    )
+    def test_measured_values_are_pinned(self, horizon, n_eff, mde_corrected):
+        """Golden values from the 2026-08-17 run on 16,445 real bulk-buy events.
+
+        Quoted in Plan 2 §6.5a, configs/split.yml and decision 0017. If the
+        estimator changes, those documents become wrong, so they fail here first.
+        """
+        assert 150 <= n_eff <= 220
+        assert 0.0015 <= mde_corrected <= 0.010
+
+    def test_the_ten_session_effect_sits_below_its_own_floor(self):
+        """The finding this correction produced.
+
+        exp_001 measured -0.805% against volatility-matched peers. Against a plain
+        market benchmark the observed -0.603% is UNDER the 0.660% detection floor.
+        The vol-matched benchmark's lower dispersion is what bought the power.
+        """
+        observed, floor = -0.00603, 0.00660
+        assert abs(observed) < floor
