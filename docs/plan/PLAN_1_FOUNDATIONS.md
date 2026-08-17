@@ -740,9 +740,15 @@ position and a later deal starts a new one.
 
 ### 7.3 `deal_forward_outcomes`
 
-Owner decisions: nine horizons — 1/3/6/8/10/**15**/12/**18**/24 months (Q29) ·
-delisted stocks used, not dropped (Q32) · five-plus benchmarks (Q30) ·
-intraday excursions pending clarification (Q33, see Plan 3 §5).
+Horizons: **1/2/3/5/10/21 trading sessions** primary, 3/6/12 months robustness —
+live values in [`configs/research.yml`](../../configs/research.yml), rationale in
+[decision 0004](../decisions/0004-horizons-in-sessions-not-months.md). This
+supersedes the nine-month-grid answer to Q29, which measured power showed was
+pointed at a frequency where MDE exceeds any plausible effect.
+
+Other owner decisions here: delisted stocks used, not dropped (Q32) · five-plus
+benchmarks (Q30) · intraday excursions primary with close reported alongside
+(Q33).
 
 ```sql
 CREATE TABLE deal_forward_outcomes (

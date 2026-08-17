@@ -114,6 +114,73 @@ events, not aggregated. Q27: `PROP_HFT` is excluded by default via
 `eligible_for_research`, and every study reports its N both with and without,
 because a 44%-of-data filter must be visible.
 
+### 3.1a The EXPLORE / SELECT / CONFIRM partition
+
+> **Live spec: [`configs/split.yml`](../../configs/split.yml).** Rationale:
+> [decision 0008](../decisions/0008-three-way-split.md) and
+> [0009](../decisions/0009-split-key-is-isin.md).
+
+Pre-registration answers *"was the bar set before the result?"*. It does not
+answer *"how many things did you look at before registering?"* — and on
+2026-08-16 the answer was ~100 unregistered cells, which moved the trial counter
+from 68 to 171. Under a single data pool that cost is permanent and global: every
+future study's bar is higher forever because of one afternoon.
+
+That is the wrong incentive. It makes examining your own data expensive, so you
+examine it less, so you find less. **The fix is not to look less. It is to have
+somewhere that looking is free.**
+
+| stratum | share | charged? | may be touched by |
+|---|---|---|---|
+| `EXPLORE` | 30% | **no** | anything, unregistered, without limit |
+| `SELECT` | 20% | yes | comparing candidates; registered, SELECT bar |
+| `CONFIRM` | 50% | yes | one registered experiment, **once** |
+
+Three strata rather than two, because *finding* a hypothesis and *choosing among
+candidates* are different expenditures of freedom. MICCV2's champion was not
+mined into existence — it was **selected** from a factory of candidates, and the
+selection was never charged for. Full-sample Sharpe 1.52, trailing-24m 0.11.
+
+**The key is the ISIN, never the symbol.** Measured against the seed: 276 ISINs
+carry more than one symbol, 459 of those symbols appear in deal data, and they
+account for **26,046 deal rows — 11.04% of the corpus**. `CADILAHC → ZYDUSLIFE`,
+`PRISMCEM → PRSMJOHNSN`, `GEOJITBNPP → GEOJITFSL`. Keyed on the symbol, each of
+those companies sits in one stratum under its old name and another under its new
+one — contaminating the confirmation set by construction, with nothing in any
+output looking wrong. Measured coverage: **87.6% of deal rows ISIN-keyed**, 12.4%
+falling back to the symbol, against a 15% cap.
+
+Assignment is `sha256(key) % 1000`, not a seeded shuffle. A seeded shuffle over a
+symbol list reassigns *every* name whenever the list changes, and it changes with
+every listing and delisting. A hash depends only on the identifier, so a new IPO
+self-assigns and no existing name ever moves.
+
+**What the partition does not give you.** It does *not* give independent samples.
+Equities co-move through sector and market beta, so an effect discovered in
+`EXPLORE` leaks into `CONFIRM` via common factors. The honest quantity is the
+effective sample size under the standard design effect,
+`n_eff = n / (1 + (n−1)·ρ̄)`. At ρ̄ = 0.20, 2,100 confirmation names are worth
+about **five** independent observations. **Every MDE in this plan is computed as
+if names were independent and is therefore optimistic** — reported alongside
+power, not in a footnote.
+
+Enforcement is `ConfirmationGuard`, which raises on any `CONFIRM` read outside a
+registered experiment with a frozen spec, and caps each experiment at one touch.
+A stratum read a hundred times by a hundred "single" tests is a single-pool
+regime wearing a costume.
+
+**Measured on the real corpus:** `CONFIRM` holds 122,994 deal rows across 1,930
+names and 247 months. The partition passes its balance audit on names (within
+0.3pp) and deal type (0.030), and **breaches on era** — 2006-11 came out 57.1%
+`CONFIRM` against a 50% target, deviation 0.071 against a 0.05 limit. That is
+recorded as a limitation and **not re-drawn**: re-drawing until a split looks
+balanced is p-hacking the split itself
+([decision 0016](../decisions/0016-era-balance-breach-accepted.md)).
+
+Seasonality gets a different partition entirely — a time split *and* an index
+split, both of which a cell must survive. See §7 and
+[decision 0012](../decisions/0012-seasonality-dual-split.md).
+
 ### 3.2 Timing
 
 ```text
@@ -128,11 +195,34 @@ No same-day close entry unless publication before that close is *proven* by the
 measured `available_from`. Where it cannot be proven for a historical period,
 the conservative bound is used and the row is flagged.
 
-### 3.3 Horizons (Q29)
+### 3.3 Horizons (Q29) — REVISED 2026-08-16
 
-**1, 3, 6, 8, 10, 12, 15, 18, 24 months.** Headline reporting is 1/3/12; the
-rest are robustness. Every horizon is measured in *trading sessions* from the
-calendar, never calendar-day arithmetic.
+> **Live values: [`configs/research.yml`](../../configs/research.yml)
+> `horizons_sessions` / `horizons_months`. This section explains them; the config
+> defines them.** See [decision 0004](../decisions/0004-horizons-in-sessions-not-months.md).
+
+**Primary: 1, 2, 3, 5, 10, 21 trading sessions.** Headline reporting is
+1/3/5/10 sessions. **Robustness only: 3, 6, 12 months.**
+
+This replaces the original 1/3/6/8/10/12/15/18/24-month grid, which the owner had
+asked to extend. Measured power is why:
+
+| aggregation | observations | MDE @ 80% power |
+|---|---|---|
+| monthly cohorts | 247 | 1.52% |
+| **daily cohorts** | **~3,345** | **0.163%** |
+
+A 9× improvement in detectable effect from the choice of aggregation alone. And
+the only real effect found on 2026-08-16 sat at **10 sessions** — the original
+grid would have missed it entirely, because its finest resolution was a month.
+
+The 8/10/15/18/24-month horizons are dropped rather than demoted. At 12 months MDE
+is already 7.38% against a plausible bound of 0.50%; anything longer is strictly
+more hopeless, and each one spends multiple-testing budget to guarantee an
+`UNDERPOWERED` row.
+
+Every horizon is measured in *trading sessions* from the calendar, never
+calendar-day arithmetic.
 
 ### 3.4 Delisting and merger handling (Q32)
 
@@ -627,6 +717,55 @@ This is the discipline MICCV2's exp_002 got right and it is the difference
 between "fundamentals do not work" and "we could not tell". With 80 buys for
 SBI Mutual Fund at a 12-month horizon, the honest answer is almost certainly the
 latter, and the study should say so in advance.
+
+### 6.6 The two gates — an event study is not a strategy test
+
+> **Live spec: [`configs/research.yml`](../../configs/research.yml)
+> `portfolio_gate`.** Rationale:
+> [decision 0003](../decisions/0003-portfolio-gate-required.md).
+
+Everything above §6.5 measures whether an *event* moves prices. None of it
+measures whether a *book* can be built on that. Those are different questions and
+the gap between them is not a detail — it is where this project's first result
+died.
+
+**Both gates are mandatory. Clearing the event gate alone is not a result.**
+
+| gate | passes when |
+|---|---|
+| **event** | abnormal return significant vs the matched control, after correction, with MDE below the plausible bound |
+| **portfolio** | a constructed book applying the signal beats the identical book without it, net of real costs on the *incremental* turnover, with a paired block-bootstrap CI excluding zero |
+
+Construction is deliberately dumb: point-in-time top-500, **equal weight**,
+month-end rebalance, minimum 30 names, paired difference against the same book
+unfiltered so market and style exposure cancel. No optimiser — an optimiser is a
+second signal, and a second signal is a second thing to overfit.
+
+#### Why this section exists
+
+`exp_001` produced a **real** event effect. It survived a random-stock control
+(−0.860% event-specific), a volatility-matched control (**−0.805% at t = −3.93**),
+and a momentum-reversal check (correlation +0.008, quintiles U-shaped rather than
+monotonic). Every statistic pointed the same way and every one of them was
+correct.
+
+Its portfolio effect was **−0.022%/yr at t = −0.25.**
+
+The gap is entirely dilution: the filter touched **1.2% of names.** Roughly 302
+qualifying events a year across a 500-name universe, each tainting one name for 10
+sessions, is about six names at any moment. A −0.8% effect on 1.2% of a book is
+about one basis point a month.
+
+Under the original plan, portfolio construction lived in Room 5, which was out of
+scope — so nothing could legitimately reach Room 5, and every gate that existed
+was an event-study gate. **`exp_001` would have been recorded as a PASS and
+shipped as a finding.**
+
+Consequently the **dilution factor is computed at design time**, before
+registration, not discovered afterwards. Had it been, `exp_001`'s expected
+portfolio impact would have been visible as ~1 bp/month and the study would have
+been redesigned rather than run. Every study reports
+`report_fraction_of_book_affected`.
 
 ---
 

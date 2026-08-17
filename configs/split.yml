@@ -1,0 +1,229 @@
+# split.yml — the exploration / selection / confirmation partition.
+#
+# WHY THIS EXISTS.
+#
+# On 2026-08-16 an unregistered exploratory search of ~100 cells pushed the trial
+# counter from 68 to 171. Under a single-pool regime that cost is permanent and
+# global: every future study's bar is higher forever because of one afternoon of
+# looking. That is the wrong incentive. It makes examining your own data
+# expensive, so you examine it less, so you find less — and the discipline that
+# was supposed to protect the research ends up throttling it.
+#
+# The fix is not to look less. It is to have somewhere that looking is free.
+#
+# Standard practice in genomics (discovery/replication cohorts) and particle
+# physics (blinded analysis). Neither field pretends a single dataset can both
+# generate and test a hypothesis.
+#
+# ---------------------------------------------------------------------------
+# THREE WAY, NOT TWO
+# ---------------------------------------------------------------------------
+# A two-way split conflates two different expenditures of freedom:
+#
+#   finding    a hypothesis  ("what shape is in this data?")
+#   choosing   among several ("which of my six candidates is best?")
+#
+# Only the second killed MICCV2's champion — full-sample Sharpe 1.52,
+# trailing-24m 0.11. It was not found by mining; it was SELECTED from a factory
+# of candidates, and the selection was never charged for. So selection gets its
+# own pool and its own accounting.
+
+version: 1
+frozen_at: "2026-08-17"
+# Once data has been read under this spec, changing any ratio or key rule below
+# invalidates every result derived from it. Treated as immutable; a change means
+# a new version number and a written decision record, not an edit.
+
+strata:
+  EXPLORE:
+    fraction: 0.30
+    charges_trial_counter: false
+    description: "Mine without limit. Any number of cells, any hypothesis, no
+      registration, no cost. This is the point of the whole file."
+  SELECT:
+    fraction: 0.20
+    charges_trial_counter: true
+    description: "Where candidates are compared and one is chosen. Charged,
+      because choosing the best of N is exactly the act that inflates a t-stat.
+      Registration required, but the bar is the SELECT bar, not the final one."
+  CONFIRM:
+    fraction: 0.50
+    charges_trial_counter: true
+    description: "Touched only by a REGISTERED experiment with a frozen spec.
+      Every touch is logged. Gets the largest share because it carries the
+      statistical burden and its MDE is what the project's conclusions rest on."
+
+# ---------------------------------------------------------------------------
+# THE KEY: ISIN, NEVER THE SYMBOL
+# ---------------------------------------------------------------------------
+# MEASURED 2026-08-17 against the v1_export seed:
+#
+#   isin_renames                    276 ISINs carry more than one symbol
+#   symbols involved in a rename    589
+#   ...appearing in deal data       459
+#   deal rows on renamed symbols    26,046  =  11.04% of all bulk+block rows
+#
+# Concretely: CADILAHC -> ZYDUSLIFE, PRISMCEM -> PRSMJOHNSN,
+# GEOJITBNPP -> GEOJITFSL. Under a symbol-keyed split these companies land in
+# EXPLORE under one name and CONFIRM under another. The confirmation set is then
+# contaminated by construction, silently, for 11% of the data — and nothing in
+# the output would ever look wrong.
+#
+# This is the same disease that produced the predecessor's 45% event attrition,
+# which the audit established was naming mismatch and not survivorship.
+key:
+  primary: isin
+  # 87.2% of deal ROWS resolve to an ISIN (72.6% of distinct names — the gap is
+  # long-tail, which is why the row figure is the one that matters).
+  fallback: "SYM:{symbol}"
+  fallback_is_safe_because: "an unmapped symbol is one we cannot show renamed;
+    the rename hazard is concentrated in the 459 names we CAN resolve, and those
+    always use ISIN. The fallback fraction is reported with every result."
+  max_fallback_fraction: 0.15   # exceeding this fails the split audit
+  record_key_kind: true          # every row carries ISIN or SYM, never ambiguous
+
+# Deterministic hash, not a seeded shuffle.
+#
+#   bucket = int(sha256(key).hexdigest()[:8], 16) % 1000
+#
+# A seeded numpy shuffle over a symbol list reassigns EVERY name whenever the
+# list changes — and it changes constantly, with every IPO and delisting. Hash
+# assignment depends only on the identifier, so a new listing self-assigns and
+# no existing name ever moves. It also needs no stored seed and no stored list:
+# the split is recomputable from the identifier alone, forever.
+assignment:
+  algorithm: sha256_modulo
+  buckets: 1000
+  # Half-open intervals over [0, 1000).
+  ranges:
+    EXPLORE: [0, 300]
+    SELECT:  [300, 500]
+    CONFIRM: [500, 1000]
+
+# ---------------------------------------------------------------------------
+# WHAT THIS SPLIT DOES NOT GIVE YOU
+# ---------------------------------------------------------------------------
+# It does NOT give independent samples. Equities are cross-sectionally
+# correlated through sector and market beta, so an effect discovered in EXPLORE
+# leaks into CONFIRM through common factors. A name split reduces leakage; it
+# does not eliminate it.
+#
+# Every MDE computed so far treats names as independent, which makes every one
+# of them OPTIMISTIC. The honest quantity is the effective sample size under the
+# standard design effect:
+#
+#   n_eff = n / (1 + (n - 1) * rho_bar)
+#
+# With ~2,100 confirmation names and a plausible average pairwise correlation of
+# 0.15-0.30, n_eff is in the low hundreds, not the thousands. This is reported
+# alongside every power calculation rather than being a footnote, because it can
+# move an MDE by a factor of three.
+leakage:
+  report_effective_sample_size: true
+  correlation_estimator: average_pairwise_daily_return
+  # If n_eff / n falls below this, the study reports LOW_INDEPENDENCE alongside
+  # its verdict. Not a failure — a disclosure.
+  low_independence_threshold: 0.10
+
+# Hash assignment is random but not BALANCED. With ~4,200 names balance should be
+# good by luck, but "good by luck" is not a claim. So: assign, then measure, then
+# publish the imbalance. A stated limitation beats a hidden one.
+balance_audit:
+  dimensions: [sector, size_quintile, liquidity_tier, listing_era]
+  # Max acceptable deviation of a stratum's share within any cell, absolute.
+  max_share_deviation: 0.05
+  on_breach: report_as_limitation   # never silently re-draw — that is p-hacking
+                                    # the split itself
+
+# ---------------------------------------------------------------------------
+# UNIVERSE EXCLUSIONS, found while measuring the split
+# ---------------------------------------------------------------------------
+# 160 of the 1,098 unresolvable deal symbols end in -RE. Those are RIGHTS
+# ENTITLEMENTS: short-lived instruments that trade for days and expire. They are
+# not equities, they have no continuing price series, and their presence would
+# add noise events with no forward return to measure.
+exclusions:
+  - pattern: "*-RE"
+    reason: "rights entitlement, not an equity; expires within days"
+    count_in_seed: 160
+  - pattern: "*DVR"
+    reason: "differential voting rights class; a separate instrument on the same
+      company, so including both double-counts the issuer"
+    count_in_seed: 27
+    keep_flagged: true   # excluded from headline, retained for a sensitivity run
+
+# ---------------------------------------------------------------------------
+# SEASONALITY NEEDS A DIFFERENT SPLIT ENTIRELY
+# ---------------------------------------------------------------------------
+# OWNER DECISION 2026-08-17: BOTH a time split and an index split; a cell must
+# survive both.
+#
+# A name split is meaningless here. The seasonality unit is a
+# (window x alignment x basis) cell across 202 indices — ~31.9M cells — not a
+# stock. And the honest problem with an index-only split is that the 202 indices
+# overlap massively: NIFTY 50 constituents sit inside NIFTY 100, NIFTY 500, and
+# most sector and thematic indices, so an "index holdout" is largely the same
+# underlying stocks.
+#
+# The time split is the one that tests what a seasonal claim actually asserts —
+# that the pattern PERSISTS. The predecessor's atlas never did this: 31.9M cells
+# scored against a single sample, best pattern at the 94th percentile of rotated
+# noise.
+#
+# Expect very few survivors. Given that prior, near-zero survivors is the
+# probable correct answer, and this design is built to be able to say so.
+seasonality_split:
+  time:
+    explore: ["2005-01-01", "2015-12-31"]
+    confirm: ["2016-01-01", null]        # null = through the present
+    rule: "a cell must clear its bar in BOTH halves, tested independently"
+    # Halving the observations per cell roughly doubles the required minimum, so
+    # research.yml's min_obs thresholds are per-half, not overall.
+    min_obs_is_per_half: true
+  index:
+    algorithm: sha256_modulo
+    key: index_name
+    explore_fraction: 0.40
+    confirm_fraction: 0.60
+    known_weakness: "the 202 indices share constituents heavily, so this holdout
+      is NOT independent. Retained because it tests generalisation across index
+      FAMILIES, which the time split does not. Its result is reported as
+      corroborating, never as independent confirmation."
+  combined_rule: must_pass_both
+
+# ---------------------------------------------------------------------------
+# ENFORCEMENT
+# ---------------------------------------------------------------------------
+# Without this the split is ceremony, which is the exact failure being fixed
+# everywhere else in this repo. A guard raises on any read of CONFIRM data that
+# is not inside a REGISTERED experiment with a frozen spec, and every legitimate
+# access is logged so the count of touches is a fact rather than a memory.
+enforcement:
+  guard_required: true
+  confirm_access_requires: registered_experiment_with_frozen_spec
+  log_every_access: true
+  # A stratum that is read a hundred times by a hundred "single" tests is a
+  # single-pool regime wearing a costume.
+  max_confirm_touches_per_experiment: 1
+
+# ---------------------------------------------------------------------------
+# PRIOR CONTAMINATION, recorded rather than assumed away
+# ---------------------------------------------------------------------------
+# exp_001 used a holdout described in the registry only as "the complementary
+# half of names". The analysis code was never committed, so THAT SPLIT CANNOT BE
+# RECONSTRUCTED. Its fit/holdout figures (+0.237%/yr and -0.022%/yr) are not
+# reproducible by anyone.
+#
+# Consequence for this file: there is no prior split to stay consistent with, so
+# the partition above is chosen freely. The cost is that ~100 exploratory cells
+# were run against the FULL universe on 2026-08-16, which means today's CONFIRM
+# stratum has already been looked at for one specific hypothesis.
+prior_contamination:
+  - date: "2026-08-16"
+    scope: "full universe, ~100 cells"
+    hypothesis: "bulk-deal buy avoidance filter, top500, 1-21 session horizons"
+    consequence: "CONFIRM is NOT clean for that specific hypothesis. It is clean
+      for every other hypothesis, because nothing else was examined."
+    remedy: "exp_001 is being re-run reproducibly under this split and the
+      provenance DAG (owner decision 2026-08-17). Its re-run result carries a
+      PRIOR_EXPOSURE flag and can never be reported as clean confirmation."
