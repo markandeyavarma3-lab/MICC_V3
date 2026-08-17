@@ -1,7 +1,18 @@
 # research.yml — horizons, power, walk-forward, corrections (Plan 2 §3, §6).
 
-horizons_months: [1, 3, 6, 8, 10, 12, 15, 18, 24]
-headline_horizons: [1, 3]          # where power actually exists — see power: below
+# HORIZONS — REVISED 2026-08-16 after Finding 001.
+#
+# The original grid started at 1 month. The only real effect found all day was at
+# 10 SESSIONS, and the grid would have missed it entirely. The power arithmetic
+# says why: monthly cohorts give 247 observations and MDE 1.52%; daily cohorts
+# give ~3,345 and MDE 0.163% — a 9x improvement. The plan was pointed at the
+# frequency where MDE exceeds any plausible effect.
+horizons_sessions: [1, 2, 3, 5, 10, 21]     # PRIMARY — where the power is
+headline_horizons_sessions: [1, 3, 5, 10]
+horizons_months: [3, 6, 12]                  # ROBUSTNESS only, not where we look
+# The 8/10/15/18/24-month horizons are dropped: MDE at 12m is already 7.38%
+# against a plausible bound of 0.50%, so longer is strictly more hopeless and
+# each one spends correction budget for a guaranteed UNDERPOWERED row.
 
 timing:
   entry: next_session_open         # strictly after available_from
@@ -101,23 +112,81 @@ participant_eligibility:
   null_calibration_draws: 1000
 
 room_2b:
-  # OWNER DECISION: full slice grid with Romano-Wolf correction across the family.
-  # n_tests_in_family is computed from the REALISED grid and stored per result —
-  # the schema forces it (study_result.n_tests_in_family NOT NULL CHECK > 0).
+  # REVISED 2026-08-16. The full crossed grid was 54,000 cells against 77,471
+  # events — 1.43 events per cell. Even under perfectly even spreading only 4.8%
+  # would clear the 30-event floor, and events cluster heavily in liquid large
+  # caps and recent years. Every 10x slice has MDE 4.89%/mo against a plausible
+  # bound of 0.50%: ten times too weak. The grid was finer than the data.
   #
-  # Expect most cells UNDERPOWERED: 1m MDE is ~1% at full N, and slices cut N by
-  # 10-50x. That is the correct outcome, not a design failure.
+  # Replaced by SIX pre-declared slices, each with a mechanism behind it rather
+  # than being a cell in a crossed product. Six real claims beat 54,000 shrugs.
   slices:
-    participant_level: [exact, category, all]
-    sector:            pit_sector_history
-    market_cap:        size_quintile
-    liquidity:         adv_quintile
-    regime:            [calm, stressed]          # India VIX vs 252d median
-    side:              [buy, sell]
-    deal_type:         [bulk, block]
-    holding_period:    all_horizons
+    - id: side
+      values: [buy, sell]
+      mechanism: "institutions buy for many reasons (inflows, index tracking,
+        rebalancing) but sell for fewer — selling may carry more information"
+    - id: deal_type
+      values: [bulk, block]
+      mechanism: "blocks are 0.7% same-day round-trip vs 54.8% for bulk, so they
+        are far less contaminated by market-maker churn"
+    - id: liquidity_tier
+      values: [top100, top500_ex100, off500]
+      mechanism: "shorting feasibility and cost differ sharply by tier, and
+        Finding 001 showed the effect was STRONGER in liquid names"
+    - id: participant_category
+      values: [MUTUAL_FUND, FPI_OFFSHORE, INSURANCE_BANK_PENSION, OTHER]
+      mechanism: "genuine long-horizon institutions vs intermediaries; PROP_HFT
+        already excluded upstream"
+    - id: regime
+      values: [calm, stressed]
+      mechanism: "India VIX vs its 252-session median — information may be
+        priced differently under stress"
+    - id: deal_size
+      values: [q1_smallest, q2, q3, q4_largest]
+      mechanism: "deal value relative to ADV20 proxies conviction; a 0.5%
+        threshold-scraper differs from a 5%-of-ADV position"
+  # NOT crossed. Each slice is tested independently against the full sample, so
+  # the family is 6 x n_horizons, not a product of every dimension.
+  crossed: false
   correction: romano_wolf
   report_underpowered_explicitly: true
+
+# ==============================================================================
+# PORTFOLIO GATE — added 2026-08-16 because the plan could not answer "is it
+# tradable" without it.
+# ==============================================================================
+# Finding 001 is why this exists. Its event effect was -0.805% over 10 sessions
+# against volatility-matched peers at t -3.93, having survived a random-stock
+# control and a volatility control. Its PORTFOLIO effect was -0.022%/yr at
+# t -0.25 — nothing — because the filter only touched 1.2% of names.
+#
+# Every statistic in the event study was correct and pointed the right way. Only
+# constructing the actual book revealed it was useless. AN EVENT STUDY IS NOT A
+# STRATEGY TEST.
+#
+# Under the original plan, portfolio construction sat in Room 5 which was out of
+# scope, so nothing could ever legitimately pass into Room 5 — the gates were
+# event-study gates that say nothing about tradability. exp_001 would have been
+# recorded as a PASS and shipped as a finding.
+portfolio_gate:
+  required_for_every_study: true
+  # Both gates must pass. Clearing the event gate alone is not a result.
+  gates:
+    event_gate: "abnormal return significant vs the matched control, after
+      correction, with MDE below the plausible bound"
+    portfolio_gate: "a constructed book applying the signal beats the identical
+      book without it, net of real costs on the INCREMENTAL turnover, with a
+      paired block-bootstrap CI excluding zero"
+  construction:
+    universe: top500_pit
+    weighting: equal            # no optimiser — an optimiser is a second signal
+    rebalance: month_end
+    paired_difference: true     # same book with/without, so beta and style cancel
+    min_names: 30
+    cost_basis: incremental_turnover_only
+  # Report the dilution factor explicitly. Finding 001's was 1.2%, and that single
+  # number explained the entire gap between t -3.93 and t -0.25.
+  report_fraction_of_book_affected: true
 
 seasonality:
   windows: [1, 2, 3, 5, 7, 10, 14, 20, 30, 45, 60, 75, 90]
@@ -140,6 +209,15 @@ seasonality:
   # Never hard-code the cell count. The prior atlas held 31,893,556; the run
   # records its own n_tests_in_run and a test greps for the literal.
   record_actual_test_count: true
+  # OWNER DECISION 2026-08-16, reaffirmed against my recommendation: FULL rebuild
+  # of all cells with new code, ~3 weeks, rather than validating the existing
+  # atlas in ~1 week. My objection was that this re-derives a known answer (ratio
+  # 1.05 vs chance, best pattern at the 94th percentile of rotated noise). The
+  # owner's call stands; the gain is independent confirmation and clean provenance
+  # through the DAG rather than trusting the predecessor's output.
+  rebuild_mode: full_rescan
+  rebuild_estimated_weeks: 3
+  chunked_resumable: true          # 31.9M cells needs checkpointing
   removed_from_consideration:
     # Owner decision Q43. And now supported by arithmetic: with the corrected fee
     # schedule, turn-of-month's +129.70 bps gross against 136.06 bps cost is
