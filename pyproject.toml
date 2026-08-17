@@ -27,6 +27,12 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --strict-markers"
 markers = [
+    # The four tiers from the owner plan §20, so CI can run them independently.
+    "unit: pure logic — parsing, mapping, arithmetic, corrections, no I/O",
+    "data: invariants over real data — no impossible prices, no trade before availability",
+    "research: leakage and correctness of the research pipeline itself",
+    "regression: pins a known quantity, e.g. the corrected-fee turn-of-month gate",
+    # Orthogonal to the tiers.
     "needs_data: requires data/ and db/ to be populated",
     "slow: takes more than 10 seconds",
 ]

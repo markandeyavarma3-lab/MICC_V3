@@ -1,0 +1,109 @@
+# benchmarks.yml — the six-benchmark set (Plan 2 §5).
+#
+# Every outcome row carries a return against ALL SIX. No result is reported
+# against a single benchmark; where they disagree, the disagreement is the
+# finding.
+#
+# CHAR_MATCHED is the PRIMARY measure for participant skill, not index-relative.
+# Index-relative credits an institution with small-cap and momentum beta it did
+# not create, and this event set is skewed toward exactly those characteristics
+# because the 0.5%-of-volume disclosure threshold is easiest to cross in thin,
+# volatile names.
+#
+# It is also the biggest power lever available. Measured 2026-08-16: a crude
+# size-quintile match alone cuts monthly-cohort SD 8.55% -> 5.91%, improving
+# MDE 1.52% -> 1.05% (a 31% power gain from ONE dimension). It also moved the
+# 1-month estimate from -0.54% to -1.02% — matching makes the result worse for
+# the hypothesis, which is why it belongs in the design rather than in a footnote.
+
+benchmarks:
+  - id: NIFTY50_TR
+    role: large_cap
+    source: warehouse.global_daily
+    symbol: NIFTY50
+    total_return: true
+    coverage: "2007-09-17 -> present"
+    official: true
+
+  - id: NIFTY500_TR
+    role: broad_market_headline
+    source: warehouse.benchmark_n500tr
+    method: capweight_crsldx+div
+    coverage: "2011-08-17 -> present"
+    official: true
+    note: "Official cap-weighted price index + official dividend-yield
+      reinvestment. niftyindices' own TRI series is not free-fetchable."
+
+  - id: NIFTY_MIDCAP100
+    role: mid_cap
+    source: v1seed.indices_data
+    name: "NIFTY MIDCAP 100"
+    coverage: "2005-11-30 -> present"
+    official: true
+
+  - id: SMALLCAP_SYNTH
+    role: small_cap
+    official: false                # CONSTRUCTED — every result using it says so
+    construction:
+      # NIFTY Smallcap 100 exists in the warehouse with FIFTEEN ROWS
+      # (2026-06-17 -> 2026-07-08). There is no official small-cap history, and
+      # this is a real gap the owner should know about.
+      universe: pit_universe
+      rank_by: med_turnover_20d
+      rank_range: [251, 500]
+      weighting: free_float_proxy_mcap
+      rebalance: month_end
+      delisting_aware: true
+    coverage: "2005-01-03 -> present"
+    note: "Constructed from the price spine because no official series exists.
+      Point-in-time and delisting-aware, but NOT an official index."
+
+  - id: EW_TOP500
+    role: no_skill_portfolio
+    official: false
+    construction:
+      universe: pit_universe
+      filter: top500
+      weighting: equal
+      rebalance: month_end
+    coverage: "2005-01-03 -> present"
+    note: "The return from holding everything with no selection. If a strategy
+      cannot beat this, its selection adds nothing."
+
+  - id: CHAR_MATCHED
+    role: primary_for_skill
+    official: false
+    construction:
+      # DGTW (Daniel, Grinblatt, Titman, Wermers 1997) adapted to available data.
+      #
+      # BOOK-TO-MARKET IS NOT AVAILABLE. Verified 2026-08-16: annual_balance and
+      # quarterly_balance hold a JSON blob containing 'Stockholders Equity' and
+      # 'Tangible Book Value', but coverage begins at 28 symbols in 2021 and
+      # ~2,200 from 2022. For 2006-2021 — sixteen of twenty years — there is no
+      # stock-level book value at all. index_valuation.pb is index-level and
+      # cannot match individual stocks.
+      dimensions:
+        - { name: size,       measure: mcap_or_med_turnover, buckets: 5 }
+        - { name: momentum,   measure: ret_12_1,             buckets: 5 }
+        - { name: volatility, measure: vol_21d,              buckets: 5 }
+        - { name: industry,   measure: pit_sector,           buckets: grouped_10 }
+      sort: independent_then_intersect
+      match_return: equal_weighted_cell
+      # 5x5x5x10 = 1,250 cells; many are sparse in early years. Degrade in a
+      # fixed order and RECORD the level used per event — a silently degraded
+      # match is worse than a declared one.
+      min_names_per_cell: 10
+      degrade_order: [industry, volatility, momentum]
+      record_fallback_level: true
+    coverage: "2005-01-03 -> present"
+    btm_sensitivity:
+      enabled: true
+      period: "2022-01-01 -> present"
+      note: "Book-to-market added as a 2022+ sensitivity ONLY, clearly labelled,
+        never in the headline."
+
+reporting:
+  all_benchmarks_required: true
+  primary_for_skill: CHAR_MATCHED
+  headline_index: NIFTY500_TR
+  flag_unofficial: true            # SMALLCAP_SYNTH, EW_TOP500, CHAR_MATCHED

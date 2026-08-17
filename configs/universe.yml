@@ -1,0 +1,70 @@
+# universe.yml — the tradable universe and eligibility rules.
+#
+# SURVIVORSHIP IS HANDLED, NOT ASSUMED AWAY. Verified 2026-08-16: the price spine
+# holds 4,200 symbols of which 1,497 stopped trading before 2026-08-01 —
+# 314 pre-2010, 667 in 2010-2019, 322 in 2020-2024, 194 in 2025-2026.
+#
+# That is why the 7,354 unmatched deal events found in the exploratory pass are
+# NAMING MISMATCHES, not survivorship. The dead stocks are present; the deal feed
+# just spells them differently. Fixing that is the highest-value work in the
+# project (Phase 3) because it directly determines whether the study is biased.
+
+universe:
+  source: pit_universe               # point-in-time, rebuilt from the price spine
+  rebalance: month_end
+  lookback_sessions: 20              # for turnover ranking
+  tiers:
+    top100: [1, 100]
+    top250: [1, 250]
+    top500: [1, 500]
+  rank_by: med_turnover
+  min_sessions_traded: 15            # in the lookback window, else not ranked
+
+liquidity_tiers:
+  # Used by the cost model's slippage and participation caps.
+  large:  { min_med_turnover_inr: 500000000 }    # >= Rs 50cr/day
+  mid:    { min_med_turnover_inr: 50000000 }     # >= Rs 5cr/day
+  small:  { min_med_turnover_inr: 0 }
+  smallest_tier_uses_conservative_participation: true
+
+delisting:
+  # Detected from last-trade dates, then classified. The classification matters:
+  # treating a MERGER as a delisting-to-zero is a large downward bias, and
+  # ignoring it is an upward one. Both are wrong; the predecessor did the second.
+  detect_from: last_traded_date
+  stale_sessions_to_declare_dead: 20
+  classify_into: [MERGER, ACQUISITION, SUSPENSION, UNKNOWN]
+  merged_into_requires_link: true    # security_master.merged_into_id
+  include_in_research: true          # OWNER DECISION: use them, do not drop them
+
+sectors:
+  # POINT-IN-TIME. The predecessor's dim_sector was current-only, which is a
+  # look-ahead: a company classified "IT" today may have been "Textiles" in 2008.
+  source: sector_history
+  preference_order: [NSE_INDEX_MEMBERSHIP, BSE_SCRIP_MASTER, MANUAL]
+  # index_membership has 13,163 rows carrying effective_from/effective_to.
+  backfill_earliest_known: true
+  backfill_confidence: LOW
+  # Sector-relative results are reported SEPARATELY for LOW-confidence rows so a
+  # reader can discount them rather than having them silently blended in.
+  report_low_confidence_separately: true
+  group_to_buckets: 10               # for characteristic matching
+
+prices:
+  research_prices: adjusted          # splits/bonuses applied
+  execution_prices: raw              # what a fill would actually have paid
+  ohlc_required_for_excursions: true
+
+reconciliation:
+  # The Phase 1 gate. The predecessor is useful for exactly one thing: being an
+  # oracle. A mismatch on any row blocks Phase 2.
+  expect_price_rows: 7749148
+  expect_symbols: 4200
+  expect_dead_symbols: 1497
+  expect_date_min: "2005-01-03"
+  expect_date_max: "2026-08-14"
+  expect_fno_rows: 174616363
+  expect_trading_sessions: 5339
+  expect_bulk_deals: 223450
+  expect_block_deals: 12430
+  tolerance: 0                       # exact. A near-miss is a bug, not a rounding
