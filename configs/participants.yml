@@ -1,0 +1,125 @@
+# participants.yml — participant classification (Plan 1 §6.5).
+#
+# THE BEHAVIOURAL CLASSIFIER RUNS FIRST, AND IT IS THE IMPORTANT ONE.
+#
+# Measured 2026-08-16 on 223,450 bulk deals: 54.8% of all client-stock-days are
+# same-day round trips. The most active "institutions" are HFT market makers —
+# Graviton 6,748 of 6,748 round-trips, HRTI 2,968 of 2,968, Tower Research and
+# XTX both 100%. They cross the 0.5% disclosure threshold intraday and end flat.
+#
+# Graviton never declares itself a market maker. 6,748/6,748 does. Behaviour is a
+# far more defensible classifier than a hand-maintained name list, and it covers
+# the single largest category.
+
+classification_order: [behavioural, name_pattern, unknown]
+
+behavioural:
+  prop_hft:
+    # Thresholds are not tuned. The observed distribution is near-bimodal: the top
+    # twenty participants by activity sit at 100.0, 100.0, 100.0, 98.9, 85.6,
+    # 62.0, 52.9 ... — a dense cluster at ~100% and a long tail below 90%.
+    # 0.95 sits inside the gap; 20 client-stock-days is where the ratio stops
+    # being dominated by small-sample noise.
+    roundtrip_ratio: 0.95
+    min_client_stock_days: 20
+    # Published in every study as a 3x3 grid, because this is a 44%-of-data
+    # filter. A finding that moves between 0.90 and 0.95 is a finding about the
+    # cut, not about institutions.
+    sensitivity_roundtrip_ratio: [0.80, 0.90, 0.99]
+    sensitivity_min_days: [10, 50]
+
+  five_day_roundtrip:
+    # A second, looser flag: in and out within a week is not conviction either.
+    window_sessions: 5
+    ratio: 0.95
+    min_client_stock_days: 20
+
+# Name patterns only see what behaviour did not already classify. A firm named
+# "... SECURITIES PRIVATE LIMITED" that round-trips 100% of the time is PROP_HFT,
+# not a broker — which is why the order in classification_order matters.
+name_pattern:
+  MUTUAL_FUND:       'MUTUAL FUND|ASSET MANAGE|\bAMC\b|INVESTMENT TRUST'
+  INSURANCE:         'INSURANCE|ASSURANCE|LIFE INSURA'
+  PENSION_SOVEREIGN: 'PENSION|SOVEREIGN|GOVERNMENT OF|MONETARY AUTH|ABU DHABI'
+  BANK:              '\bBANK\b|BANKING'
+  FPI_OFFSHORE:      'MAURITIUS|SINGAPORE|CYPRUS|LUXEMBOURG|CAYMAN|OFFSHORE|GLOBAL MARKETS|EMERG'
+  BROKER_SEC:        'SECURITIES|BROKING|BROKERS|\bSTOCK\b|SHARE.*ADVISOR'
+  INDIVIDUAL:        '^[A-Z]+ [A-Z]+ [A-Z]+$|^[A-Z]+ [A-Z]+$'
+
+# Expected coverage, measured 2026-08-16 (% of 223,450 bulk deals):
+#   PROP_HFT (behavioural)  327 names   44.0%
+#   INDIVIDUAL           12,891 names   22.9%
+#   BROKER_SEC              947 names    7.3%
+#   FPI_OFFSHORE            852 names    1.9%
+#   MUTUAL_FUND             806 names    1.1%
+#   BANK/INSURANCE/PENSION  404 names    0.7%
+#   UNKNOWN              11,190 names   22.2%
+# => 78% classified mechanically; 1,515 names need manual review.
+
+normalisation:
+  # Exact match after aggressive cleaning. NO fuzzy auto-merge (owner decision).
+  # Variants stay separate entities until the owner rules on them; a suggestion
+  # is recorded, never applied.
+  method: exact_after_cleaning
+  fuzzy_auto_merge: false
+  suggest_merges: true
+  strip_suffixes:
+    - 'PRIVATE LIMITED'
+    - 'PVT LTD'
+    - 'PVT. LTD.'
+    - 'LIMITED'
+    - 'LTD'
+    - 'LTD.'
+    - 'LLP'
+    - '& CO'
+    - 'AND COMPANY'
+  collapse_whitespace: true
+  strip_punctuation: true
+  uppercase: true
+
+review_queue:
+  # Ordered by impact on the Phase 3 gate, not by raw deal count — so the gate
+  # (unresolved symbol rate < 5%) can pass before the queue is exhausted.
+  order_by: deal_value_x_unresolved_contribution
+  min_deals_to_enqueue: 6
+  expected_queue_size: 1515
+  gate_unresolved_rate: 0.05
+
+consensus:
+  # OWNER DECISION: distinct participant names count separately. SBI Mutual Fund
+  # and SBI Life = 2 institutions under the primary definition.
+  #
+  # FLAGGED CONCERN, carried deliberately: two arms of one house are not
+  # independent conviction, so this definition inflates apparent consensus. The
+  # parent-grouped variant is run as a ROBUSTNESS check — the fund-house mapping
+  # it needs is already being built in Phase 3, so it costs almost nothing, and
+  # the gap between the two measures how much "consensus" is really one house.
+  primary_definition: distinct_participant_name
+  robustness_definition: parent_group_grouped
+  threshold_institutions: 3
+  threshold_alternates: [2, 5]
+  window_sessions: 21
+  window_alternates: [5, 63]
+
+# Measured event counts by (window, threshold), 2026-08-16, on 30,771 directional
+# buy events. Overlapping triggers — the independent count is lower and is
+# computed by src/research/power.py, not assumed.
+#   window  thresh  events   stocks
+#        5       2  12,870    2,044
+#        5       3   7,423    1,220
+#        5       5   3,242      496
+#       21       2  16,112    2,235
+#       21       3  10,098    1,430    <- primary
+#       21       5   4,820      661
+#       63       2  19,118    2,393
+#       63       3  13,150    1,621
+#       63       5   6,949      825
+
+eligibility:
+  # PROP_HFT excluded by default, but the rows are never deleted and every study
+  # reports N both with and without — a 44%-of-data filter must be visible.
+  exclude_categories: [PROP_HFT]
+  exclude_same_day_roundtrip: true
+  exclude_five_day_roundtrip: false     # flagged, not excluded, in v1
+  min_deal_value_inr: 10000000          # Rs 1 crore
+  min_deal_value_to_adv20: 0.005        # 0.5% of 20-day ADV

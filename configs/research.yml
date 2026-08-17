@@ -1,0 +1,155 @@
+# research.yml — horizons, power, walk-forward, corrections (Plan 2 §3, §6).
+
+horizons_months: [1, 3, 6, 8, 10, 12, 15, 18, 24]
+headline_horizons: [1, 3]          # where power actually exists — see power: below
+
+timing:
+  entry: next_session_open         # strictly after available_from
+  no_same_day_close: true          # unless publication before close is PROVEN
+  horizon_unit: trading_sessions   # never calendar-day arithmetic
+
+delisting:
+  # OWNER DECISION: report all three recovery factors, headline at 0.0.
+  # 6,574 of 30,771 events hit this, so the assumption is load-bearing and a
+  # single number would hide it.
+  headline_recovery_factor: 0.0
+  sensitivity_recovery_factors: [0.25, 0.50]
+  merger_treatment: roll_into_acquirer_at_exchange_ratio
+  suspension_treatment: mark_at_last_price_and_flag_excluded
+
+excursions:
+  # OWNER DECISION: intraday primary, close reported alongside. Intraday is the
+  # true worst tick and what a stop would have hit; understating drawdown is the
+  # more dangerous error.
+  primary_basis: intraday
+  also_report: close
+  both_always_populated: true
+
+power:
+  # MEASURED 2026-08-16, not assumed. MDE = minimum detectable effect at 80%
+  # power on the monthly-cohort mean, two-sided alpha 0.05.
+  #
+  #   study            1m      3m      12m
+  #   bulk buys       1.52%   3.07%   7.38%   (observed: -0.12%, -0.22%, +7.80%)
+  #   bulk sells      1.57%   3.12%   7.58%
+  #   block deals     2.07%   3.81%  11.50%
+  #
+  # The 12-month "+7.80% signal" sits ON its own 7.38% detection floor. That is
+  # noise at the boundary, not weak evidence.
+  #
+  # THE UNCOMFORTABLE PART: a realistic institutional edge is 0.3-0.5%/month.
+  # Even after characteristic matching (MDE 1.05%) these studies can only detect
+  # implausibly large effects. Stated here so it cannot read as a late surprise.
+  alpha: 0.05
+  target_power: 0.80
+  plausible_effect_bound_monthly: 0.005    # 0.5%/month = 6%/yr abnormal
+  # If MDE > plausible bound, the verdict is UNDERPOWERED — silence, not a
+  # negative — regardless of the p-value.
+  underpowered_rule: mde_exceeds_plausible_bound
+  estimator: monthly_cohort_mean
+  bootstrap_draws: 10000
+  block_length_rule: at_least_horizon
+
+walk_forward:
+  # Three schemes, all reported. A result that passes anchored but fails CPCV's
+  # PBO test is a result that got lucky in one ordering of time.
+  anchored:
+    train_start: "2005-01-01"
+    test_starts: [2010, 2012, 2014, 2016, 2018, 2020]
+    test_years: 5
+  rolling:
+    train_years: 8
+    test_years: 3
+    step_years: 1
+  cpcv:
+    # N MUST vary with the horizon. A fixed N=12 gives 20.6-month groups over the
+    # 20.6-year deal span, and purging a 24-month label then consumes MORE THAN
+    # AN ENTIRE ADJACENT GROUP. Group length must be >= ~2x the label horizon.
+    k_test_groups: 2
+    embargo_months: 1
+    n_groups_by_horizon:
+      - { max_horizon_months: 3,  n: 20, paths: 190 }
+      - { max_horizon_months: 6,  n: 16, paths: 120 }
+      - { max_horizon_months: 12, n: 10, paths: 45 }
+      - { max_horizon_months: 24, n: 6,  paths: 15 }
+    low_confidence_below_paths: 20   # 24m PBO carries an explicit marker
+  pbo:
+    formulation: cscv_logit_lambda   # Lopez de Prado; not a plain rank count
+    fail_threshold: 0.5              # PBO > 0.5 => selection worse than random
+
+corrections:
+  # Romano-Wolf is the upgrade over the predecessor, which had NOTHING for
+  # participant ranking. Hansen SPA replaces White's Reality Check as the
+  # decision rule but RC is retained for direct comparability.
+  participant_ranking: romano_wolf
+  seasonality_primary: benjamini_yekutieli
+  seasonality_also: [benjamini_hochberg, storey_q]
+  best_of_family: hansen_spa
+  best_of_family_also: [whites_reality_check]
+  spa_variants_reported: [SPA_l, SPA_c, SPA_u]
+  spa_decision_rule: SPA_c
+  bootstrap_draws: 10000
+  resample_unit: whole_months        # preserves cross-sectional + serial dependence
+
+participant_eligibility:
+  min_matured_events: 30             # reduces 27,417 names to a few hundred
+  # The null-calibration check that makes the leaderboard honest: run the
+  # IDENTICAL procedure on randomly-relabelled participants. If the real data
+  # yields as many "supported" names as shuffled data, there is no skill here —
+  # only variance. That comparison is the headline, not the leaderboard.
+  null_calibration: permute_participant_within_date
+  null_calibration_draws: 1000
+
+room_2b:
+  # OWNER DECISION: full slice grid with Romano-Wolf correction across the family.
+  # n_tests_in_family is computed from the REALISED grid and stored per result —
+  # the schema forces it (study_result.n_tests_in_family NOT NULL CHECK > 0).
+  #
+  # Expect most cells UNDERPOWERED: 1m MDE is ~1% at full N, and slices cut N by
+  # 10-50x. That is the correct outcome, not a design failure.
+  slices:
+    participant_level: [exact, category, all]
+    sector:            pit_sector_history
+    market_cap:        size_quintile
+    liquidity:         adv_quintile
+    regime:            [calm, stressed]          # India VIX vs 252d median
+    side:              [buy, sell]
+    deal_type:         [bulk, block]
+    holding_period:    all_horizons
+  correction: romano_wolf
+  report_underpowered_explicitly: true
+
+seasonality:
+  windows: [1, 2, 3, 5, 7, 10, 14, 20, 30, 45, 60, 75, 90]
+  alignments:
+    - TRADING_DAY_OF_YEAR
+    - CALENDAR_DATE
+    - TRADING_DAY_OF_MONTH_START
+    - TRADING_DAY_OF_MONTH_END
+  bases: [PRICE, MARKET_RELATIVE]
+  min_obs_yearly_alignment: 10       # raised from the plan's 5
+  min_obs_monthly_alignment: 30
+  permutation_rotations: 1000        # 300 for iteration
+  near_duplicate:
+    group_by_adjacency: true
+    return_correlation_threshold: 0.90
+  index_expansion:
+    target_count: 202
+    require_dedup: true
+    require_history_eligibility: true
+  # Never hard-code the cell count. The prior atlas held 31,893,556; the run
+  # records its own n_tests_in_run and a test greps for the literal.
+  record_actual_test_count: true
+  removed_from_consideration:
+    # Owner decision Q43. And now supported by arithmetic: with the corrected fee
+    # schedule, turn-of-month's +129.70 bps gross against 136.06 bps cost is
+    # -6.36 bps net. It does not survive.
+    - turn_of_month
+    - turn_of_year
+
+trial_counter:
+  # Carried from the predecessor at 47 + 21 legacy = 68. Monotonic, never reset.
+  # Applied to EVERYTHING including incumbents — the predecessor deflated
+  # challengers while exempting its own champion.
+  carried_from_predecessor: 68
+  applies_to_incumbents: true

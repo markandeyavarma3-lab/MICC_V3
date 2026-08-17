@@ -1,0 +1,159 @@
+# sources.yml — every data source: route, cadence, licence, and honest status.
+#
+# FEASIBILITY IS UNPROVEN FOR THE TWO SOURCES THE PLATFORM DEPENDS ON.
+# Tested 2026-08-16:
+#
+#   NSE /api/historical/bulk-deals    503  (even with session cookie + referer)
+#   NSE /api/historical/block-deals   503
+#   BSE /api/BulkDeal/w               returns HTML, not JSON (301 redirect)
+#   NSE /api/fiidiiTradeReact         200  <- works
+#   nsearchives.nseindia.com          200  <- works (bhavcopy route)
+#
+# It is NOT a host-level block: two routes on the same infrastructure answer.
+# And no collector has ever existed here — bulk_deals.parquet is dated Jul 10 and
+# came from the V1 export, which is why the data stops at 2026-07-08.
+#
+# `status` below is the honest state, not the intended one.
+
+http:
+  # A bare curl with no User-Agent gets rejected by NSE in ~0.2s, which looks
+  # exactly like a DNS failure and is not. The predecessor misdiagnosed this as
+  # "intermittent DNS" for days.
+  user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+  rate_limit_seconds: 2.0
+  timeout_seconds: 30
+  max_retries: 3
+  backoff_base_seconds: 5
+  session_warmup: true               # visit the report page first for cookies
+  respect_robots: true
+
+archive:
+  # Plan 1 §5. Raw bytes are archived BEFORE parsing, so a source format change
+  # never loses a day. The predecessor's data/raw/{nse,bse,fno,global,macro,shp}
+  # were all ZERO BYTES — fetches went straight into the warehouse.
+  store_original_bytes: true
+  compression: gzip
+  also_store_parsed_parquet: true
+  retention: forever
+  never_overwrite: true
+  dedupe_on: sha256
+  layout: "raw/archive/{report_type}/{exchange}/year={YYYY}/month={MM}/{filename}"
+
+sources:
+  - id: nse_bulk_deals
+    exchange: NSE
+    report_type: BULK
+    status: UNPROVEN                 # <-- 503 as of 2026-08-16
+    cadence: daily
+    publish_time_ist: "~19:00"       # ASSUMED — must be measured, not trusted
+    publish_time_verified: false
+    routes_to_try:                   # Phase 0.5 spike, in expected-yield order
+      - "https://nsearchives.nseindia.com/content/equities/bulk.csv"
+      - "https://www.nseindia.com/api/historical/bulk-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"
+      - "https://www.nseindia.com/api/historical/bulk-deals?csv=true"
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    historical_available_from: "2006-01-02"   # per the V1 export's own coverage
+    existing_rows: 223450
+
+  - id: nse_block_deals
+    exchange: NSE
+    report_type: BLOCK
+    status: UNPROVEN
+    cadence: daily
+    publish_time_ist: "~19:00"
+    publish_time_verified: false
+    routes_to_try:
+      - "https://nsearchives.nseindia.com/content/equities/block.csv"
+      - "https://www.nseindia.com/api/historical/block-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    historical_available_from: "2006-01-16"
+    existing_rows: 12430
+    note: "Only 0.7% same-day round-trip vs 54.8% for bulk. The cleanest
+      genuinely-institutional data in the project."
+
+  - id: bse_bulk_deals
+    exchange: BSE
+    report_type: BULK
+    status: UNPROVEN                 # returns HTML, needs correct route + Origin
+    cadence: daily
+    publish_time_ist: "~19:15"
+    publish_time_verified: false
+    routes_to_try:
+      - "https://api.bseindia.com/BseIndiaAPI/api/BulkDeal/w?flag=&pagecount=100&scode=&fromdate={YYYYMMDD}&todate={YYYYMMDD}"
+    required_headers: { Origin: "https://www.bseindia.com", Referer: "https://www.bseindia.com/" }
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    existing_rows: 0                 # NEVER collected
+    note: "New. No BSE deal data has ever been collected in this project."
+
+  - id: bse_block_deals
+    exchange: BSE
+    report_type: BLOCK
+    status: UNPROVEN
+    cadence: daily
+    publish_time_ist: "~19:15"
+    publish_time_verified: false
+    routes_to_try:
+      - "https://api.bseindia.com/BseIndiaAPI/api/BlockDeal/w?flag=&pagecount=100&scode=&fromdate={YYYYMMDD}&todate={YYYYMMDD}"
+    required_headers: { Origin: "https://www.bseindia.com", Referer: "https://www.bseindia.com/" }
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    existing_rows: 0
+
+  - id: fii_dii_cash
+    exchange: NSE
+    report_type: FII_DII
+    status: CONFIRMED                # <-- 200 as of 2026-08-16
+    cadence: daily
+    publish_time_ist: "~19:30"
+    publish_time_verified: false
+    routes_to_try:
+      - "https://www.nseindia.com/api/fiidiiTradeReact"
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    existing_rows: 68                # TWENTY-TWO DAYS: 2026-06-17 -> 2026-07-08
+    note: "History is unobtainable retrospectively — it accrues forward only.
+      This is why Engine E is out of scope for v1. Start collecting immediately
+      so the clock runs."
+
+  - id: participant_oi
+    exchange: NSE
+    report_type: PARTICIPANT_OI
+    status: HAVE                     # ported from the V1 export
+    cadence: daily
+    licence: public_disclosure
+    existing_rows: 15359
+    coverage: "2014-01-01 -> 2026-06-25"
+    categories: [FII, DII, Pro, Client, TOTAL]
+    note: "The FII/DII PROXY. This is F&O participant-wise open interest —
+      DERIVATIVES POSITIONING, NOT CASH-MARKET FLOW. A different measure, and
+      every study using it must say so rather than calling it FII/DII flow."
+
+  - id: shp_filings
+    exchange: NSE
+    report_type: SHP
+    status: UNPROVEN
+    cadence: quarterly
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    purpose: "Promoter-group entity names, for the point-in-time
+      promoter_related_flag. No promoter list exists today."
+
+# Owner plan §4.2 — deferred sources, each with a NAMED TRIGGER so "later" is a
+# decision rather than a drift.
+deferred:
+  - id: fpi_trade_wise
+    trigger: "any study reaches PASS and needs participant-level FPI attribution"
+  - id: fpi_sector_wise
+    trigger: "Room 2B's sector slice returns a non-UNDERPOWERED result"
+  - id: quarterly_ownership
+    trigger: "consensus study PASSes and needs holding-level confirmation"
+  - id: mf_scheme_holdings
+    trigger: "the mutual-fund participant category shows a supported effect"
+  - id: fno_institutional_positioning
+    trigger: "FII/DII cash history reaches 24 months, making Engine E researchable"
+  - id: corporate_announcements
+    trigger: "an event-study extension is registered; note the insider-cluster
+      family was KILLED across 4 studies in the predecessor and is NOT newly promising"

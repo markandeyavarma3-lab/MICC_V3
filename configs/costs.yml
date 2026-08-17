@@ -1,0 +1,154 @@
+# costs.yml — the transaction-cost model (Plan 2 §4).
+#
+# The statutory layer is VERSIONED, not constant. Rates moved repeatedly across
+# the 2006-2026 sample, and the predecessor system treated them as fixed and got
+# three of them wrong:
+#
+#   STT  charged sell-only, when equity DELIVERY attracts it on BOTH legs
+#   TXN  one rate for two exchanges, and the wrong value
+#   GST  applied to brokerage alone, not brokerage + SEBI + transaction
+#
+# Together +10.04 bps per round trip — enough to flip its one surviving
+# seasonality result from +3.70 bps to -6.36 bps per occurrence.
+#
+# Rows here seed the `fee_schedule` table. `verified: true` requires a primary
+# source. Any study whose window touches an unverified row says so in its output.
+
+statutory:
+  # --- current schedule, verified against the published rate card 2026-08-16 ---
+  - component: STT
+    segment: EQ_DELIVERY
+    exchange: null                 # uniform across exchanges
+    side: BOTH                     # <-- the correction. Delivery, not intraday.
+    rate: 0.0010
+    rate_basis: PCT_TURNOVER
+    effective_from: "2006-01-01"   # earliest date claimed; see unverified note
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "Equity delivery STT 0.1% on buy AND sell."
+    verified: true
+
+  - component: TXN
+    segment: EQ_DELIVERY
+    exchange: NSE
+    side: BOTH
+    rate: 0.0000307
+    rate_basis: PCT_TURNOVER
+    effective_from: "2026-03-01"   # NSE revised the IPFT component from this date
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "NSE cash 0.00307%. Superseded ~Rs2.97/lakh set 2024-10-01 under
+      SEBI's true-to-label circular; IPFT revised again effective 2026-03-01."
+    verified: true
+
+  - component: TXN
+    segment: EQ_DELIVERY
+    exchange: BSE
+    side: BOTH
+    rate: 0.0000375
+    rate_basis: PCT_TURNOVER
+    effective_from: "2026-03-01"
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "BSE cash 0.00375% — materially higher than NSE. Matters now
+      that BSE deals are collected."
+    verified: true
+
+  - component: SEBI
+    segment: EQ_DELIVERY
+    exchange: null
+    side: BOTH
+    rate: 10.0
+    rate_basis: PER_CRORE
+    effective_from: "2006-01-01"
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "SEBI turnover fee Rs10 per crore."
+    verified: true
+
+  - component: GST
+    segment: EQ_DELIVERY
+    exchange: null
+    side: BOTH
+    rate: 0.18
+    rate_basis: PCT_OF_BASE
+    applies_to_base: [BROKERAGE, SEBI, TXN]   # <-- the correction
+    effective_from: "2017-07-01"              # GST replaced service tax
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "18% on (brokerage + SEBI charges + transaction charges).
+      The predecessor applied it to brokerage alone."
+    verified: true
+
+  - component: STAMP
+    segment: EQ_DELIVERY
+    exchange: null
+    side: BUY                      # buy-side only — asymmetric by design
+    rate: 0.00015
+    rate_basis: PCT_TURNOVER
+    effective_from: "2020-07-01"   # uniform stamp duty regime
+    effective_to: null
+    source_url: "https://zerodha.com/charges/"
+    source_note: "0.015% or Rs1500/crore on the buy side."
+    verified: true
+
+# Rates before the effective_from dates above are NOT yet sourced. Until they
+# are, a study touching those periods carries an UNVERIFIED_FEES flag rather
+# than silently applying today's schedule to 2006.
+unverified_periods:
+  - note: "Pre-2017 GST/service-tax regime not yet reconstructed."
+  - note: "Pre-2020 stamp duty varied by state; not yet reconstructed."
+  - note: "TXN rate history before 2024-10-01 not yet reconstructed."
+
+brokerage:
+  # Deliberately conservative. Zerodha charges ZERO on equity delivery, so the
+  # headline models a mid-tier broker and the floor is reported alongside it.
+  # Never let a result depend on the cheapest broker available.
+  headline_rate: 0.0003            # 0.03% -> 29.33 bps round trip (NSE)
+  floor_rate: 0.0                  # zero    -> 22.25 bps round trip (NSE)
+
+spread:
+  # Corwin-Schultz primary, Abdi-Ranaldo cross-check. Both stored with their
+  # ratio so divergence can be studied later rather than buried in code.
+  estimators: [corwin_schultz, abdi_ranaldo]
+  rolling_window_sessions: 21
+  winsorise_tails: 0.15            # trim 15% each tail before use
+  negative_to_zero: true           # per Corwin-Schultz's own recommendation
+  exclude_zero_range_sessions: true  # H == L means circuit-locked, not zero spread
+  overnight_adjustment: true
+  disagreement_ratio_flag: 2.0     # >2x apart -> use the wider, set flagged
+
+impact:
+  # Square-root law: impact = Y * sigma_daily * sqrt(Q / ADV).
+  # Windows are arbitrary in the literature, so they are config with alternates.
+  model: sqrt
+  y_constant: 0.8
+  y_alternates: [0.5, 1.0]
+  adv_window_sessions: 20
+  adv_window_alternates: [5, 60]
+  vol_window_sessions: 21
+  vol_window_alternates: [60]
+
+participation:
+  # 10% is the common default; institutional execution studies use nearer 5% for
+  # small caps, and this event set skews small because the 0.5%-of-volume
+  # disclosure threshold is easiest to cross in thin names.
+  base_cap_pct_adv: 0.10
+  conservative_cap_pct_adv: 0.05
+  smallest_tier_uses_conservative: true
+  max_sessions_to_build: 5         # beyond this the event is TOO_LARGE, excluded
+
+regime:
+  # Spreads and impact widen under stress. sigma_daily carries part of this;
+  # the multiplier carries the rest.
+  source: INDIA_VIX
+  baseline_window_sessions: 252
+  multiplier_calm: 1.0
+  multiplier_top_decile: 1.5
+
+reporting:
+  # Every result at three levels, so the reader sees how much survives friction.
+  levels:
+    gross:        { brokerage: floor_rate, y: 0.5, participation: 0.10, spread: narrower }
+    base:         { brokerage: headline_rate, y: 0.8, participation: 0.10, spread: chosen }
+    pessimistic:  { brokerage: headline_rate, y: 1.0, participation: 0.05, spread: wider }
