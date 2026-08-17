@@ -81,3 +81,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0014](0014-no-remote-yet.md) | No git remote; Risk 8 accepted with zero backup | 2026-08-17 | ACTIVE |
 | [0015](0015-rights-entitlements-excluded.md) | `-RE` and `DVR` instruments leave the universe | 2026-08-17 | ACTIVE |
 | [0016](0016-era-balance-breach-accepted.md) | Split era-balance breach disclosed, not re-drawn | 2026-08-17 | ACTIVE |
+| [0017](0017-serial-not-cross-sectional-correction.md) | The MDE correction is serial, not cross-sectional | 2026-08-17 | ACTIVE |
+| [0018](0018-plausible-bound-not-horizon-scaled.md) | **OPEN:** the plausible bound is not horizon-scaled | 2026-08-17 | **OPEN** |

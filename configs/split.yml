@@ -103,27 +103,58 @@ assignment:
 # ---------------------------------------------------------------------------
 # WHAT THIS SPLIT DOES NOT GIVE YOU
 # ---------------------------------------------------------------------------
-# It does NOT give independent samples. Equities are cross-sectionally
-# correlated through sector and market beta, so an effect discovered in EXPLORE
-# leaks into CONFIRM through common factors. A name split reduces leakage; it
-# does not eliminate it.
+# It does NOT give independent samples. Equities are cross-sectionally correlated
+# through sector and market beta, so an effect discovered in EXPLORE leaks into
+# CONFIRM through common factors. A name split reduces leakage; it does not
+# eliminate it. That is a real limit on how much independent evidence CONFIRM
+# supplies, and `effective_sample_size` exists to quantify it.
 #
-# Every MDE computed so far treats names as independent, which makes every one
-# of them OPTIMISTIC. The honest quantity is the effective sample size under the
-# standard design effect:
+# CORRECTION, 2026-08-17. An earlier version of this file claimed that "every MDE
+# computed so far treats names as independent, which makes every one of them
+# OPTIMISTIC". THAT WAS WRONG, and wrong in the direction of overstating my own
+# project's rigour problem, which is the more embarrassing direction to get it
+# wrong in.
 #
-#   n_eff = n / (1 + (n - 1) * rho_bar)
+# src/research/power.py collapses to MONTHLY COHORT MEANS before computing
+# anything. That defeats cross-sectional dependence by construction: one month is
+# one observation no matter how many events fall inside it. Measured on real data
+# at the 10-session horizon:
 #
-# With ~2,100 confirmation names and a plausible average pairwise correlation of
-# 0.15-0.30, n_eff is in the low hundreds, not the thousands. This is reported
-# alongside every power calculation rather than being a footnote, because it can
-# move an MDE by a factor of three.
+#   naive, 16,445 events treated as independent    MDE 0.076%   <- never done
+#   monthly-cohort, what power.py actually does    MDE 0.621%
+#   serial-corrected, what was genuinely missing   MDE 0.660%
+#
+# The 8x penalty was already being paid. What was missing is SERIAL correlation
+# across months, and it is real but modest:
+#
+#   horizon   rho_1    inflation   n_eff of 247
+#      1s     0.086      1.62         152.2
+#      5s     0.133      1.29         192.1
+#     10s     0.122      1.13         219.3
+#     21s     0.111      1.16         212.2
+#
+# So the honest correction is 6-27% on the MDE, not a factor of three.
 leakage:
+  # CROSS-SECTIONAL. Governs how much INDEPENDENT EVIDENCE the CONFIRM stratum
+  # supplies relative to EXPLORE. It does NOT enter the MDE — the cohort collapse
+  # has already dealt with that.
   report_effective_sample_size: true
   correlation_estimator: average_pairwise_daily_return
   # If n_eff / n falls below this, the study reports LOW_INDEPENDENCE alongside
   # its verdict. Not a failure — a disclosure.
   low_independence_threshold: 0.10
+
+  # SERIAL. This one DOES enter the MDE, as a Bartlett-kernel variance inflation
+  # on the monthly cohort series. Newey-West lag rule 4*(n/100)^(2/9); K=5 at
+  # n=247.
+  serial_correction_required: true
+  serial_kernel: bartlett
+  serial_lag_rule: newey_west_4n100_2_9
+  measured_2026_08_17:
+    horizon_1s:  { rho_1: 0.086, inflation: 1.62, n_eff: 152.2 }
+    horizon_5s:  { rho_1: 0.133, inflation: 1.29, n_eff: 192.1 }
+    horizon_10s: { rho_1: 0.122, inflation: 1.13, n_eff: 219.3 }
+    horizon_21s: { rho_1: 0.111, inflation: 1.16, n_eff: 212.2 }
 
 # Hash assignment is random but not BALANCED. With ~4,200 names balance should be
 # good by luck, but "good by luck" is not a claim. So: assign, then measure, then

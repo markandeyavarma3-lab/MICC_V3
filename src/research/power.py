@@ -222,3 +222,90 @@ def block_bootstrap_ci(
         float(np.percentile(means, 100 - tail)),
         float((means > 0).mean()),
     )
+
+
+# --- serial correlation: the correction that was actually missing -------------
+#
+# ADDED 2026-08-17, replacing a claim that was wrong.
+#
+# An earlier note in configs/split.yml asserted that "every MDE treats names as
+# independent and is therefore optimistic". That was false: cohort_collapse above
+# already defeats CROSS-SECTIONAL dependence by construction, because one month
+# becomes one observation regardless of how many events fall inside it. Measured
+# at the 10-session horizon on 16,445 real events, the difference is 8x:
+#
+#     naive on events (never done)   MDE 0.076%
+#     monthly cohort (what we do)    MDE 0.621%
+#
+# What WAS missing is dependence BETWEEN months. Cohort means are autocorrelated —
+# measured rho_1 of 0.086 to 0.133 across horizons — so 247 months are not 247
+# independent observations. That is a real correction and a modest one: 6-27%.
+
+
+def serial_inflation(cohorts: pd.Series, max_lag: int | None = None) -> tuple[float, int]:
+    """Bartlett-kernel variance inflation for the mean of an autocorrelated series.
+
+    Returns (inflation, lag_used). The inflation multiplies the variance of the
+    sample mean, so n_eff = n / inflation.
+
+        infl = 1 + 2 * sum_k (1 - k/(K+1)) * rho_k
+
+    The Bartlett taper is what keeps the estimate positive-semidefinite; an
+    untapered sum can and does go negative on real data, which would produce an
+    n_eff above n and silently flatter the study.
+
+    `max_lag` defaults to the Newey-West rule of thumb 4*(n/100)^(2/9), which
+    gives K=5 at the n=247 months this project actually has.
+    """
+    v = np.asarray(cohorts.dropna(), dtype=float)
+    n = len(v)
+    if n < 3:
+        return 1.0, 0
+    k_max = max_lag if max_lag is not None else max(1, int(round(4 * (n / 100) ** (2 / 9))))
+    k_max = min(k_max, n - 1)
+    centred = v - v.mean()
+    denom = float((centred**2).sum())
+    if denom == 0.0:
+        return 1.0, k_max
+    total = 0.0
+    for k in range(1, k_max + 1):
+        rho_k = float((centred[:-k] * centred[k:]).sum() / denom)
+        total += (1 - k / (k_max + 1)) * rho_k
+    # Floored at 1.0: negative autocorrelation would imply the cohort mean is
+    # MORE precise than iid. That may even be true, but claiming extra power from
+    # a noisy lag estimate is exactly the wrong direction to round.
+    return max(1.0, 1 + 2 * total), k_max
+
+
+def effective_periods(cohorts: pd.Series, max_lag: int | None = None) -> float:
+    """Independent-equivalent number of periods after the serial correction."""
+    infl, _ = serial_inflation(cohorts, max_lag)
+    return len(cohorts.dropna()) / infl
+
+
+def mde_serial_corrected(
+    cohorts: pd.Series,
+    power: float = 0.80,
+    alpha: float = 0.05,
+    max_lag: int | None = None,
+) -> float:
+    """MDE on the cohort mean, accounting for dependence between periods.
+
+    This is the number a study should report. Measured 2026-08-17 on directional
+    bulk buys, market-relative:
+
+        horizon   rho_1   inflation   n_eff/247   observed    MDE
+           1s     0.086     1.62        152.2     +0.691%    0.191%
+           5s     0.133     1.29        192.1     -0.010%    0.423%
+          10s     0.122     1.13        219.3     -0.603%    0.660%
+          21s     0.111     1.16        212.2     -1.061%    0.968%
+
+    Note the sign flip: a one-session pop that decays into a twenty-one-session
+    loss. That is temporary price impact reversing, which is what a corpus that is
+    54.8% same-day round-trip ought to produce.
+    """
+    clean = cohorts.dropna()
+    if len(clean) < 3:
+        return float("nan")
+    n_eff = max(2.0, effective_periods(clean, max_lag))
+    return mde(cohort_sd(clean), int(round(n_eff)), power=power, alpha=alpha)
