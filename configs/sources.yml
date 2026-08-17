@@ -1,13 +1,22 @@
 # sources.yml — every data source: route, cadence, licence, and honest status.
 #
-# FEASIBILITY IS UNPROVEN FOR THE TWO SOURCES THE PLATFORM DEPENDS ON.
-# Tested 2026-08-16:
+# FEASIBILITY MEASURED 2026-08-16 — NSE forward works, BSE and backfill do not.
+# Every status below is an observed HTTP response, not an intention:
 #
-#   NSE /api/historical/bulk-deals    503  (even with session cookie + referer)
-#   NSE /api/historical/block-deals   503
-#   BSE /api/BulkDeal/w               returns HTML, not JSON (301 redirect)
-#   NSE /api/fiidiiTradeReact         200  <- works
-#   nsearchives.nseindia.com          200  <- works (bhavcopy route)
+#   nsearchives .../content/equities/bulk.csv   200  <- WORKS, 199 real rows
+#   nsearchives .../content/equities/block.csv  200  <- WORKS, "NO RECORDS"
+#   NSE /api/fiidiiTradeReact                   200  <- works
+#   NSE /api/historical/bulk-deals              503  (even with session + referer)
+#   BSE /api/BulkDeal/w                         301 -> error page
+#
+# RESOLVED 2026-08-16 by the Phase 0.5 spike: forward NSE collection WORKS via the
+# static archive host. See docs/plan/FEASIBILITY_2026-08-16.md.
+#
+# THE CRITICAL CONSEQUENCE: the working route is a ROLLING CURRENT-DAY snapshot,
+# not an archive, and the historical API is closed. So every trading day not
+# collected is PERMANENTLY LOST. 2026-07-09 -> 2026-08-13 (~26 sessions) is
+# probably already unrecoverable. This makes the collector the most
+# time-sensitive work in the project.
 #
 # It is NOT a host-level block: two routes on the same infrastructure answer.
 # And no collector has ever existed here — bulk_deals.parquet is dated Jul 10 and
@@ -43,14 +52,16 @@ sources:
   - id: nse_bulk_deals
     exchange: NSE
     report_type: BULK
-    status: UNPROVEN                 # <-- 503 as of 2026-08-16
+    status: CONFIRMED_FORWARD_ONLY   # verified 2026-08-16: 200, 199 real rows
     cadence: daily
-    publish_time_ist: "~19:00"       # ASSUMED — must be measured, not trusted
+    publish_time_ist: "~19:00"       # ASSUMED — still must be measured
     publish_time_verified: false
-    routes_to_try:                   # Phase 0.5 spike, in expected-yield order
-      - "https://nsearchives.nseindia.com/content/equities/bulk.csv"
-      - "https://www.nseindia.com/api/historical/bulk-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"
-      - "https://www.nseindia.com/api/historical/bulk-deals?csv=true"
+    route: "https://nsearchives.nseindia.com/content/equities/bulk.csv"
+    route_kind: rolling_current_day  # NOT an archive — today's file only
+    backfill_status: UNPROVEN
+    backfill_routes_to_try:
+      - "https://www.nseindia.com/api/historical/bulk-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"  # 503
+      - "full sec-fetch-* / x-requested-with header set"
     licence: public_disclosure
     automated_use_permitted: "yes"
     historical_available_from: "2006-01-02"   # per the V1 export's own coverage
@@ -59,13 +70,15 @@ sources:
   - id: nse_block_deals
     exchange: NSE
     report_type: BLOCK
-    status: UNPROVEN
+    status: CONFIRMED_FORWARD_ONLY   # verified 2026-08-16: 200, "NO RECORDS"
     cadence: daily
     publish_time_ist: "~19:00"
     publish_time_verified: false
-    routes_to_try:
-      - "https://nsearchives.nseindia.com/content/equities/block.csv"
-      - "https://www.nseindia.com/api/historical/block-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"
+    route: "https://nsearchives.nseindia.com/content/equities/block.csv"
+    route_kind: rolling_current_day
+    backfill_status: UNPROVEN
+    empty_day_sentinel: "NO RECORDS"  # distinguishable from a fetch failure —
+                                      # exactly what ingestion_status needs
     licence: public_disclosure
     automated_use_permitted: "yes"
     historical_available_from: "2006-01-16"
@@ -76,7 +89,7 @@ sources:
   - id: bse_bulk_deals
     exchange: BSE
     report_type: BULK
-    status: UNPROVEN                 # returns HTML, needs correct route + Origin
+    status: UNPROVEN                 # 301 -> error page even with Origin+Referer
     cadence: daily
     publish_time_ist: "~19:15"
     publish_time_verified: false
