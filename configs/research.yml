@@ -256,8 +256,15 @@ trial_counter:
 # every battle and never concede the war.
 project_kill_criterion:
   # Either condition fires. Whichever comes first.
-  fail_count_threshold: 3       # of 4 studies failing their PORTFOLIO gate
-  total_studies: 4
+  # REVISED 2026-08-18. This read "3 of 4 studies" — a rule that cannot evaluate
+  # if the critical path runs ONE study, which is what the schedule rewrite in
+  # PLAN_3 §3.2 makes it do. The threshold now applies to studies ACTUALLY RUN,
+  # and the checkpoint becomes the primary trigger because it fires on the
+  # critical path alone.
+  fail_fraction_threshold: 0.75   # of studies actually run, failing their PORTFOLIO gate
+  min_studies_before_fraction_applies: 2
+  planned_studies: 4              # aspiration; the critical path guarantees 1
+  primary_trigger: checkpoint
   deadline: "2027-02-28"        # no portfolio-gate PASS by this date
   checkpoint: "2026-11-30"      # honest mid-point written assessment
   checkpoint_rule: "if no study has reached even the EVENT gate by this date,

@@ -89,3 +89,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0022](0022-multiplicity-had-three-errors.md) | **The multiplicity bar was wrong three ways, all anti-conservative** | 2026-08-18 | ACTIVE |
 | [0023](0023-trial-families-and-track-s-wiring.md) | Trial families; the three gaps between the two tracks | 2026-08-18 | ACTIVE |
 | [0024](0024-design-gate-bypassed-its-own-machinery.md) | **The design gate bypassed the machinery built to set its bars** | 2026-08-18 | ACTIVE |
+| [0025](0025-critical-path-schedule.md) | Schedule becomes a critical path with a pre-declared cut order | 2026-08-18 | ACTIVE |

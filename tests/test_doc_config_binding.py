@@ -119,9 +119,38 @@ def test_kill_criterion_is_complete_enough_to_actually_fire():
     k = _cfg("research.yml")["project_kill_criterion"]
     assert k["deadline"] == "2027-02-28"
     assert k["checkpoint"] == "2026-11-30"
-    assert 0 < k["fail_count_threshold"] <= k["total_studies"]
     assert k["verdict_path"].endswith(".md")
     assert k["checkpoint"] < k["deadline"], "the checkpoint must precede the deadline"
+    # REVISED 2026-08-18. It read "3 of 4 studies", which cannot evaluate when the
+    # critical path guarantees only ONE study (PLAN_3 §3.2). The threshold now
+    # applies to studies ACTUALLY RUN.
+    assert 0 < k["fail_fraction_threshold"] <= 1.0
+    assert k["min_studies_before_fraction_applies"] >= 1
+    assert k["primary_trigger"] == "checkpoint", (
+        "the checkpoint must be the primary trigger: it is the only condition "
+        "that fires on the critical path alone"
+    )
+
+
+def test_the_schedule_is_a_critical_path_not_a_bare_sequence():
+    """The old schedule opened "No deadline was set (Q4)" — false since decision
+    0010 — and totalled 22 weeks while omitting Phases 6S, 6R and 0.6. It left
+    1.7 weeks of slack, so a 25% overrun missed by five weeks."""
+    text = (PLANS / "PLAN_3_EXECUTION.md").read_text()
+    sched = text.split("## 3. Schedule")[1].split("## 4.")[0]
+    # The old line "No deadline was set (Q4)" is QUOTED in 3.1 as the thing being
+    # corrected, so its mere presence is not the fault. What matters is that the
+    # deadline is now stated as fact somewhere in the schedule.
+    assert "2027-02-28" in sched, "the schedule does not state the deadline"
+    assert re.search(r"has been false|no longer|superseded|corrected", sched, re.I), (
+        "the schedule quotes its old no-deadline premise without retracting it"
+    )
+    assert re.search(r"critical path", sched, re.I), "no critical path defined"
+    assert re.search(r"cut first", sched, re.I), (
+        "no cut order — deciding what to drop under deadline pressure is how "
+        "the wrong thing gets dropped"
+    )
+    assert "2026-11-23" in sched, "the critical path has no landing date"
 
 
 # --- docs must not contradict the configs ------------------------------------
