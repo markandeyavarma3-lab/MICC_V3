@@ -36,6 +36,8 @@ skipped in silence.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Literal
@@ -68,6 +70,16 @@ def research_spec() -> dict:
     return yaml.safe_load((CONFIGS / "research.yml").read_text())
 
 
+#: Horizon labels whose natural unit really is a month, so the config's
+#: per-month plausible bound applies without conversion. Anything else — "10s",
+#: "ic_5s", "21s" — must state its own bound until decision 0018 is settled.
+_MONTHLY = re.compile(r"^\d+\s*(m|mo|month|months)$", re.I)
+
+
+def _is_monthly_horizon(label: str) -> bool:
+    return bool(_MONTHLY.match(str(label).strip()))
+
+
 def required_confounds(kind: StudyKind) -> tuple[str, ...]:
     return tuple(
         c["id"]
@@ -89,10 +101,36 @@ class HorizonPower:
 
     @property
     def is_powered(self) -> bool:
-        bound = self.plausible_bound
-        if bound is None:
-            bound = research_spec()["power"]["plausible_effect_bound_monthly"]
-        return self.mde <= bound
+        """Whether this horizon can see an effect inside the plausible range.
+
+        BUG FIXED 2026-08-18. This silently fell back to
+        `plausible_effect_bound_monthly` FOR EVERY HORIZON, including
+        single-session ones. Comparing a 1-session MDE against a per-month bound
+        is a unit error, and it was making short horizons look powered when they
+        may not be. It is decision 0018, live in code, producing wrong verdicts.
+
+        0018 is still OPEN — whether the bound scales with horizon depends on
+        whether disclosure causes a one-off repricing or a persistent rate of
+        return, and that is the owner's call. So rather than silently pick one,
+        this now REFUSES any non-monthly horizon that does not carry an explicit
+        bound. An open question should stop the code, not be resolved by a
+        default nobody chose.
+        """
+        if self.plausible_bound is not None:
+            return self.mde <= self.plausible_bound
+
+        if not _is_monthly_horizon(self.horizon):
+            raise DesignRejected(
+                f"horizon {self.horizon!r} has no explicit plausible_bound, and "
+                f"the config default is per-MONTH. Comparing a "
+                f"{self.horizon} MDE against a monthly bound is a unit error.\n"
+                f"Decision 0018 is OPEN: whether the bound scales with horizon "
+                f"depends on whether disclosure causes a one-off repricing "
+                f"(fixed bound) or a persistent rate (scaled bound). Until that "
+                f"is decided, state plausible_bound explicitly for this horizon "
+                f"and record the reasoning."
+            )
+        return self.mde <= research_spec()["power"]["plausible_effect_bound_monthly"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +194,10 @@ class StudyDesign:
     #: it once the result is known, which is the exact abuse the family scheme
     #: exists to prevent.
     trial_family_id: str | None = None
+    #: Observations behind each test statistic, minus one. Omitting it assumes a
+    #: normal distribution, which understates the bar whenever the per-test
+    #: sample is small — 22% for a calendar cell on 21 yearly observations.
+    dof: int | None = None
     #: Track S only. Anchored expanding windows share ~95% of their training
     #: data, so a fold count is not an evidence count. Both are required.
     nominal_folds: int | None = None
@@ -169,7 +211,29 @@ class StudyDesign:
         self._check_confounds()
         self._check_economics()
         self._check_scan()
-        object.__setattr__(self, "_bar", bar(self.trials_before))
+        object.__setattr__(self, "_bar", self._compute_bar())
+
+    def _compute_bar(self):
+        """The bar this design must clear.
+
+        TWO BUGS FIXED 2026-08-18, both making the bar too EASY.
+
+        1. It called `bar(trials_before)` with no `dof`, so every design got the
+           normal-distribution assumption. For a scan on 21 yearly observations
+           that is a 22% understatement (4.68 against a true 5.73).
+        2. It ignored `trial_family_id` entirely — validated that the family
+           existed and then never used it. A scan declaring TRACK_S_CALENDAR,
+           which carries 31,893,556 prior trials, would have been handed a bar
+           computed from trials_before=171: |t| >= 3.67 instead of 11.76.
+
+        The second is the worse one. The family scheme was built the same day to
+        stop exactly this, and the design gate walked straight past it.
+        """
+        if self.trial_family_id:
+            from src.research.families import charge
+
+            return charge(self.trial_family_id, 0, dof=self.dof).bar
+        return bar(self.trials_before, dof=self.dof)
 
     # --- rule 2 --------------------------------------------------------------
 

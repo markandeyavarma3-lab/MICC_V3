@@ -45,7 +45,12 @@ def _confounds(kind="event_study", **overrides):
 
 
 def _powered():
-    return (HorizonPower("10s", 3345, 0.00163), HorizonPower("21s", 1600, 0.0031))
+    # Session horizons must state their own bound: decision 0018 is OPEN, so the
+    # per-month config default may not be silently applied to a 10-session MDE.
+    return (
+        HorizonPower("10s", 3345, 0.00163, plausible_bound=0.0024),
+        HorizonPower("21s", 1600, 0.0031, plausible_bound=0.0050),
+    )
 
 
 def _design(**kw):
@@ -95,7 +100,7 @@ def test_a_study_blind_at_every_horizon_is_refused():
 def test_a_study_with_one_powered_horizon_survives():
     # Mixed is fine — the weak horizons report UNDERPOWERED, which is silence
     # rather than a negative. Only total blindness is a design defect.
-    d = _design(horizons=(HorizonPower("10s", 3345, 0.00163),
+    d = _design(horizons=(HorizonPower("10s", 3345, 0.00163, plausible_bound=0.0024),
                           HorizonPower("12m", 247, 0.0738)))
     assert len(d.powered_horizons) == 1
     assert len(d.underpowered_horizons) == 1
@@ -216,3 +221,89 @@ def test_exp001_as_designed_would_be_rejected():
             kind="portfolio",
             confounds=_confounds("portfolio"),
         )
+
+
+# --- three integration bugs found 2026-08-18, all making the bar too easy ----
+
+
+class TestBarIntegration:
+    """The design gate computed bars that ignored the machinery built to set them.
+
+    Every one of these made results EASIER to pass, which is the direction that
+    matters.
+    """
+
+    def test_the_bar_uses_the_declared_family_not_raw_trials_before(self):
+        """BUG: `trial_family_id` was validated and then never used.
+
+        A scan declaring TRACK_S_CALENDAR — which carries 31,893,556 prior trials
+        from the predecessor's completed atlas — was handed a bar computed from
+        trials_before=171. That is |t| >= 3.67 where the truth is 11.76. The
+        family scheme was built the same day to prevent exactly this, and the
+        design gate walked straight past it.
+        """
+        from src.research.families import charge
+
+        d = StudyDesign(
+            study_id="exp_011_scan_bar_check",
+            kind="scan",
+            mechanism=MECHANISM,
+            side_predictions=_side_predictions(),
+            horizons=(HorizonPower("ic_5s", 568, 0.0140, plausible_bound=0.02),),
+            confounds=tuple(ConfoundPlan(c, "REQUIRED") for c in required_confounds("scan")),
+            trials_before=171,
+            trial_family_id="TRACK_S_CALENDAR",
+            nominal_folds=16,
+            effective_folds=8.0,
+        )
+        assert d.required_t == pytest.approx(
+            charge("TRACK_S_CALENDAR", 0).bar.required_t, abs=0.01
+        )
+        assert d.required_t > 10, "the 31.9M prior search is not being charged"
+
+    def test_declaring_dof_raises_the_bar(self):
+        """BUG: `bar()` was called with no dof, assuming a normal distribution.
+
+        For a statistic on few observations the t has far fatter tails, so the
+        normal assumption understates the bar — 22% for a calendar cell on 21
+        yearly observations.
+        """
+        loose = _design().required_t
+        tight = _design(dof=20).required_t
+        assert tight > loose * 1.15
+
+    def test_track_d_dof_is_a_small_correction(self):
+        """247 monthly cohorts give df=246, indistinguishable from normal."""
+        assert _design(dof=246).required_t == pytest.approx(_design().required_t, abs=0.06)
+
+
+class TestOpenDecisionStopsTheCode:
+    """Decision 0018 is unresolved. The code must refuse, not guess."""
+
+    def test_a_session_horizon_without_an_explicit_bound_is_refused(self):
+        """BUG: it silently compared a 1-session MDE to a PER-MONTH bound.
+
+        A unit error that made short horizons look powered when they may not be.
+        """
+        with pytest.raises(DesignRejected, match="unit error"):
+            _design(horizons=(HorizonPower("1s", 3345, 0.00191),))
+
+    def test_a_monthly_horizon_may_still_use_the_config_default(self):
+        h = HorizonPower("12m", 247, 0.0738)
+        assert h.is_powered is False  # 7.38% against a 0.50% bound
+
+    def test_an_explicit_bound_is_always_honoured(self):
+        assert HorizonPower("1s", 3345, 0.00191, plausible_bound=0.0024).is_powered
+        assert not HorizonPower("1s", 3345, 0.00191, plausible_bound=0.0010).is_powered
+
+    @pytest.mark.parametrize("label", ["12m", "3 months", "6mo", "1M"])
+    def test_monthly_labels_are_recognised(self, label):
+        from src.research.design import _is_monthly_horizon
+
+        assert _is_monthly_horizon(label)
+
+    @pytest.mark.parametrize("label", ["10s", "ic_5s", "21s", "10d", "session_5"])
+    def test_non_monthly_labels_are_not(self, label):
+        from src.research.design import _is_monthly_horizon
+
+        assert not _is_monthly_horizon(label)
