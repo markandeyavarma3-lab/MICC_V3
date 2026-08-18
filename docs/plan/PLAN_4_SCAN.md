@@ -307,16 +307,40 @@ with its own verdicts — this is reuse, not a merger.
 The required standard rises only with the **logarithm** of scan width, so a wide
 scan costs less than intuition suggests:
 
-| Width | Noise max \|t\| | Required \|t\| |
-|---|---|---|
-| 5,000 | 3.69 | 4.61 |
-| 1,000,000 | 4.87 | 6.08 |
-| 13,200,000 | 5.36 | 6.69 |
-| **31,893,556** | **5.51** | **6.89** |
-| 200,000,000 | 5.83 | 7.28 |
+**Corrected 2026-08-18** after three errors were found in the estimator, all
+pointing the anti-conservative way. See §8.1.
 
-For context, the predecessor's single best pattern sat at the 94th percentile of
-rotated noise — nowhere near 6.89.
+| Width | Noise max \|t\| (normal) | Bar (normal) | **Bar at df=20** |
+|---|---|---|---|
+| 5,000 | 3.87 | 4.84 | **5.93** |
+| 3,146 | 3.75 | 4.68 | **5.73** |
+| 1,000,000 | 4.98 | 6.23 | **8.60** |
+| **31,893,556** | **5.63** | **7.04** | **11.27** |
+
+A calendar cell scored on 21 yearly observations is t(20), not normal, so the
+`df=20` column is the applicable one. For context, the predecessor's single best
+pattern sat at the 94th percentile of rotated noise — nowhere near any of these.
+
+### 8.1 Three errors in the estimator, all anti-conservative
+
+The bar published a day earlier was **\|t\| ≥ 6.89**. It was wrong three ways,
+and every one made results *easier* to pass:
+
+1. **Sidedness.** The estimator computed the expected maximum of *signed*
+   normals while `Bar.clears()` compares `abs(t)`. Measured at N=171: max(z) is
+   2.693 but max\|z\| is 2.922. Every bar the module ever produced was low.
+2. **Degrees of freedom.** Statistics are t-distributed, not normal, and 21
+   yearly observations give t(20), whose tails are far fatter. Over 3,146 draws:
+   normal 3.746 versus t(20) 4.599, **+23%**.
+3. **Grid geometry.** Correlation between overlapping cells pulls the maximum
+   *down* — measured 4.595 at ρ=0 falling to 3.071 at ρ=0.7 — partly cancelling
+   effect 2. On a realistic simulated grid the truth was **4.151** against a
+   dof-adjusted 4.60 and a normal 3.568.
+
+**No formula gets a specific grid right.** Every Track S scan must therefore
+generate its own grid under its own null and measure the maximum directly
+(`multiplicity.simulated_max_null_t`). The table above is a planning guide, not
+the operative bar.
 
 ---
 
@@ -372,7 +396,8 @@ Stated in advance so it cannot be adjusted afterwards:
 - **The procedure test most likely returns a hit rate near 50%**, meaning mass
   scanning does not work on this data. That is the primary expected finding and
   it is worth having.
-- **Very few or no individual patterns will clear \|t\| ≥ 6.89.** The
+- **Very few or no individual patterns will clear the simulated bar**, which on
+  a realistic grid lands near \|t\| ≥ 5.2 and rises steeply with width. The
   predecessor's best cleared nothing close.
 - **The calendar track is the weaker of the two.** It has been run before and
   returned nothing, and its per-stock form is arithmetically dead.

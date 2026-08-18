@@ -297,9 +297,27 @@ research code, not after.
 | **7** | Seasonality rescan | not started |
 | **8** | Reporting | not started |
 
-### 4.3 The four studies
+### 4.3 Two tracks
 
-The whole project comes down to four questions.
+The project runs two research tracks in parallel. They share the discipline
+machinery — registration, decision records, multiple-testing correction — and
+almost nothing else, because the statistics of an event and the statistics of a
+calendar pattern are genuinely different.
+
+| | **Track D — institutional deals** | **Track S — mass pattern search** |
+|---|---|---|
+| Question | do disclosed institutional trades predict returns? | do *any* patterns, found by searching, survive out of sample? |
+| Data | 223,450 bulk + 12,430 block deals | 21 years of prices, 4,200 stocks |
+| Unit | one deal event | one calendar cell or signal combination |
+| Machinery | **built** | **not built** |
+
+**Track S was under-specified until 18 August.** It existed in configuration
+files and prose but had no code and no proper design. Section 8.3 explains what
+changed and what it cost.
+
+### 4.3.1 Track D — the four deal studies
+
+The deal track comes down to four questions.
 
 **Study 1 — Do institutional buys predict anything?**
 When an institution buys, does the share beat comparable shares over the next
@@ -314,10 +332,25 @@ rebalancing) but sell for fewer. 34,270 sell events have never been examined.
 When three or more different institutions buy the same share within 21 days, is
 that stronger than one institution buying? 10,098 such events exist.
 
-**Study 4 — Are calendar patterns real?**
-Do particular days of the year systematically produce returns? V2 tested
-31,893,556 such patterns and its own conclusion was that the best one sat at the
-94th percentile of random noise — that is, it looked like nothing.
+### 4.3.2 Track S — the search track
+
+V2 scanned **31,893,556** calendar patterns and concluded the best one sat at the
+94th percentile of random noise — it looked like nothing. But it only ever asked
+*"is this better than chance in this sample?"*, never *"does it happen again?"*
+
+Track S asks the second question, using expanding training windows: find a
+pattern in 2005–2010, require it to repeat in 2010–2012, and so on across many
+folds.
+
+**The headline result is deliberately not a list of patterns.** It is a measured
+answer to: *across all folds, how often does a pattern chosen in training
+actually win in testing?* If the answer is about 50%, mass searching does not
+work on this data — which is a real and useful finding, and the most likely one.
+Individual surviving patterns are reported second.
+
+That reframing matters because it turns the enormous size of the search from a
+liability into an instrument: the wider you search, the more precisely you
+measure how badly searching overfits.
 
 ### 4.4 The rules every study must follow
 
@@ -337,8 +370,9 @@ registered study, enforced by code that raises an error.
 **Rule 3 — Count everything you looked at.**
 If you test 171 ideas, the best one will look good by luck alone. The system
 calculates how good: with 171 attempts, pure noise produces a best result of
-about t = 2.71, so the bar is set at t = 3.62. With 31.9 million attempts the bar
-is t = 6.89.
+about t = 2.94, so the bar is set at t = 3.71. With 31.9 million attempts the bar
+rises past t = 7, and for patterns measured on few observations it rises further
+still. These figures were themselves corrected on 18 August — see §7.6.
 
 **Rule 4 — Check the same list of confusions every time.**
 Ten standard alternative explanations are checked automatically for every study.
@@ -642,10 +676,12 @@ we try" into a required standard of evidence:
 
 | Attempts | Best result from pure noise | Required standard |
 |---|---|---|
-| 10 | t = 1.57 | t = 2.32 |
-| 171 | t = 2.71 | **t = 3.62** |
-| 1,000 | t = 3.26 | t = 4.08 |
-| 31,893,556 | t = 5.51 | **t = 6.89** |
+| 10 | t = 1.90 | t = 2.80 |
+| 171 | t = 2.94 | **t = 3.71** |
+| 1,000 | t = 3.45 | t = 4.31 |
+| 31,893,556 | t = 5.63 | **t = 7.04** |
+
+*(Corrected 18 August. The figures first published were lower — see §7.6.)*
 
 **Design gate (`design.py`, 275 lines).** Refuses to let a study exist unless it
 has a mechanism, a prediction that could fail, computed detectability, and a plan
@@ -730,6 +766,49 @@ A collector runs automatically at 20:00, 22:30 and 08:00 IST. On its first night
 it captured 100 bulk deals and 4 block deals, verified by hash. Files are
 compressed, hashed, never overwritten, and duplicates are detected.
 
+### 7.6 Four errors of my own, found by verification
+
+On 18 August I was asked simply *"are you sure about the whole thing?"* Checking
+found four errors in work committed within the previous day. I record them
+because a report listing only successes is not a report, and because how they
+were found matters more than that they existed.
+
+**Error 1 — a statistic that measured itself.** I reported that removing the
+market's overall movement from returns made stocks statistically independent, and
+built a design on it. In fact the calculation I used *forces* that answer no
+matter what the data contains. Feeding it a strongly-linked dataset and a
+completely random one produced the same result. It measured the arithmetic of the
+operation, not the market.
+
+**Error 2 — a question with no possible answer.** Worse, the way I had defined
+"market-relative" meant that the quantity I proposed to study is exactly zero for
+every day by construction. I had designed a measurement incapable of producing a
+number. The correct approach — comparing *rankings* of stocks rather than their
+average — was in the plan as one option among several. It is in fact the only
+one.
+
+**Errors 3 and 4 — the significance bar was too low, twice.** The tool that sets
+how strong evidence must be had two independent faults, and both made results
+*easier* to pass:
+
+| Fault | Effect |
+|---|---|
+| Measured one direction of movement while being applied to both | every bar understated |
+| Assumed a bell curve where the true distribution has heavier tails | a further 23% understatement for small samples |
+
+Corrected, the bar for the deal track rises from t = 3.62 to **t = 3.71**. The
+one completed experiment still clears it, so **no recorded verdict changes.**
+
+**Why they survived 146 tests.** The tests compared the tool against *its own
+output*, pinned as expected values. A test asserting that code agrees with itself
+proves nothing. The replacement tests compare against independent simulation,
+which is the standard the originals should have met.
+
+**What this says about the project.** The framework caught none of these — a
+person asking a direct question did. The safeguards are real and they are not
+sufficient, and I would rather state that than present a system that appears to
+police itself.
+
 ---
 
 ## 8. What is going on now
@@ -801,11 +880,15 @@ project should be quoted as final.** It is the single most important open item.
 | Outcome calculation | not built |
 | Cost model in code | config only |
 | Benchmark construction | config only |
-| The four studies | not built |
-| Seasonality rescan | not built |
+| The four deal studies (Track D) | not built |
+| **Track S — walk-forward folds** | **not built** |
+| **Track S — calendar scan** | **not built** |
+| **Track S — signal combinations** | **not built** |
+| **Track S — the procedure test** | **not built** |
 | Provenance graph populated | **0 rows** |
 
-**Seven of seven core data tables do not exist.** The project folder currently
+**Seven of seven core data tables do not exist, and all seven Track S modules
+are unwritten.** The project folder currently
 holds 16 KB of data.
 
 **About 15% of the system is built**, and the completed portion is the framework
@@ -936,7 +1019,8 @@ minutes of looking promising.
 ### 11.4 What I have learned
 
 **Most patterns in financial data are false.** With 171 attempts, noise alone
-produces a t-statistic of 2.71 — which most people would report as significant.
+produces a t-statistic of 2.94 — which most people would report as highly
+significant.
 
 **Being able to fail is a feature.** V2's real defect was not any single bug. It
 was that no possible result would have caused it to stop.

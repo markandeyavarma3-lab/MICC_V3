@@ -67,14 +67,14 @@ def _design(**kw):
 
 def test_a_complete_design_is_accepted():
     d = _design()
-    assert d.required_t == pytest.approx(3.62, abs=0.02)
+    assert d.required_t == pytest.approx(3.67, abs=0.02)
     assert len(d.powered_horizons) == 2
 
 
 def test_summary_names_the_bar_and_the_dilution():
     d = _design(kind="portfolio", confounds=_confounds("portfolio"), expected_dilution=0.30)
     s = d.summary()
-    assert "required |t|" in s and "3.6" in s
+    assert "required |t|" in s and "3.6" in s  # 3.67 at 171 trials
     assert "30.00% of the book" in s
 
 
