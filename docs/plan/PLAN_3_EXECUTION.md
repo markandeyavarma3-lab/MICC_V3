@@ -242,6 +242,52 @@ Engines, paper portfolios, ML, LLM assistant. Not in v1.
 
 ---
 
+### Phase 6S — Track S: the scan track · ~4 weeks
+
+**Added 2026-08-18.** This phase plan described a one-track project. Track S —
+the calendar and signal-combination search, and the half of the project the owner
+identified as missing — appeared nowhere in it. Full design:
+[PLAN_4_SCAN.md](PLAN_4_SCAN.md).
+
+Runs **in parallel** with Phases 3–6, not after them. The deal machinery is
+finished and idle, so building the scan track costs it nothing.
+
+| Step | Detail |
+|---|---|
+| 6S.1 | `src/scan/folds.py` — anchored expanding windows + CPCV, purge and embargo. Gate: reports **effective** fold count, not just nominal (16 folds ≈ 8 independent tests) |
+| 6S.2 | `src/scan/nulls.py` — measured rotation null. Gate: reproduces the drift curve, P(up) 0.461 at 1 day → 0.501 at 90 days. A flat 50% null is refused |
+| 6S.3 | `src/scan/procedure.py` — the headline. Out-of-sample hit rate, degradation, PBO, rank decay |
+| 6S.4 | `src/scan/calendar.py` — S1 cells. Cross-sectional rank IC only; the pooled average is **identically zero** by construction (decision 0021) |
+| 6S.5 | `src/scan/signals.py` — S2 combinations, ~190 base variants to depth 3, realised width computed at run time and never hard-coded |
+| 6S.6 | `src/scan/atlas.py` — chunked, resumable, checkpointed every 100k cells |
+| 6S.7 | Migration `0003` — `scan_cell`, `scan_fold_result`, `procedure_result` |
+
+**Gate before any full run:** a benchmark on 1/1000th of the grid must project the
+full run inside the 21-day budget. The predecessor's "~3 weeks" was an assertion
+and no cell was ever timed. If the projection exceeds budget, the grid is cut and
+the cut is recorded as a decision.
+
+**Gate on every result:** the bar comes from `simulated_max_null_t` on the actual
+grid geometry, not from the formula. Fat tails raise the maximum and cell
+correlation lowers it; they partly cancel, so no formula is right for a given
+grid (decision 0022).
+
+### Phase 6S dependencies on the deal track
+
+Only two, and both are already built: `multiplicity.py` and the
+registration/decision layer. Track S does **not** reuse `split.py` or `power.py`
+— an ISIN partition is meaningless for a calendar cell, and a monthly cohort
+collapse does not apply to observations that occur once a year. Track S has its
+own partition (`split.yml § scan`) and its own power model (rank IC, measured
+MDE 0.0140).
+
+**Trial families keep the two tracks apart** (`configs/trials.yml`). Before this
+existed, running Track S once would have raised Track D's bar from |t| ≥ 3.71 to
+7.28 and retroactively failed `exp_001`. See
+[decision 0023](../decisions/0023-trial-families-and-track-s-wiring.md).
+
+---
+
 ## 3. Schedule
 
 At 2–3 h/day (Q5), averaging 2.5 h × 6 days ≈ 15 h/week.

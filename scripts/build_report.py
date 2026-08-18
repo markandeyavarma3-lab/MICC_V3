@@ -183,7 +183,14 @@ def main(argv: list[str] | None = None) -> int:
         subprocess.run(["npm", "install", "puppeteer-core"], cwd=BUILD,
                        capture_output=True, timeout=300)
 
-    pdf_path = REPORT_DIR / (src.stem + ".pdf")
+    # Output beside the SOURCE, not in a hardcoded directory. Building the four
+    # plan documents on 2026-08-18 silently dropped all four PDFs into
+    # docs/report/ while the stale copies sat in docs/plan/pdf/ — so the build
+    # reported GREEN and the stale files were what anyone would still have read.
+    src_abs = src.resolve()
+    out_dir = (src_abs.parent / "pdf") if src_abs.parent.name == "plan" else src_abs.parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_dir / (src.stem + ".pdf")
     r = subprocess.run(["node", str(BUILD / "render.js"), str(html_path), str(pdf_path)],
                        capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
