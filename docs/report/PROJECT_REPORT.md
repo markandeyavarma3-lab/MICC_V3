@@ -1187,6 +1187,8 @@ git log --oneline --reverse | grep -E "f25608d|c31e128"
 | **Sharpe ratio** | Return divided by volatility; higher is better |
 | **Basis point** | One hundredth of a percent |
 | **Pre-registration** | Writing down predictions and pass marks before looking |
+| **ISIN** | A permanent 12-character code identifying a company's shares. Unlike a ticker symbol it does not change when a company is renamed |
+| **Monotonic** | Moving in one direction only — a counter that can rise but never fall |
 | **Point-in-time** | Using only information that existed on the date in question |
 | **Provenance** | A record of which data and code produced a number |
 | **UNDERPOWERED** | The study could not have detected the effect either way — silence, not evidence |
