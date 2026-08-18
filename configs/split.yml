@@ -258,3 +258,57 @@ prior_contamination:
     remedy: "exp_001 is being re-run reproducibly under this split and the
       provenance DAG (owner decision 2026-08-17). Its re-run result carries a
       PRIOR_EXPOSURE flag and can never be reported as clean confirmation."
+
+# =============================================================================
+# TRACK S — the scan track needs a DIFFERENT partition, and had none
+# =============================================================================
+# GAP FOUND 2026-08-18. Everything above partitions by ISIN, which is meaningless
+# for a calendar cell: a cell spans every stock at once. So Track S had no
+# exploration/confirmation regime at all — a 31.9M-cell scan would have run
+# across all data with nothing held back, while Track D sat behind a guard that
+# raises. Half the project was outside the discipline framework.
+#
+# Owner decision 0012 already specified the answer for seasonality (a time split
+# AND an index split); it was never implemented or referenced from scan.yml.
+scan:
+  # PRIMARY. This is the split that tests what a pattern claim actually asserts:
+  # PERSISTENCE. A cell found before the cut must repeat after it.
+  temporal:
+    enabled: true
+    mandatory: true
+    explore_end: "2015-12-31"      # 2005-2015 inclusive — free to mine
+    confirm_start: "2016-01-01"    # 2016+ — registered studies only
+    embargo_sessions: 21           # gap so a window cannot straddle the cut
+    # ~11 years explore / ~10.6 years confirm. Roughly balanced, and it is the
+    # ONLY split that can test persistence, which is why it is mandatory rather
+    # than preferred.
+    explore_years_approx: 11.0
+    confirm_years_approx: 10.6
+
+  # SECONDARY, and explicitly weaker. Reported as corroborating, never as
+  # independent confirmation.
+  entity:
+    enabled: true
+    mandatory: false
+    explore_fraction: 0.40
+    confirm_fraction: 0.60
+    key: index_name_or_isin
+    # WHY IT IS WEAK: the 202 indices overlap heavily. NIFTY 50 constituents sit
+    # inside NIFTY 100, NIFTY 500 and most sector and thematic indices, so an
+    # "explore" index and a "confirm" index can share most of their members.
+    # This is a disclosure, not a defect to be fixed.
+    overlap_warning: true
+    verdict_role: corroborating_only
+
+  # A cell must clear its bar in BOTH regimes to be reported as surviving.
+  require_both: true
+  # Observation floors apply PER HALF, not overall — otherwise a cell can pass on
+  # the strength of the explore half alone.
+  min_obs_applies_per_half: true
+  # Same rule as Track D: exploration is free, confirmation is spent.
+  explore_charges_trial_counter: false
+  confirm_charges_trial_counter: true
+  # Which family pays. See configs/trials.yml.
+  family_calendar: TRACK_S_CALENDAR
+  family_signals: TRACK_S_SIGNALS
+  family_procedure: TRACK_S_PROCEDURE
