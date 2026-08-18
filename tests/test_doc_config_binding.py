@@ -324,3 +324,36 @@ def test_report_states_the_real_test_count():
         f"A report that misstates the system it describes is the drift this "
         f"project exists to prevent."
     )
+
+
+def test_every_plan_pdf_is_newer_than_its_source():
+    """Caught 2026-08-18: three plan PDFs were a day stale and PLAN_4 had none.
+
+    The report was rebuilt after every edit and the plans were not, so anyone
+    handed a plan PDF got the superseded design — the exact failure this file
+    exists to prevent, committed in the artefacts the plans are delivered as.
+
+    Compounding it, `build_report.py` wrote to a hardcoded output directory, so
+    rebuilding the plans dropped fresh PDFs into docs/report/ while the stale
+    copies sat in docs/plan/pdf/. The build reported GREEN and the stale files
+    were still what anyone would read.
+    """
+    stale = []
+    for md in sorted(PLANS.glob("PLAN_*.md")):
+        pdf = PLANS / "pdf" / f"{md.stem}.pdf"
+        if not pdf.exists():
+            stale.append(f"{md.stem}: PDF MISSING")
+        elif pdf.stat().st_mtime < md.stat().st_mtime:
+            stale.append(f"{md.stem}: PDF older than source")
+    assert not stale, (
+        "stale plan PDFs — rebuild with scripts/build_report.py --src <file>:\n  "
+        + "\n  ".join(stale)
+    )
+
+
+def test_plan_3_covers_the_scan_track():
+    """PLAN_3 is the EXECUTION plan. Until 2026-08-18 it had zero mentions of
+    Track S, so the phase plan sequenced only half the project."""
+    text = (PLANS / "PLAN_3_EXECUTION.md").read_text()
+    assert "Phase 6S" in text, "PLAN_3 has no phase for the scan track"
+    assert "TRACK_S" in text or "trial famil" in text.lower()
