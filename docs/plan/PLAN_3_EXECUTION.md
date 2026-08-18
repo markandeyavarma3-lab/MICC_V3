@@ -330,27 +330,91 @@ existed, running Track S once would have raised Track D's bar from |t| ≥ 3.71 
 
 ---
 
-## 3. Schedule
+## 3. Schedule — a critical path, not a sequence
 
-At 2–3 h/day (Q5), averaging 2.5 h × 6 days ≈ 15 h/week.
+**Rewritten 2026-08-18.** The previous schedule opened *"No deadline was set
+(Q4)"*. That has been false since decision 0010 set **2027-02-28**. It also
+totalled 22 weeks while omitting Phase 6S (4 weeks), Phase 6R and Phase 0.6.
 
-| Phase | Weeks | Cumulative | Calendar (from 2026-08-17) |
+### 3.1 Why the old schedule could not work
+
+At 2–3 h/day averaging 15 h/week (Q5):
+
+| | Weeks | Hours |
+|---|---:|---:|
+| calendar available to 2027-02-28 | 27.9 | 418 |
+| plan as written, all phases | 26.2 | 393 |
+| **slack** | **+1.7** | **+25** |
+
+Six percent slack, on a project where **every estimate so far has been wrong**.
+Applying its own track record:
+
+| Overrun | Finishes | Slack |
+|---|---|---|
+| ×1.0 | on time | +1.7 wk |
+| ×1.25 | **after** | −4.9 wk |
+| ×1.5 | **after** | −11.4 wk |
+| ×2.0 | **after** | −24.5 wk |
+
+A 25% overrun — optimistic for software — misses by five weeks. The fix is not a
+better estimate. It is deciding *in advance* what gets cut.
+
+### 3.2 The critical path — 14 weeks to one defensible answer
+
+The minimum to reach **one portfolio-gated verdict**. Nothing here is optional.
+
+| Phase | Wk | Ends | Why it cannot be cut |
+|---|---:|---|---|
+| 1 · warehouse + reconciliation | 3 | 2026-09-07 | nothing is trustworthy until the gate passes |
+| **2′ · collection, REDUCED** | **1** | 2026-09-14 | the stopgap already captures raw bytes daily; the full parser can wait for a study that needs it |
+| 3 · identity layer | 4 | 2026-10-12 | the 34.2% join failure lives here |
+| 4 · clean mart | 2 | 2026-10-26 | required |
+| **6′ · costs + benchmarks** | 2 | 2026-11-09 | the 10.04 bps error is proof this cannot be skipped |
+| **6″ · ONE outcome study** | **2** | **2026-11-23** | one study answered beats four half-answered |
+
+**Critical path: 14 weeks, landing 2026-11-23** — one week inside the
+2026-11-30 checkpoint, with **13.9 weeks of buffer** to the deadline.
+
+That is 36% overrun tolerance in place of 6%.
+
+### 3.3 Extensions, in the order they get cut
+
+Everything below runs only if the critical path lands on time. **Listed last is
+cut first**, decided now rather than under deadline pressure.
+
+| Extension | Wk | Cumulative | Note |
 |---|---:|---:|---|
-| 1 — Skeleton + warehouse | 3 | 3 | → 2026-09-06 |
-| 2 — Archive + collection | 3 | 6 | → 2026-09-27 |
-| 3 — Identity | 4 | 10 | → 2026-10-25 |
-| 4 — Clean mart | 2 | 12 | → 2026-11-08 |
-| 5 — Costs + benchmarks | 2 | 14 | → 2026-11-22 |
-| 6 — Outcome study | 3 | 17 | → 2026-12-13 |
-| 7 — Seasonality | 3 | 20 | → 2027-01-03 |
-| 8 — Monitoring + reports | 2 | 22 | → 2027-01-17 |
+| 6R · exp_001 re-run | 0.2 | 14.2 | cheap, and commissions the provenance DAG on a known answer |
+| studies 2–4 | 3 | 17.2 | institutional selling first — 34,270 events, never examined |
+| 6S · Track S scan | 4 | 21.2 | procedure test is the deliverable, not surviving patterns |
+| 7 · seasonality — **validate, not rebuild** | 1 | 22.2 | **requires reversing owner decision 0006** — see §3.4 |
+| 8 · monitoring and reports | 2 | 24.2 | **cut first.** Reports can be written by hand until there is something to report |
 
-**~5.5 months to a complete research platform with its first answer.** The first
-*publishable* result — the institutional outcome study — lands at the end of
-Phase 6, around mid-December 2026.
+10.2 weeks of extensions against 13.9 weeks of buffer.
 
-No deadline was set (Q4), so this is an estimate, not a commitment. The gates
-matter more than the dates: a failed gate stops the phase.
+### 3.4 The one cut that needs the owner
+
+Phase 7 is budgeted at 3 weeks for a **full 31.9M-cell rebuild**
+([decision 0006](../decisions/0006-seasonality-full-rebuild.md)), chosen by the
+owner against my recommendation to validate the existing atlas instead.
+
+Validating costs ~1 week and saves 2. The case for the cut is stronger now than
+when the decision was made: the predecessor already ran this scan and its own
+verdict was *"the best pattern sits at the 94th percentile of rotated noise"*,
+and the corrected fee schedule then killed both surviving effects.
+
+**This is the owner's call, not mine.** It is listed as an extension so that if
+the schedule holds, the full rebuild happens as decided.
+
+### 3.5 What this changes about the kill criterion
+
+The critical path runs **one** study. Decision 0010 abandons the thesis when
+"3 of the 4 studies fail their portfolio gate" — a rule that cannot evaluate
+against a single study. Reconciled in `configs/research.yml`: the count applies
+to **studies actually run**, and the 2026-11-30 checkpoint becomes the primary
+trigger, since it fires on the critical path alone.
+
+**The gates still matter more than the dates.** A failed gate stops the phase.
 
 ---
 
