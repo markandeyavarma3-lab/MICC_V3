@@ -282,3 +282,45 @@ class TestTwoTrackConsistency:
         assert "TRACK_S_" in text, "Plan 4 does not mention the trial families"
         assert re.search(r"time split|temporal", text, re.I), \
             "Plan 4 does not describe the Track S partition"
+
+
+# --- the report may not misstate the system it describes ---------------------
+
+
+def test_report_states_the_real_test_count():
+    """Caught 2026-08-18: the report's conclusion claimed 146 tests when the
+    suite had grown to 204.
+
+    Every other number in the report is bound to a repository or a measurement.
+    This one was bound to nothing, so it drifted the moment the suite grew — the
+    same silent-drift failure the report itself catalogues as MICCV2's audit
+    defect #1.
+
+    Historical statements ("why they survived 146 tests") are correct as history
+    and are deliberately not matched: this checks only the present-tense claim.
+    """
+    import os
+    import subprocess
+    import sys
+
+    report = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+    claim = re.search(r"discipline framework with ([\d,]+) tests", report)
+    assert claim, "the report no longer states its test count in the expected form"
+    stated = int(claim.group(1).replace(",", ""))
+
+    # sys.executable, not "python": PATH here resolves to a DIFFERENT repo's venv.
+    out = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/", "--collect-only", "-q"],
+        cwd=ROOT, capture_output=True, text=True,
+        env={**os.environ, "RESEARCH_ENV": "dev"},
+    ).stdout
+    # `--collect-only -q` prints "path/to/test_x.py: N" per file, not a total.
+    per_file = re.findall(r"^\S+\.py: (\d+)$", out, re.M)
+    assert per_file, f"could not parse collection output:\n{out[-400:]}"
+    actual = sum(int(n) for n in per_file)
+
+    assert stated == actual, (
+        f"the report claims {stated} tests; the suite has {actual}. "
+        f"A report that misstates the system it describes is the drift this "
+        f"project exists to prevent."
+    )
