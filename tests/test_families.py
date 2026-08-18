@@ -280,27 +280,30 @@ def test_omitting_a_scan_confound_is_refused():
 
 
 class TestPersistence:
-    def test_a_committed_charge_moves_the_counter(self):
+    """All of these take `isolated_ledger`: the real dev counter must never
+    accumulate test noise. See tests/conftest.py."""
+
+    def test_a_committed_charge_moves_the_counter(self, isolated_ledger):
         from src.research.families import commit_charge, persisted_counter
 
         before = persisted_counter("TRACK_S_SIGNALS")
         commit_charge("TRACK_S_SIGNALS", 5_000, "unit test: signal grid")
         assert persisted_counter("TRACK_S_SIGNALS") == before + 5_000
 
-    def test_persisted_counter_never_falls_below_the_yaml_carried_value(self):
+    def test_persisted_counter_never_falls_below_the_yaml_carried_value(self, isolated_ledger):
         from src.research.families import counter, persisted_counter
 
         for fid in family_ids():
             assert persisted_counter(fid) >= counter(fid)
 
-    def test_committing_to_one_family_leaves_the_others_alone(self):
+    def test_committing_to_one_family_leaves_the_others_alone(self, isolated_ledger):
         from src.research.families import commit_charge, persisted_counter
 
         before = persisted_counter("TRACK_D_DEALS")
         commit_charge("TRACK_S_SIGNALS", 100, "unit test: isolation check")
         assert persisted_counter("TRACK_D_DEALS") == before
 
-    def test_the_procedure_family_records_a_zero_charge_rather_than_nothing(self):
+    def test_the_procedure_family_records_a_zero_charge_rather_than_nothing(self, isolated_ledger):
         """'We ran a 31.9M-cell scan and it cost this family nothing' is a claim
         that belongs in the ledger, not inferred from a config.
 
@@ -317,20 +320,19 @@ class TestPersistence:
             assert c.trials_after == fixed
             assert persisted_counter("TRACK_S_PROCEDURE") == fixed
 
-    def test_a_charge_must_say_what_was_searched(self):
+    def test_a_charge_must_say_what_was_searched(self, isolated_ledger):
         from src.research.families import commit_charge
 
         with pytest.raises(FamilyError, match="what was searched"):
             commit_charge("TRACK_S_SIGNALS", 10, "   ")
 
-    def test_the_ledger_is_append_only(self):
+    def test_the_ledger_is_append_only(self, isolated_ledger):
         import sqlite3
 
-        from src.common.paths import governance_db
         from src.research.families import commit_charge
 
         commit_charge("TRACK_S_SIGNALS", 1, "unit test: append-only probe")
-        con = sqlite3.connect(governance_db("dev"))
+        con = sqlite3.connect(isolated_ledger)
         try:
             for sql in ("UPDATE family_charge SET trials_added = 0",
                         "DELETE FROM family_charge"):
@@ -339,16 +341,15 @@ class TestPersistence:
         finally:
             con.close()
 
-    def test_monotonicity_is_enforced_by_trigger_not_by_promise(self):
+    def test_monotonicity_is_enforced_by_trigger_not_by_promise(self, isolated_ledger):
         import sqlite3
         from datetime import UTC, datetime
 
-        from src.common.paths import governance_db
         from src.research.families import commit_charge, persisted_counter
 
         commit_charge("TRACK_S_SIGNALS", 50, "unit test: monotonic probe")
         high = persisted_counter("TRACK_S_SIGNALS")
-        con = sqlite3.connect(governance_db("dev"))
+        con = sqlite3.connect(isolated_ledger)
         try:
             with pytest.raises(sqlite3.IntegrityError, match="monotonic"):
                 con.execute(
