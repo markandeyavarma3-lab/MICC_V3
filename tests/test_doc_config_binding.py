@@ -451,3 +451,38 @@ class TestExecutionPlanIsComplete:
             and not re.search(r"\*\*Gate", body)
         ]
         assert not ungated, f"phases with no gate: {ungated}"
+
+
+def test_seasonality_mode_matches_the_plan_and_the_decision():
+    """Owner reversed decision 0006 on 2026-08-18 (decision 0026).
+
+    The config, the phase plan and the decision index must agree. A rebuild
+    budgeted at 3 weeks in one place and 1 week in another is how a schedule
+    silently stops adding up.
+    """
+    s = _cfg("research.yml")["seasonality"]
+    assert s["rebuild_mode"] == "validate_existing_atlas"
+    assert s["rebuild_estimated_weeks"] == 1
+    # Validation is not "trust the old numbers": a sample must reproduce exactly,
+    # and failure must escalate rather than be waved through.
+    assert s["validation"]["match_tolerance"] == 0.0
+    assert s["validation"]["on_mismatch"] == "escalate_to_full_rescan"
+    assert s["validation"]["sample_cells"] >= 10_000
+
+    plan = (PLANS / "PLAN_3_EXECUTION.md").read_text()
+    assert "VALIDATE the atlas" in plan, "Phase 7 still describes a full rebuild"
+    assert re.search(r"Phase 7[^\n]*~1 week", plan), "Phase 7 is not budgeted at 1 week"
+
+    index = (DOCS / "decisions" / "README.md").read_text()
+    assert "SUPERSEDED by 0026" in index, "0006 is not marked superseded in the index"
+
+
+def test_superseded_decisions_point_at_their_replacement():
+    """A superseded record must say so at the top, or a reader lands on a
+    decision that has been reversed and has no way to know."""
+    for rec in sorted((DOCS / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md")):
+        head = rec.read_text()[:800]
+        if "SUPERSEDED" in head:
+            assert re.search(r"SUPERSEDED by \[?0\d{3}", head), (
+                f"{rec.name} says SUPERSEDED without naming the replacement"
+            )

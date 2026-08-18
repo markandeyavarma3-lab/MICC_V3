@@ -215,8 +215,35 @@ seasonality:
   # 1.05 vs chance, best pattern at the 94th percentile of rotated noise). The
   # owner's call stands; the gain is independent confirmation and clean provenance
   # through the DAG rather than trusting the predecessor's output.
-  rebuild_mode: full_rescan
-  rebuild_estimated_weeks: 3
+  # REVISED 2026-08-18 — owner reversed decision 0006. See decision 0026.
+  #
+  # 0006 chose a FULL 31.9M-cell rescan (~3 weeks) against my recommendation to
+  # validate the predecessor's atlas instead. The schedule rewrite (PLAN_3 §3)
+  # then measured only 1.7 weeks of slack against the 2027-02-28 deadline, and
+  # this was the single largest cut available.
+  #
+  # The case is stronger now than when 0006 was made:
+  #   - the predecessor ALREADY ran this scan; its own verdict was that the best
+  #     pattern sits at the 94th percentile of rotated noise
+  #   - the corrected fee schedule then killed both surviving effects
+  #     (turn-of-month +3.70 -> -6.36 bps net)
+  #   - so a rebuild spends 2 weeks re-deriving a known negative
+  #
+  # WHAT VALIDATION STILL MUST DO. This is NOT "trust the old numbers".
+  # Independently recompute a sample of cells with new code and require an exact
+  # match, then apply the CURRENT machinery — measured null, Track S folds,
+  # simulated bar — to the atlas as data. A sample mismatch escalates to a full
+  # rebuild automatically.
+  rebuild_mode: validate_existing_atlas
+  rebuild_estimated_weeks: 1
+  validation:
+    sample_cells: 100000            # ~0.3% of 31,893,556, recomputed from scratch
+    match_tolerance: 0.0            # exact — these are deterministic counts
+    on_mismatch: escalate_to_full_rescan
+    # The atlas is INPUT DATA, not a result. Everything downstream is recomputed.
+    treat_atlas_as: input_data_not_result
+  superseded_decision: "0006 full_rescan, reversed by owner 2026-08-18 (see 0026)"
+
   chunked_resumable: true          # 31.9M cells needs checkpointing
   removed_from_consideration:
     # Owner decision Q43. And now supported by arithmetic: with the corrected fee

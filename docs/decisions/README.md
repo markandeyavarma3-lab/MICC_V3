@@ -70,7 +70,7 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0003](0003-portfolio-gate-required.md) | Every study needs a portfolio gate, not just an event gate | 2026-08-16 | ACTIVE |
 | [0004](0004-horizons-in-sessions-not-months.md) | Primary horizons in sessions; monthly grid demoted | 2026-08-16 | ACTIVE |
 | [0005](0005-room-2b-six-slices-not-crossed-grid.md) | Six pre-declared slices instead of 54,000 cells | 2026-08-16 | ACTIVE |
-| [0006](0006-seasonality-full-rebuild.md) | Full 31.9M-cell rescan rather than validating the atlas | 2026-08-16 | ACTIVE |
+| [0006](0006-seasonality-full-rebuild.md) | Full 31.9M-cell rescan rather than validating the atlas | 2026-08-16 | **SUPERSEDED by 0026** |
 | [0007](0007-stopgap-collector-first.md) | Ship a stopgap archiver before anything else | 2026-08-17 | ACTIVE |
 | [0008](0008-three-way-split.md) | Three-way EXPLORE/SELECT/CONFIRM partition | 2026-08-17 | ACTIVE |
 | [0009](0009-split-key-is-isin.md) | Partition on ISIN, never on symbol | 2026-08-17 | ACTIVE |
@@ -90,3 +90,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0023](0023-trial-families-and-track-s-wiring.md) | Trial families; the three gaps between the two tracks | 2026-08-18 | ACTIVE |
 | [0024](0024-design-gate-bypassed-its-own-machinery.md) | **The design gate bypassed the machinery built to set its bars** | 2026-08-18 | ACTIVE |
 | [0025](0025-critical-path-schedule.md) | Schedule becomes a critical path with a pre-declared cut order | 2026-08-18 | ACTIVE |
+| [0026](0026-validate-the-atlas-not-rebuild-it.md) | Validate the seasonality atlas instead of rebuilding it | 2026-08-18 | ACTIVE |
