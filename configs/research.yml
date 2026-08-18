@@ -226,10 +226,25 @@ seasonality:
     - turn_of_year
 
 trial_counter:
-  # Carried from the predecessor at 47 + 21 legacy = 68. Monotonic, never reset.
-  # Applied to EVERYTHING including incumbents — the predecessor deflated
-  # challengers while exempting its own champion.
-  carried_from_predecessor: 68
+  # SUPERSEDED 2026-08-18 by configs/trials.yml. See docs/decisions/0023.
+  #
+  # This section previously read "Applied to EVERYTHING including incumbents".
+  # Taken literally — and there was no reason not to — running Track S once would
+  # have pushed Track D's bar from |t| >= 3.71 to 7.28, retroactively failing
+  # exp_001 and making every future deal study impossible. The rule intended to
+  # enforce honesty would have destroyed the track it was protecting.
+  #
+  # The counter is now HIERARCHICAL. Track D charges TRACK_D_DEALS and nothing
+  # else. A claim of the form "the project found X" faces the project-level bar
+  # summed across every family. Both are reported, always.
+  #
+  # The "applies to incumbents" principle is RETAINED — it exists because the
+  # predecessor deflated challengers while exempting its own champion — but it
+  # now applies within each family and at project level, rather than as one
+  # undifferentiated pool.
+  superseded_by: configs/trials.yml
+  family_for_this_track: TRACK_D_DEALS
+  carried_from_predecessor: 68     # 47 factory + 21 v1 legacy
   applies_to_incumbents: true
 
 # ==============================================================================

@@ -312,8 +312,28 @@ calendar pattern are genuinely different.
 | Machinery | **built** | **not built** |
 
 **Track S was under-specified until 18 August.** It existed in configuration
-files and prose but had no code and no proper design. Section 8.3 explains what
-changed and what it cost.
+files and prose but had no code and no proper design.
+
+Worse, when the two tracks were finally checked against each other, they had
+never been connected. Three faults, each of which would only have appeared once
+scan code ran:
+
+1. The search track had **no held-back data at all**, while the deal track sat
+   behind a guard that refuses access.
+2. A search study **could not be registered** — the checklist of required
+   controls covered the deal track and left the search track, which has far more
+   opportunity to fool itself, with none.
+3. Two configuration files disagreed about how attempts are counted. Read
+   literally, running the search once would have **raised the deal track's
+   evidence bar so high that its one completed experiment would retroactively
+   have failed** — and no future deal study could ever have passed.
+
+All three are fixed. Attempts are now counted per research family rather than in
+one pool, so a search charges its own budget and not another track's; the search
+track has its own held-back period (2016 onward); and search studies face five
+required controls of their own. A fourth fault was found inside that fix — the
+new counters were declared permanent and nothing actually incremented them, which
+is the same defect the whole scheme exists to prevent, one level up.
 
 ### 4.3.1 Track D — the four deal studies
 

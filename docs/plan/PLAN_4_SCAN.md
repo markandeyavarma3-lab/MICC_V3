@@ -367,6 +367,105 @@ cut and the cut is recorded as a decision rather than absorbed silently.
 
 ---
 
+## 10a. How Track S connects to Track D
+
+Written 2026-08-18 after a check found the two tracks had never been wired
+together. Three gaps, each of which would have surfaced only once scan code ran.
+Full record: [decision 0023](../decisions/0023-trial-families-and-track-s-wiring.md).
+
+### 10a.1 Trial families — who pays for which search
+
+`research.yml` said the trial counter applied to **everything**. `scan.yml` said
+nothing. Read literally, running Track S once would have done this:
+
+| Counter state | Track D bar |
+|---|---|
+| today (171 trials) | 3.71 |
+| after a 5,000-combination signal scan | 4.92 |
+| after a 1M-cell calendar scan | 6.42 |
+| after the full 31.9M rescan | **7.28** |
+
+`exp_001`'s t = −3.93 would have **retroactively failed**, and no deal study could
+ever have passed again. **Track S would have destroyed Track D as collateral
+damage**, and nobody would have found out until the day a scan ran.
+
+The counter is now hierarchical (`configs/trials.yml`). Four families:
+
+| Family | Charges | dof | Carried |
+|---|---|---|---|
+| `TRACK_D_DEALS` | deal event studies | 246 | 171 |
+| `TRACK_S_CALENDAR` | calendar cells | 20 | **31,893,556** |
+| `TRACK_S_SIGNALS` | signal combinations | ~500 | 0 |
+| `TRACK_S_PROCEDURE` | the procedure test | — | fixed at 3 |
+
+`TRACK_S_CALENDAR` carries the predecessor's completed 31.9M-cell scan. **That
+space is not virgin**, and a rebuild does not get to look at it as though for the
+first time.
+
+**The procedure exemption.** `TRACK_S_PROCEDURE` stays at a family size of 3 —
+one per value of *N* — no matter how wide the scan. Exactly one procedure is
+under test per configuration, and the 31.9M cells are the **instrument** that
+measures it, not competing hypotheses. This is precisely what makes §4's "scan
+wide to measure overfitting" a legitimate design rather than a loophole, and it
+holds **only** while the reported claim is about the procedure. The moment a
+specific surviving pattern is reported, that claim pays full width in
+`TRACK_S_CALENDAR`.
+
+**A project-level claim faces everything.** A within-family bar answers "is this
+the best of the calendar cells". A claim that *the project* found something is a
+selection across all four families and faces the summed bar. Both are always
+reported — publishing only the friendlier one is exactly what the predecessor did
+when it exempted its own champion.
+
+**What stops family-splitting being a loophole is declaration order, not family
+size.** Families are declared before the search and are immutable afterwards, and
+a result may never be moved to a smaller family once seen.
+
+### 10a.2 The Track S partition
+
+`split.yml` partitions by ISIN, which is meaningless for a calendar cell — a cell
+spans every stock at once. So Track S had **no exploration/confirmation regime at
+all** while Track D sat behind a guard that raises.
+
+| Split | Role | Boundary |
+|---|---|---|
+| **time** | **mandatory** | explore ≤ 2015-12-31, confirm ≥ 2016-01-01, 21-session embargo |
+| index | corroborating only | 40 / 60 by hash of index name |
+
+The time split is mandatory because it is **the only partition that tests
+persistence**, which is what a pattern claim asserts. The index split is
+explicitly weak and labelled as such: the 202 indices overlap heavily, since
+NIFTY 50 constituents sit inside NIFTY 100, NIFTY 500 and most sector and
+thematic indices, so an "explore" index and a "confirm" index can share most of
+their members.
+
+A cell must clear its bar under **both**, and observation floors apply per half.
+
+### 10a.3 The design gate now covers scans
+
+`StudyKind` gained `scan`, and five blocking confounds were added for it —
+`multiple_testing_declared`, `null_is_measured_not_assumed`, `fold_independence`,
+`bid_ask_bounce`, `prior_search_of_this_space`. Before then the gate applied to
+Track D and left the half of the project with far worse multiple-testing exposure
+with no required controls at all.
+
+A scan must declare its family, its **nominal** fold count and its **effective**
+fold count before registration. A single-fold scan is refused: one fold is an
+in-sample fit, which is what the 31.9M atlas was.
+
+### 10a.4 A fourth gap, found inside the fix
+
+`trials.yml` declared the counters *monotonic* and *never reset* — and nothing
+incremented them. `charge()` was a pure function and the project counter summed
+static YAML, so a 31.9M-cell scan could have run without moving anything.
+
+That is `exp_001`'s `trials_before` — computed, stored, printed once, never read
+— **rebuilt one level up, inside the file whose subject is that exact failure.**
+Fixed by migration `0002_trial_families`: an append-only `family_charge` ledger
+whose triggers refuse UPDATE, DELETE, and any total that would decrease.
+
+---
+
 ## 11. What has to be built
 
 | Module | Purpose | Status |
