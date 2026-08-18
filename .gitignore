@@ -32,3 +32,7 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# report build artefacts — node_modules is 54 MB, regenerable
+docs/report/build/node_modules/
+docs/report/build/*.html
