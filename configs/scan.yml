@@ -124,10 +124,13 @@ cross_sectional:
   # that the artifact above was hiding: pooling stocks buys precision WITHIN a
   # date, and buys no additional dates.
   #
-  # Measured 2026-08-18 on 656 stocks x 2,870 sessions, using 21-session momentum
-  # against 5-session forward returns purely as a worked example of the
-  # estimator (NOT as a finding — the forward-return alignment in that probe was
-  # not audited):
+  # ESTIMATOR AUDITED 2026-08-18. The alignment was checked
+  # (r.shift(-h).rolling(h).sum() at t does give sum(r[t+1..t+h]); an earlier
+  # "mismatch" was the test probing rolling warm-up rows). Validated on synthetic
+  # data: recovers an injected signal at t=+50.6, returns t=+0.69 on a null.
+  #
+  # Measured on 656 stocks x 2,870 sessions, 21-session momentum against
+  # 5-session forward returns:
   #
   #   n IC observations   568
   #   sd of IC            0.1190
@@ -140,6 +143,25 @@ cross_sectional:
   unit_of_evidence: date
   measured_mde_mean_ic: 0.0140
   measured_ic_sd: 0.1190
+
+  # BID-ASK BOUNCE. Short-horizon reversal at daily frequency is contaminated by
+  # bid-ask bounce: a close at the bid followed by a close at the ask manufactures
+  # negative autocorrelation. Measured on 393 names with >3,000 sessions, 2010+,
+  # by inserting a gap between signal and forward window:
+  #
+  #   signal          gap 0            gap 1            gap 2
+  #   21d momentum   -0.0218 (t -5.00) -0.0155 (t -3.49) -0.0102 (t -2.23)
+  #    5d momentum   -0.0445 (t-11.51) -0.0309 (t -8.31) -0.0196 (t -5.25)
+  #    1d return     -0.0321 (t -8.99) -0.0264 (t -7.65) -0.0196 (t -5.67)
+  #
+  # Roughly 30% of the effect dies with a one-day gap, which is the bounce. The
+  # remainder survives. TWO CAVEATS THAT KEEP THIS OUT OF THE FINDINGS COLUMN:
+  #   - the panel is SURVIVORSHIP-SELECTED (names trading continuously since 2010)
+  #   - short-term reversal is among the most documented effects in finance, and
+  #     is known to be hard to trade because it demands very high turnover
+  # It is reported as a sanity check that the machinery works, not a discovery.
+  mandatory_gap_sessions: 1
+  report_gap_sensitivity: [0, 1, 2]
 
 # =============================================================================
 # FOLDS — the owner's walk-forward, plus what it cannot give
@@ -218,15 +240,27 @@ pattern_survivors:
   # The multiplicity bar rises only with the log of the scan width, so a wide
   # scan is not as costly as intuition suggests:
   #
-  #     width          noise max |t|    required |t|
-  #        5,000            3.69            4.61
-  #    1,000,000            4.87            6.08
-  #   31,893,556            5.51            6.89
-  #  200,000,000            5.83            7.28
+  # CORRECTED 2026-08-18. The previously published bar of |t| >= 6.89 was wrong
+  # three ways, every one making results EASIER to pass:
+  #   1. sidedness  — estimator gave max of SIGNED normals, bar compares abs(t)
+  #   2. dof        — 21 yearly obs is t(20), not normal; tails 23% fatter
+  #   3. geometry   — overlapping cells correlate, pulling the max back DOWN
   #
-  # The predecessor's best pattern sat at the 94th percentile of rotated noise,
-  # nowhere near 6.89.
-  bar_from: multiplicity.bar
+  #     width        bar (normal)   bar (df=20)
+  #        3,146         4.68          5.73
+  #    1,000,000         6.23          8.60
+  #   31,893,556         7.04         11.27
+  #
+  # Effects 2 and 3 partly cancel, so NO FORMULA IS RIGHT FOR A GIVEN GRID. On a
+  # simulated realistic grid the truth was 4.151 against a normal 3.568 and a
+  # dof-adjusted 4.60.
+  #
+  # THEREFORE the operative bar is SIMULATED on the actual grid geometry, not
+  # taken from the formula. The formula is a planning guide only.
+  bar_from: multiplicity.simulated_max_null_t
+  bar_planning_guide_only: multiplicity.bar
+  simulate_null_reps: 2000
+  dof_must_be_declared: true
   margin: 0.25
 
 # =============================================================================

@@ -86,3 +86,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0019](0019-two-track-programme.md) | The project is two parallel tracks, not one with a side-quest | 2026-08-18 | ACTIVE |
 | [0020](0020-market-relative-is-mandatory.md) | Pooled scans must use market-relative returns | 2026-08-18 | ACTIVE* |
 | [0021](0021-pooled-average-is-undefined.md) | **The pooled market-relative average is undefined** — 0020's reasoning corrected | 2026-08-18 | ACTIVE |
+| [0022](0022-multiplicity-had-three-errors.md) | **The multiplicity bar was wrong three ways, all anti-conservative** | 2026-08-18 | ACTIVE |
