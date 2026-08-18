@@ -31,6 +31,13 @@
 
 version: 1
 
+# The exploration/confirmation partition for this track lives in
+# configs/split.yml under `scan:` — a TIME split (mandatory, tests persistence)
+# plus an INDEX split (secondary, corroborating only). Referenced, not restated.
+# Trial families and who pays for which search: configs/trials.yml.
+split_spec: configs/split.yml#scan
+trial_families: configs/trials.yml
+
 # =============================================================================
 # THE MEASUREMENT THAT DETERMINED THIS DESIGN — 2026-08-18, CORRECTED SAME DAY
 # =============================================================================

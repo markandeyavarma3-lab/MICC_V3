@@ -160,16 +160,20 @@ def excluded(symbol: str) -> str | None:
 def effective_sample_size(n: int, mean_pairwise_corr: float) -> float:
     """n_eff under the standard design effect: n / (1 + (n-1) * rho).
 
-    THIS IS THE NUMBER EVERY MDE IN THIS PROJECT CURRENTLY IGNORES.
+    SCOPE, CORRECTED 2026-08-17 (decision 0017). An earlier docstring here said
+    "this is the number every MDE in this project currently ignores" and called
+    every MDE optimistic. THAT WAS WRONG. `power.py` collapses to monthly cohort
+    means, which defeats cross-sectional dependence by construction — one month is
+    one observation however many events fall inside it.
+
+    What this function actually bounds is how much INDEPENDENT EVIDENCE the
+    CONFIRM stratum supplies relative to EXPLORE. It does not enter the MDE. The
+    correction that does is serial, and lives in `power.serial_inflation`.
 
     A name split reduces leakage between strata; it does not create independence.
     Equities move together through sector and market beta, so 2,100 confirmation
     names are nothing like 2,100 independent observations. At rho = 0.20 they are
-    worth about five. At rho = 0.02 they are worth about fifty.
-
-    Every MDE computed so far treats names as independent and is therefore
-    OPTIMISTIC — possibly by a large factor. Reported alongside power, not in a
-    footnote.
+    worth about five.
     """
     if n <= 1:
         return float(n)
@@ -231,6 +235,106 @@ class ConfirmationGuard:
                     f"is a single-pool regime wearing a costume."
                 )
         self._log.append(Access(stratum, self._experiment, purpose))
+
+    @property
+    def accesses(self) -> tuple[Access, ...]:
+        return tuple(self._log)
+
+
+# --- Track S: the scan track needs a different partition ---------------------
+#
+# GAP FOUND 2026-08-18. Everything above partitions by ISIN, which is meaningless
+# for a calendar cell — a cell spans every stock at once. So Track S had NO
+# exploration/confirmation regime while Track D sat behind a guard that raises.
+# Half the project was outside its own discipline framework.
+#
+# Owner decision 0012 specified the answer (a time split AND an index split) and
+# it was never implemented. This is that implementation.
+
+ScanStratum = Literal["EXPLORE", "CONFIRM"]
+
+
+@lru_cache(maxsize=1)
+def scan_spec() -> dict:
+    """The Track S partition, from configs/split.yml `scan:`."""
+    cfg = spec().get("scan")
+    if cfg is None:
+        raise SplitConfigError("split.yml has no `scan:` section; Track S has no partition")
+    t = cfg["temporal"]
+    if t["explore_end"] >= t["confirm_start"]:
+        raise SplitConfigError(
+            f"temporal split overlaps: explore_end {t['explore_end']} is not "
+            f"before confirm_start {t['confirm_start']}"
+        )
+    e = cfg["entity"]
+    if abs(e["explore_fraction"] + e["confirm_fraction"] - 1.0) > 1e-9:
+        raise SplitConfigError("scan entity fractions do not sum to 1.0")
+    return cfg
+
+
+def temporal_stratum(date: str) -> ScanStratum:
+    """EXPLORE before the cut, CONFIRM after. The MANDATORY split.
+
+    This is the only partition that tests what a pattern claim actually asserts:
+    PERSISTENCE. A cell found before 2016 must repeat after it. The predecessor's
+    atlas never did this — 31.9M cells scored against a single sample, best at
+    the 94th percentile of rotated noise.
+
+    Dates inside the embargo window belong to neither and are excluded, so no
+    observation window can straddle the cut.
+    """
+    t = scan_spec()["temporal"]
+    d = str(date)[:10]
+    if d <= t["explore_end"]:
+        return "EXPLORE"
+    if d >= t["confirm_start"]:
+        return "CONFIRM"
+    raise SplitViolation(
+        f"{d} falls in the embargo between {t['explore_end']} and "
+        f"{t['confirm_start']} and belongs to neither stratum."
+    )
+
+
+def entity_stratum(name: str) -> ScanStratum:
+    """Hash split on index or instrument name. SECONDARY and explicitly weak.
+
+    The 202 indices overlap heavily — NIFTY 50 constituents sit inside NIFTY 100,
+    NIFTY 500 and most sector and thematic indices — so an EXPLORE index and a
+    CONFIRM index can share most of their members. Its result is corroborating,
+    never independent confirmation. That is a disclosure, not a defect to fix.
+    """
+    frac = scan_spec()["entity"]["explore_fraction"]
+    return "EXPLORE" if bucket(str(name).strip().upper()) < frac * BUCKETS else "CONFIRM"
+
+
+class ScanGuard:
+    """Refuses CONFIRM reads on the scan track outside a registered study.
+
+    Same principle as ConfirmationGuard and a different key. Without it, Track S
+    would keep the property that made it a gap in the first place: a discipline
+    described in a document and enforced nowhere.
+    """
+
+    def __init__(self, registered_experiment: str | None = None) -> None:
+        self._experiment = registered_experiment
+        self._log: list[Access] = []
+
+    def check(self, date: str, entity: str | None = None, purpose: str = "") -> ScanStratum:
+        stratum = temporal_stratum(date)
+        if stratum == "CONFIRM" and self._experiment is None:
+            raise SplitViolation(
+                f"Refusing to read scan CONFIRM data ({date}) without a "
+                f"registered study.\n  purpose: {purpose}\n"
+                f"Confirmation is spent, not browsed. Mine freely on "
+                f"{scan_spec()['temporal']['explore_end']} and earlier — that "
+                f"costs nothing and is the point of the partition."
+            )
+        if entity is not None and scan_spec()["entity"]["enabled"]:
+            ent = entity_stratum(entity)
+            if ent == "CONFIRM" and stratum == "CONFIRM" and self._experiment is None:
+                raise SplitViolation(f"{entity} is scan-CONFIRM on both keys")
+        self._log.append(Access(stratum, self._experiment, purpose))
+        return stratum
 
     @property
     def accesses(self) -> tuple[Access, ...]:

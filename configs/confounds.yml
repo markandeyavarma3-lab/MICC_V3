@@ -132,6 +132,62 @@ confounds:
     on_below_threshold: "the study must state its expected portfolio impact
       explicitly and justify running at all"
 
+  # --- TRACK S, added 2026-08-18 ---------------------------------------------
+  # GAP FOUND: confounds.yml had no `applies_to: [scan]` entry at all, so the
+  # standing checklist covered Track D and left the mass-search track — the half
+  # with the far worse multiple-testing exposure — with no required controls.
+
+  - id: multiple_testing_declared
+    applies_to: [scan]
+    blocking: true
+    question: "Which trial family pays for this search, and what bar does the
+      realised width imply?"
+    method: family_charge_and_simulated_bar
+    detail: "The family must be declared BEFORE the search (configs/trials.yml)
+      and the realised width computed at run time, never hard-coded. The bar
+      comes from simulation on the actual grid geometry, not from the formula."
+
+  - id: null_is_measured_not_assumed
+    applies_to: [scan, seasonality]
+    blocking: true
+    question: "What does the null actually look like for this grid?"
+    method: rotation_null
+    detail: "The Indian market drifts upward, so P(window closes higher) rises
+      with window length from drift alone. Measured by the predecessor: 0.461 at
+      1 day to 0.501 at 90 days. Scoring against a flat 50% manufactures
+      thousands of false positives at short windows."
+
+  - id: fold_independence
+    applies_to: [scan]
+    blocking: true
+    question: "How many of these folds are actually independent?"
+    method: measured_test_window_correlation
+    detail: "Anchored expanding windows share ~95% of training data. 16
+      sequential folds carry roughly 8 independent tests at rho 0.25-0.5 — but
+      that rho was ASSERTED, not measured, and depends on the signal's own
+      autocorrelation. It must be measured per scan and reported beside the
+      nominal fold count."
+
+  - id: bid_ask_bounce
+    applies_to: [scan]
+    blocking: true
+    question: "Is this short-horizon effect just the bid-ask spread?"
+    method: gap_sensitivity
+    detail: "A close at the bid followed by a close at the ask manufactures
+      negative autocorrelation. Insert a gap between signal and forward window
+      and report 0/1/2. Measured 2026-08-18: ~30% of the 5-day reversal effect
+      dies with a one-session gap. A one-session gap is mandatory."
+
+  - id: prior_search_of_this_space
+    applies_to: [scan]
+    blocking: true
+    question: "Has this space already been searched, and by whom?"
+    method: declare_prior_external_search
+    detail: "TRACK_S_CALENDAR carries 31,893,556 prior trials from the
+      predecessor's completed scan. A rebuild does not get to look at an
+      already-searched space as though for the first time."
+
+
 # A confound may be skipped only by declaring it inapplicable, in writing, at
 # registration. Silence is not an option the schema permits.
 skip_policy:

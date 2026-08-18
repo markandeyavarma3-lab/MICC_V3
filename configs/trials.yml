@@ -1,0 +1,132 @@
+# trials.yml — who pays for which search.
+#
+# THE PROBLEM THIS FILE FIXES, FOUND 2026-08-18.
+#
+# configs/research.yml said the trial counter is "Applied to EVERYTHING including
+# incumbents". configs/scan.yml said nothing. Taken literally, running Track S
+# once would have done this to Track D:
+#
+#   counter state                            Track D bar (df=246)
+#   today, 171                                       3.71
+#   after a 5,000-combination signal scan            4.92
+#   after a 1,000,000-cell calendar scan             6.42
+#   after the full 31.9M rescan                      7.28
+#
+# exp_001's t = -3.93 would have retroactively FAILED and no deal study could
+# ever have passed again. Track S would have destroyed Track D as collateral
+# damage, and the contradiction would only have surfaced the day someone ran a
+# scan and watched every deal result evaporate.
+#
+# WHY A SINGLE GLOBAL COUNTER WAS THE WRONG MODEL.
+#
+# Multiple-testing correction protects against SELECTING the best of N
+# comparable things. The family-wise error rate is defined over a FAMILY — a set
+# of tests among which a selection is actually made. A calendar cell and a
+# bulk-deal event study are not competing for one "best result" slot; they
+# answer different questions on different data with different estimators. Pooling
+# them does not make the project more honest, it makes it unable to conclude
+# anything.
+#
+# WHY WE CANNOT JUST USE SMALL FAMILIES EITHER.
+#
+# The original global rule exists for a real reason: the predecessor deflated
+# challengers while exempting its own champion. If a researcher may choose the
+# family AFTER seeing a result, every result lands in a family of one. That is
+# the abuse this file must prevent, and it is prevented by declaration order,
+# not by family size.
+#
+# THE RULE: families are DECLARED BEFORE THE SEARCH, and a result may only be
+# reported against the family it was registered in. A result may never be moved
+# to a smaller family afterwards. Families are append-only.
+
+version: 1
+
+scheme: hierarchical
+
+# --- level 1: within-family counters -----------------------------------------
+# Each family carries its own monotonic counter. A search charges the family it
+# was registered under, and no other.
+families:
+  - id: TRACK_D_DEALS
+    description: "Institutional deal event studies — bulk/block, buys/sells,
+      consensus, participant ranking."
+    carried: 171          # 68 predecessor + ~100 exploratory 2026-08-16 + logged
+    estimator: monthly_cohort_mean
+    typical_dof: 246      # 247 monthly cohorts
+    selection_happens_within: true
+
+  - id: TRACK_S_CALENDAR
+    description: "Calendar pattern cells: window x ordinal x alignment x entity."
+    carried: 0
+    estimator: cross_sectional_rank_ic
+    typical_dof: 20       # ~21 yearly observations per cell
+    selection_happens_within: true
+    # DATA-SNOOPING PRIOR. This space is NOT virgin: the predecessor already
+    # scanned 31,893,556 cells of it and found the best at the 94th percentile of
+    # rotated noise. That prior search is charged here at registration, so the
+    # rebuild does not get to pretend it is looking for the first time.
+    prior_external_search: 31893556
+    prior_external_source: "MICCV2 docs/SEASONALITY_FINDINGS.md, run 2026-08-13"
+
+  - id: TRACK_S_SIGNALS
+    description: "Signal combinations: families x depth x thresholds."
+    carried: 0
+    estimator: cross_sectional_rank_ic
+    typical_dof: 500      # many firings per year; set from realised n at run time
+    selection_happens_within: true
+
+  - id: TRACK_S_PROCEDURE
+    description: "The procedure test — does searching work at all?"
+    carried: 0
+    estimator: out_of_sample_hit_rate
+    selection_happens_within: false
+    # THE CRUCIAL EXEMPTION, AND ITS JUSTIFICATION.
+    #
+    # Scanning 31.9M cells does NOT charge this family 31.9M trials, because no
+    # selection among 31.9M candidates is being reported. Exactly ONE procedure
+    # is under test per configuration, and the 31.9M cells are the INSTRUMENT
+    # that measures it, not competing hypotheses.
+    #
+    # The family size is the number of procedure configurations: one per value of
+    # top_n. That is 3.
+    #
+    # This is the reasoning that makes "scan wide to measure overfitting" a
+    # legitimate design rather than a loophole. It holds ONLY while the reported
+    # claim is about the procedure. The moment a specific surviving pattern is
+    # reported, that claim belongs to TRACK_S_CALENDAR or TRACK_S_SIGNALS and
+    # pays their full width.
+    fixed_family_size: 3
+    width_does_not_charge: true
+
+# --- level 2: the project-level claim ----------------------------------------
+# Within-family bars are correct for within-family claims. They are NOT correct
+# for a claim of the form "this project found something", because that claim
+# selects across families and is exactly where the predecessor's champion got its
+# free pass.
+project_level:
+  applies_when: "any claim of the form 'the project found X', including the
+    final verdict document and anything presented as the headline result"
+  count: sum_of_all_family_counters
+  # Reported alongside every project-level claim so the reader can see both.
+  report_both_bars: true
+  rationale: "A within-family bar answers 'is this the best of the deal studies'.
+    A project-level bar answers 'is this the best of everything we tried'. Both
+    are legitimate questions and they have different answers; publishing only the
+    friendlier one is the abuse."
+
+# --- anti-gaming --------------------------------------------------------------
+rules:
+  declare_before_search: true
+  # The single rule that makes the whole scheme non-gameable.
+  family_immutable_after_registration: true
+  may_not_move_result_to_smaller_family: true
+  new_family_requires_decision_record: true
+  counters_monotonic: true
+  counters_never_reset: true
+  # Applies to incumbents too. The predecessor exempted its champion; that is
+  # what the original global rule was defending against, and the defence is
+  # retained inside each family.
+  applies_to_incumbents: true
+  # A search that spans two families charges BOTH at full width. There is no
+  # apportioning, because apportioning is where the arguing starts.
+  cross_family_search_charges_both: true

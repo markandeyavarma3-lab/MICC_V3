@@ -45,7 +45,7 @@ import yaml
 from src.common.paths import CONFIGS
 from src.research.multiplicity import bar
 
-StudyKind = Literal["event_study", "portfolio", "seasonality"]
+StudyKind = Literal["event_study", "portfolio", "seasonality", "scan"]
 Applicability = Literal["REQUIRED", "NOT_APPLICABLE"]
 
 
@@ -150,6 +150,16 @@ class StudyDesign:
     #: this is the number whose absence let Finding 001 reach a verdict.
     expected_dilution: float | None = None
     expected_annual_benefit: float | None = None
+    #: Track S only. Which trial family pays for this search
+    #: (configs/trials.yml). Required for kind='scan': a scan that does not
+    #: declare its family up front can be charged to whichever counter flatters
+    #: it once the result is known, which is the exact abuse the family scheme
+    #: exists to prevent.
+    trial_family_id: str | None = None
+    #: Track S only. Anchored expanding windows share ~95% of their training
+    #: data, so a fold count is not an evidence count. Both are required.
+    nominal_folds: int | None = None
+    effective_folds: float | None = None
     notes: str = ""
     _bar: object = field(default=None, compare=False, repr=False)
 
@@ -158,6 +168,7 @@ class StudyDesign:
         self._check_power()
         self._check_confounds()
         self._check_economics()
+        self._check_scan()
         object.__setattr__(self, "_bar", bar(self.trials_before))
 
     # --- rule 2 --------------------------------------------------------------
@@ -234,6 +245,44 @@ class StudyDesign:
             raise DesignRejected(
                 f"{self.study_id}: expected_dilution {self.expected_dilution} is "
                 f"not a fraction in (0, 1]"
+            )
+
+    # --- Track S: family and folds must be declared, not chosen later --------
+
+    def _check_scan(self) -> None:
+        if self.kind != "scan":
+            return
+        from src.research.families import FamilyError, get
+
+        if not self.trial_family_id:
+            raise DesignRejected(
+                f"{self.study_id}: a scan must declare its trial family BEFORE "
+                f"searching. Without it the search can be charged to whichever "
+                f"counter flatters the result afterwards — the exact abuse "
+                f"configs/trials.yml exists to prevent."
+            )
+        try:
+            get(self.trial_family_id)
+        except FamilyError as exc:
+            raise DesignRejected(f"{self.study_id}: {exc}") from exc
+
+        if self.nominal_folds is None or self.nominal_folds < 2:
+            raise DesignRejected(
+                f"{self.study_id}: a scan must declare at least 2 folds. A "
+                f"single fold is an in-sample fit, which is what the "
+                f"predecessor's 31.9M-cell atlas was."
+            )
+        if self.effective_folds is None:
+            raise DesignRejected(
+                f"{self.study_id}: effective_folds not declared. Anchored "
+                f"expanding windows share ~95% of their training data, so "
+                f"{self.nominal_folds} folds are NOT {self.nominal_folds} "
+                f"independent tests. Report both or the fold count misleads."
+            )
+        if self.effective_folds > self.nominal_folds:
+            raise DesignRejected(
+                f"{self.study_id}: effective_folds {self.effective_folds} exceeds "
+                f"nominal {self.nominal_folds}, which is impossible."
             )
 
     # --- reporting -----------------------------------------------------------
