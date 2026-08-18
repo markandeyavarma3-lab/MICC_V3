@@ -94,30 +94,47 @@ survivorship-selected sample.
 impossible.** It is still run and reported, marked UNDERPOWERED with its MDE
 beside it, because "we could not tell" is a more useful statement than silence.
 
-### 3.2 Pooling across stocks does not work on raw prices
+### 3.2 Pooling across stocks does not rescue it — and the obvious fix is undefined
 
-The obvious fix is to pool: 4,200 stocks × 5 years = 21,000 observations, MDE
-0.48%/yr. That reasoning is wrong, and the error is instructive.
+The obvious response is to pool: 4,200 stocks × 5 years = 21,000 observations,
+MDE 0.48%/yr. That reasoning fails twice, and both failures are instructive.
 
-Every stock experiences trading day 47 **on the same day**, so they all share
-whatever the market did that day. The observations are not independent. Measured
-on 657 liquid names over 2015+:
+**First failure — raw prices.** Every stock experiences trading day 47 **on the
+same day**, so all of them share whatever the market did. Measured mean pairwise
+correlation of raw daily returns across 656 liquid names, 2015+: **ρ = +0.2350**,
+giving n_eff of **4.3** out of 21,000 and an MDE of **33.95%/yr**. Raw-price
+pooling is dead. The predecessor treated `PRICE` and `MARKET_RELATIVE` as equal
+bases; its entire PRICE-basis pooled output was arithmetically worthless.
 
-| Basis | Mean pairwise ρ | n_eff of 21,000 | MDE/yr |
-|---|---|---|---|
-| **PRICE (raw)** | **+0.2350** | **4.3** | **33.95%** |
-| **MARKET_RELATIVE** | **+0.0001** | **6,694.1** | **0.86%** |
+**Second failure — and this one I got wrong first time.** An earlier draft of
+this plan reported that market-relative returns have ρ = +0.0001, "indistinguishable
+from independence", and concluded that removing the market factor multiplies
+effective sample size by ~1,550×.
 
-Removing the market factor multiplies the effective sample by about **1,550×**.
+**That was an artifact.** Subtracting the cross-sectional mean forces average
+pairwise correlation to −1/(N−1) *regardless of the input*. Verified against
+simulated controls:
 
-**This is not a refinement. It is the difference between a design that can
-conclude something and one that cannot.** The predecessor scanned both bases and
-treated them as equals; its entire PRICE-basis pooled output was arithmetically
-worthless.
+| Input | Raw ρ | After demeaning |
+|---|---|---|
+| pure independence, N=657 | −0.00003 | −0.00148 |
+| strong market factor, N=657 | **+0.4035** | −0.00145 |
+| theoretical −1/(N−1) | — | −0.00152 |
 
-**Consequence for this plan:** `MARKET_RELATIVE` is the only basis permitted for
-a pooled verdict. `PRICE` is retained solely for single-stock reporting and for
-comparison against the old atlas.
+The statistic cannot distinguish a strong market factor from pure noise. It
+measured the arithmetic of subtraction.
+
+**And the real consequence is larger than the erratum.** If market-relative means
+"minus the cross-sectional mean", then the cross-sectional mean *of* market-relative
+returns is identically zero. Measured across 656 stocks and 2,870 sessions, the
+largest absolute value on any day is **1.698 × 10⁻¹⁷**.
+
+> **"Is trading day 47 good on average, market-relative?" is not a weak question.
+> It has no content. The answer is exactly zero for every day, by construction.**
+
+So the pooled-average formulation is not underpowered — it is *undefined*. Which
+means the cross-sectional formulation in §5 is not the strongest option among
+several. **It is the only one.** See [decision 0021](../decisions/0021-pooled-average-is-undefined.md).
 
 ### 3.3 Hundreds of folds are not hundreds of tests
 
@@ -188,13 +205,10 @@ harder to pass; it makes it more precise.
 
 ---
 
-## 5. The strongest formulation: cross-sectional persistence
+## 5. The only viable formulation: cross-sectional persistence
 
-Section 3.2 forces market-relative returns, and market-relative returns make the
-question inherently cross-sectional. That turns out to be an upgrade rather than
-a consolation.
-
-Instead of *"is trading day 47 good?"* the question becomes:
+Section 3.2 leaves exactly one estimator standing. Instead of *"is trading day 47
+good?"* — which is undefined — the question must be:
 
 > **Does trading day 47 rank stocks consistently — and does that ranking persist
 > out of sample?**
@@ -206,6 +220,32 @@ persistence tested as sign agreement across folds.
 A persistent cross-sectional *ordering* is far harder to produce by chance than a
 persistent average, because chance does not usually order four thousand things
 the same way twice.
+
+### 5.1 The unit of evidence is the date, not the stock-year
+
+This is what the artifact in §3.2 was obscuring. **Each date yields one IC
+observation, however many stocks it ranks.** Pooling stocks buys precision
+*within* a date; it does not buy more dates. So the sample size is the number of
+independent dates — and that is why the 21,000 "stock-years" figure was always a
+mirage.
+
+Measured 2026-08-18 on 656 stocks × 2,870 sessions:
+
+| Quantity | Value |
+|---|---|
+| IC observations | 568 |
+| sd of IC | 0.1190 |
+| SE(mean IC) | 0.0050 |
+| **MDE on mean IC** | **0.0140** |
+
+*(Worked example only — 21-session momentum against 5-session forward returns.
+The forward-return alignment in that probe was not audited, so the −0.0327 mean
+IC it produced is not reported as a finding.)*
+
+**The important part is the floor: ~0.014.** Real equity signal ICs typically run
+0.02–0.05, so this estimator can see a genuine signal. That is more than can be
+said for any other formulation considered in this plan, and it is the reason
+Track S is worth building at all.
 
 ---
 
