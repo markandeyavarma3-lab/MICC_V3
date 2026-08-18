@@ -712,7 +712,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Eighteen decision records, each recording what was decided, by whom, why, **what
+Twenty-six decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -937,10 +937,74 @@ decision roughly quadrupled the work.
 | Historical backfill impossible | open — service returns error 503 |
 | No detectable effect exists | **the most likely outcome** |
 
-### 9.4 Timeline
+### 9.4 Timeline, and why it had to be rewritten
+
+The plan originally listed nine phases in sequence and stated that no deadline
+had been set. **That was false** — a deadline of 28 February 2027 had been fixed
+two days earlier. Measured honestly, at the 2–3 hours a day I actually have:
+
+| | Weeks |
+|---|---:|
+| calendar available | 27.9 |
+| work planned | 26.2 |
+| **slack** | **+1.7** |
+
+Six percent. On a project where **every estimate so far has been wrong**, a 25%
+overrun — which is optimistic for software — missed the deadline by five weeks.
+
+The fix is not a better estimate. It is deciding **in advance** what gets cut.
+
+#### The critical path — 14 weeks to one defensible answer
+
+| Phase | Weeks | Ends |
+|---|---:|---|
+| Warehouse and reconciliation | 3 | 7 Sep 2026 |
+| Collection *(reduced — the daily capture already runs)* | 1 | 14 Sep 2026 |
+| Identity layer *(where the 34.2% matching failure lives)* | 4 | 12 Oct 2026 |
+| Clean data mart | 2 | 26 Oct 2026 |
+| Costs and benchmarks | 2 | 9 Nov 2026 |
+| **One** outcome study | 2 | **23 Nov 2026** |
+
+This lands one week inside the checkpoint, with **13.9 weeks of buffer** — 36%
+overrun tolerance in place of 6%.
+
+Two reductions make it fit, and neither is guesswork. Collection drops from three
+weeks to one because the daily capture has been running since 17 August and the
+raw bytes are already safe; the full parser can wait for a study that needs it.
+The outcome study drops from four studies to **one**, because one study answered
+is worth more than four half-answered.
+
+#### What gets cut, decided now
+
+| Extension | Weeks | Cut order |
+|---|---:|---|
+| Re-run the first experiment reproducibly | 0.2 | last |
+| Studies 2–4 | 3 | |
+| The search track | 4 | |
+| Seasonality | 1 | |
+| Monitoring and automated reports | 2 | **first** |
+
+Under deadline pressure, what gets dropped is whatever is least *defended* at
+that moment — not whatever matters least. Deciding the order now, while nothing
+is at stake, is the only point at which that decision is honest.
+
+**The seasonality decision changed as part of this.** I had chosen to rebuild all
+31.9 million calendar cells from scratch — three weeks — against advice to
+validate the existing ones instead. Faced with the schedule arithmetic I reversed
+that: validation takes one week, and those two weeks are what the buffer is made
+of. Validation is not "trust the old numbers": a 100,000-cell sample is
+recomputed from scratch and must match **exactly**, any mismatch escalates
+automatically back to a full rebuild, and every statistical conclusion is
+recomputed regardless. What is reused is the raw cell counts, which are cheap to
+check and expensive to regenerate.
+
+**Honest limit.** This makes the deadline survivable for the thing that matters —
+one answer by the checkpoint — but not for everything. Running the full extension
+list still misses a 25% overrun by 2.4 weeks. That is what the cut order is for.
 
 | Date | Milestone |
 |---|---|
+| 23 November 2026 | Critical path complete — first portfolio-gated verdict |
 | 30 November 2026 | Checkpoint — if no study has reached even the first gate, stop early |
 | 28 February 2027 | Deadline — if nothing has passed, write the negative result and stop |
 
@@ -1006,9 +1070,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 232 tests that enforces honest research
+- A discipline framework with 236 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Eighteen decision records with reversal conditions
+- Twenty-six decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, a 34.2% matching failure, and a missing industry
   history
@@ -1055,15 +1119,24 @@ made and corrected within hours on 17 August.
 
 ### 11.5 Next steps
 
-1. **Answer the detectability question** (decision 0018) — one judgement, gates
-   everything else
-2. **Copy the data in and run the reconciliation check** — nothing can be trusted
-   until it passes
-3. **Establish whether the industry-history problem is solvable** — if not, the
-   comparison method must change
-4. **Arrange a backup** — currently a single disk failure loses irreplaceable data
-5. **Then, and only then, run Study 2** — 34,270 institutional sell events,
-   never examined
+These are the critical path of §9.4, in order. Everything else is an extension
+that gets cut before this list does.
+
+1. **Answer the detectability question** — one judgement, and it gates everything
+   downstream. The code now *refuses* to register the affected studies rather
+   than guessing, so this is a hard block rather than a nagging one.
+2. **Arrange a backup.** A single disk failure currently loses irreplaceable
+   data, including trading days that cannot be re-obtained at any price. Cheap,
+   and it is the only item here whose cost of neglect is permanent.
+3. **Copy the data in and run the reconciliation check.** Nothing downstream can
+   be trusted until it passes, and it is also the cheapest way to find out
+   whether the 34.2% matching failure is fixable or structural.
+4. **Establish whether the industry-history problem is solvable.** If it is not,
+   the primary comparison method has to change, and I would rather know that in
+   September than in January.
+5. **Then run one study, properly** — institutional selling, 34,270 events, never
+   examined. One study through both gates by 23 November is the deliverable.
+   Studies 2 to 4 are extensions.
 
 ---
 

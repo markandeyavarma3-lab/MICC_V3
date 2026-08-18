@@ -486,3 +486,38 @@ def test_superseded_decisions_point_at_their_replacement():
             assert re.search(r"SUPERSEDED by \[?0\d{3}", head), (
                 f"{rec.name} says SUPERSEDED without naming the replacement"
             )
+
+
+class TestReportMatchesThePlan:
+    """The HOD report is a deliverable. It drifted twice in one day — a stale
+    test count, and a one-track structure after the project became two.
+    """
+
+    @staticmethod
+    def _report() -> str:
+        return (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+
+    def test_report_states_the_real_decision_count(self):
+        """It said "Eighteen decision records" while 26 existed."""
+        n = len(list((DOCS / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md")))
+        words = {18: "Eighteen", 26: "Twenty-six"}
+        assert words.get(n, str(n)) in self._report(), (
+            f"the report does not state the live decision count ({n})"
+        )
+
+    def test_report_carries_the_critical_path(self):
+        r = self._report()
+        assert re.search(r"critical path", r, re.I), "no critical path in the report"
+        assert "23 November 2026" in r, "no critical-path landing date"
+        assert re.search(r"cut order|cut, decided now", r, re.I), "no cut order"
+
+    def test_report_and_plan_agree_on_the_seasonality_decision(self):
+        """The report described a full rebuild after the owner reversed it."""
+        assert _cfg("research.yml")["seasonality"]["rebuild_mode"] == "validate_existing_atlas"
+        assert re.search(r"validat", self._report(), re.I)
+
+    def test_report_does_not_promise_four_studies_on_the_critical_path(self):
+        """The critical path guarantees ONE. Promising four is the schedule
+        failure this project just spent a day fixing."""
+        r = self._report()
+        assert re.search(r"\bone\b[^.]{0,40}study|one study answered", r, re.I)
