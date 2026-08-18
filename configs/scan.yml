@@ -1,0 +1,284 @@
+# scan.yml — Track S: mass pattern search, walk-forward validated.
+#
+# THE PROJECT HAS TWO TRACKS. Track D studies institutional deal events and its
+# machinery is built. Track S — this file — searches large spaces of candidate
+# patterns and measures whether searching works at all. They run in parallel and
+# share the registration, decision and multiplicity layers.
+#
+# WHAT MAKES THIS DIFFERENT FROM THE PREDECESSOR'S 31.9M ATLAS.
+#
+# MICCV2 scanned 31,893,556 cells against a single sample and compared each to a
+# rotated null. Its own verdict: the best pattern in NIFTY50 sat at the 94th
+# percentile of rotated noise, "an ordinary result of looking 31.9 million times".
+#
+# That design asked "is this cell better than chance IN SAMPLE". It never asked
+# the question a seasonal or signal claim actually makes, which is: DOES IT
+# HAPPEN AGAIN. This track asks that, by anchored walk-forward: find in a
+# training window, require it to repeat in a window never seen.
+#
+# THE HEADLINE DELIVERABLE IS NOT A LIST OF PATTERNS.
+#
+# Owner decision 2026-08-18: the primary output is a measured judgement about
+# the SEARCH PROCEDURE — across all folds, how often does a pattern selected in
+# training actually win in testing? Individual surviving patterns are reported
+# second.
+#
+# This reframing is what makes a wide scan defensible. Selecting the best of
+# 31.9M is hopeless; MEASURING HOW BADLY SELECTING FROM 31.9M OVERFITS is a real
+# experiment, and the width is the instrument rather than the liability. A
+# hit-rate near 50% proves mass scanning worthless. Meaningfully above 50% is a
+# durable finding about method rather than about any one pattern.
+
+version: 1
+
+# =============================================================================
+# THE MEASUREMENT THAT DETERMINED THIS ENTIRE DESIGN — 2026-08-18
+# =============================================================================
+# Pooling stocks to gain observations does not work on raw prices, because every
+# stock experiences a given calendar day SIMULTANEOUSLY and therefore shares the
+# market factor. Measured on 657 liquid names, 2015+:
+#
+#   basis              mean pairwise rho    n_eff of 21,000    MDE/yr
+#   PRICE (raw)              +0.2350               4.3         33.95%   DEAD
+#   MARKET_RELATIVE          +0.0001           6,694.1          0.86%   USABLE
+#
+# Removing the market factor multiplies effective sample size by ~1,550. This is
+# not a refinement; it is the difference between a design that can conclude
+# something and one that cannot.
+#
+# CONSEQUENCE: the predecessor's PRICE-basis cells were arithmetically worthless
+# whenever pooled, and it treated the two bases as equals. Here PRICE is retained
+# ONLY for single-stock reporting, where it is honest but underpowered.
+basis:
+  primary: MARKET_RELATIVE
+  # Retained for per-stock reporting and for comparison with the predecessor's
+  # atlas. Never used for a pooled verdict.
+  secondary: PRICE
+  secondary_pooled_verdicts_allowed: false
+  market_definition: cross_sectional_mean_of_universe
+  measured_2026_08_18:
+    panel: "657 stocks x 322 sessions, 2015+"
+    rho_raw: 0.2350
+    rho_market_relative: 0.0001
+
+# =============================================================================
+# THE UNIT PROBLEM — why per-stock calendar work cannot be done
+# =============================================================================
+# A calendar cell fires ONCE PER YEAR. A 21-year stock therefore yields 21
+# observations for that cell in its entire history. Under the owner's fold
+# design the split is worse:
+#
+#   train 2005-2010 -> test 2010-2012      5 train,  2 test obs
+#   train 2005-2015 -> test 2015-2020     10 train,  5 test obs
+#
+# Two observations detect an effect of 49.5%/yr. Twenty-one detect 15.3%/yr.
+# And the history is not there either: the MEDIAN stock has 5.5 years, and only
+# 513 of 4,200 have 20+.
+#
+# So per-stock calendar analysis is not hard, it is arithmetically impossible.
+# It is still RUN and REPORTED — as UNDERPOWERED, with its MDE beside it —
+# because "we could not tell" is a different and more useful statement than
+# silence, and because the owner asked for every viable angle.
+units:
+  calendar:
+    pooled: true                    # primary; market-relative only
+    cross_sectional: true           # strongest; see below
+    per_stock: true                 # reported, expected UNDERPOWERED
+    per_stock_min_years: 15
+    per_stock_verdict_default: UNDERPOWERED
+    # 513 stocks have >=20y, but "survived 20 years" is a survivorship-selected
+    # sample. Any per-stock result carries this flag permanently.
+    per_stock_survivorship_flag: true
+
+# The strongest formulation available, and the one the arithmetic pushes us to.
+# Instead of "is trading day 47 good", ask "does day 47 RANK stocks consistently,
+# and does that ranking persist out of sample?" A persistent cross-sectional
+# ordering is very hard to produce by chance, and market-relative returns are
+# already the right basis for it.
+cross_sectional:
+  enabled: true
+  statistic: rank_ic                # Spearman corr(signal rank, forward return rank)
+  persistence_test: sign_agreement_across_folds
+  min_names_per_date: 100
+
+# =============================================================================
+# FOLDS — the owner's walk-forward, plus what it cannot give
+# =============================================================================
+# ANCHORED EXPANDING WINDOWS SHARE ALMOST ALL TRAINING DATA. Consecutive folds
+# are ~95% the same fit, so "hundreds of folds" is NOT hundreds of independent
+# tests. Measured design capacity:
+#
+#   design                                  folds   independent tests
+#   anchored 2y test, 1y step, 2010-2026      16            8
+#   anchored 2y test, 2y step (disjoint)       8            8
+#   anchored 1y test, 1y step (disjoint)      16           16
+#   CPCV N=16 groups, k=2                    120           16
+#   CPCV N=20 groups, k=2                    190           20
+#
+# Both are run. Sequential walk-forward answers "would this have worked if
+# deployed in real time", which is the question the owner asked and the one that
+# matters for deployment. CPCV yields many more paths, which is what a stable
+# PBO estimate needs. They answer different questions and neither substitutes.
+folds:
+  sequential:
+    mode: anchored_expanding        # train always starts 2005; end date advances
+    train_start: "2005-01-01"
+    first_test_start: "2010-01-01"
+    test_years: 2
+    step_years: 1
+    embargo_sessions: 21            # gap between train end and test start
+    expected_folds: 16
+    expected_independent: 8
+    # Disclosed with every result: consecutive folds are not independent.
+    report_overlap_warning: true
+  cpcv:
+    n_groups: 16
+    k_test_groups: 2
+    expected_paths: 120
+    purge_sessions: 21
+    embargo_sessions: 21
+  # Reported alongside: a fold count is not an evidence count.
+  report_effective_fold_count: true
+
+# =============================================================================
+# THE HEADLINE — testing the procedure, not the patterns
+# =============================================================================
+procedure_test:
+  enabled: true
+  headline: true
+  # For each fold: rank all candidates by training performance, take the top N,
+  # measure how they do in the untouched test window.
+  selection_rule: top_n_by_train_statistic
+  top_n: [1, 10, 100]
+  metrics:
+    - out_of_sample_hit_rate       # fraction of folds where selection beat zero
+    - degradation                  # train statistic minus test statistic
+    - pbo                          # probability of backtest overfitting, CSCV
+    - rank_decay                   # do train ranks predict test ranks at all?
+  # A hit rate indistinguishable from 50% means the search procedure is
+  # worthless — which is a real, publishable finding and the most likely one.
+  null_hit_rate: 0.50
+  # The bar is on the PROCEDURE, so it is not deflated by the number of cells
+  # scanned: there is exactly one procedure being tested per configuration.
+  procedure_family_size: 3         # one per top_n value
+  interpretation:
+    at_or_below_null: "mass scanning does not work on this data — report as the
+      primary finding, since it is a genuine methodological result and it
+      generalises beyond this dataset"
+    above_null: "the selection procedure carries information; report the hit
+      rate as the headline and the surviving patterns as secondary"
+
+# =============================================================================
+# SECONDARY — individual patterns that survive anyway
+# =============================================================================
+pattern_survivors:
+  enabled: true
+  headline: false
+  require_survival_in_all_folds: true
+  # The multiplicity bar rises only with the log of the scan width, so a wide
+  # scan is not as costly as intuition suggests:
+  #
+  #     width          noise max |t|    required |t|
+  #        5,000            3.69            4.61
+  #    1,000,000            4.87            6.08
+  #   31,893,556            5.51            6.89
+  #  200,000,000            5.83            7.28
+  #
+  # The predecessor's best pattern sat at the 94th percentile of rotated noise,
+  # nowhere near 6.89.
+  bar_from: multiplicity.bar
+  margin: 0.25
+
+# =============================================================================
+# TRACK S1 — CALENDAR PATTERNS
+# =============================================================================
+calendar:
+  windows: [1, 2, 3, 5, 7, 10, 14, 20, 30, 45, 60, 75, 90]
+  alignments:
+    - TRADING_DAY_OF_YEAR
+    - CALENDAR_DATE
+    - TRADING_DAY_OF_MONTH_START
+    - TRADING_DAY_OF_MONTH_END
+  # The null is NOT 50% and it MOVES with window length, because the Indian
+  # market drifts upward. Measured by the predecessor: 0.461 at 1 day rising to
+  # 0.501 at 90 days. A scan scored against a flat 50% would manufacture
+  # thousands of false discoveries at short windows and miss real ones at long.
+  null_model:
+    kind: measured_rotation_null
+    rotations: 1000
+    rotations_iteration: 300
+    measured_predecessor: { d1: 0.461, d90: 0.501 }
+    exclude_leap_cells: true
+  min_obs_yearly_alignment: 10
+  min_obs_monthly_alignment: 30
+  near_duplicate:
+    group_by_adjacency: true
+    return_correlation_threshold: 0.90
+  index_expansion:
+    target_count: 202
+    require_dedup: true
+  # Removed by owner decision Q43, and independently by arithmetic: with the
+  # corrected fee schedule turn-of-month's +129.70 bps gross against 136.06 bps
+  # of cost is -6.36 bps net.
+  removed_from_consideration: [turn_of_month, turn_of_year]
+
+# =============================================================================
+# TRACK S2 — SIGNAL COMBINATIONS
+# =============================================================================
+# OWNER DECISION 2026-08-18: scan WIDE, and do it explicitly to measure
+# overfitting rather than in the expectation of finding an edge. The width is
+# the instrument. The predecessor ran a strategy factory of this shape for five
+# weeks and promoted ZERO strategies; that outcome is the prior here, not a
+# surprise to be explained away later.
+signals:
+  purpose: measure_overfitting_primary
+  edge_discovery: secondary
+  max_depth: 3
+  # Every base signal needs a written mechanism before it enters the pool, even
+  # though the scan is deliberately wide. Width is not an excuse for including
+  # things nobody can explain.
+  require_mechanism_per_base_signal: true
+  families:
+    - { id: momentum,    approx_variants: 40, mechanism: "underreaction to news" }
+    - { id: reversal,    approx_variants: 30, mechanism: "liquidity provision is paid" }
+    - { id: volatility,  approx_variants: 25, mechanism: "risk compensation / low-vol anomaly" }
+    - { id: volume,      approx_variants: 25, mechanism: "attention and participation" }
+    - { id: liquidity,   approx_variants: 20, mechanism: "illiquidity premium" }
+    - { id: seasonal,    approx_variants: 30, mechanism: "flow calendar effects" }
+    - { id: institutional, approx_variants: 20, mechanism: "Track D deal signals as inputs" }
+  # Track D's deal signals appear here as INPUTS. The deal studies remain a
+  # separate track with their own verdicts; this is reuse, not a merger.
+  crosses_with_thresholds: true
+  # Computed from the families and depth at run time, never hard-coded, and the
+  # realised count sets the bar. A test greps for hard-coded literals.
+  record_actual_combination_count: true
+
+# =============================================================================
+# COSTS AND REALITY
+# =============================================================================
+# Every surviving pattern is costed before it is reported. The predecessor's
+# headline seasonal finding was an artefact of a fee model wrong by 10.04 bps
+# per round trip.
+costs:
+  source: configs/costs.yml
+  apply_to: every_reported_pattern
+  turnover_basis: incremental
+  # A pattern that is significant but unprofitable after costs is reported as
+  # SIGNIFICANT_BUT_UNPROFITABLE — a distinct verdict, not a pass and not a fail.
+  verdict_when_significant_but_negative_net: SIGNIFICANT_BUT_UNPROFITABLE
+
+# =============================================================================
+# COMPUTE — to be measured, not asserted
+# =============================================================================
+# The predecessor's "~3 weeks" for a full rescan was an assertion; no single
+# cell was ever timed. The dual-fold design here multiplies the work again.
+# BEFORE any full run, a benchmark on 1/1000th of the grid must produce a
+# measured projection. If that projection exceeds the budget, the grid is cut
+# and the cut is recorded as a decision.
+compute:
+  benchmark_before_full_run: true
+  benchmark_fraction: 0.001
+  max_wall_clock_days: 21
+  chunked_resumable: true
+  checkpoint_every_cells: 100000
+  on_projection_exceeds_budget: cut_grid_and_record_decision
