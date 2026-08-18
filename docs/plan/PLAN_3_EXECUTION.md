@@ -249,11 +249,19 @@ and no rule. Nobody can regenerate +0.237%/yr or −0.022%/yr, including me.
 **Gate:** the recorded verdict is reproduced from committed code, or the
 discrepancy is written up.
 
-### Phase 7 — Seasonality rebuild and validation · ~3 weeks
+### Phase 7 — Seasonality: VALIDATE the atlas · ~1 week
+
+**Owner reversed decision 0006 on 2026-08-18** — see
+[decision 0026](../decisions/0026-validate-the-atlas-not-rebuild-it.md). This was
+budgeted at 3 weeks for a full 31.9M-cell rescan; it is now 1 week of validation,
+and that 2-week saving is what gives the critical path its buffer.
+
+**This is not "trust the old numbers."** The atlas becomes *input data*, and
+everything derived from it is computed fresh with current machinery.
 
 | Step | Detail |
 |---|---|
-| 7.1 | Atlas rebuilt from scratch, 13 windows × 4 alignments × 2 bases (Q42) |
+| 7.1 | Recompute a **100,000-cell sample** (~0.3%) from scratch with new code. **Exact match required** — these are deterministic counts. Any mismatch escalates to a full rescan automatically |
 | 7.2 | Observation minimums ≥10 yearly / ≥30 monthly (Q41) |
 | 7.3 | Index expansion 46 → ~202 with dedup and history eligibility (Q40) |
 | 7.4 | Near-duplicate grouping incl. return-correlation > 0.9 (Q36) |
@@ -262,8 +270,12 @@ discrepancy is written up.
 | 7.7 | **Hansen SPA** for best-of-family |
 | 7.8 | Three-scheme OOS + full cost model |
 
-**Gate:** the run records its own `n_tests_in_run`. No hard-coded 31,893,556
-anywhere — a test greps for it.
+**Gate:** the 100,000-cell sample reproduces exactly, and the run records its own
+`n_tests_in_run`. No hard-coded 31,893,556 anywhere — a test greps for it.
+
+**Escalation:** a sample mismatch means the predecessor's atlas cannot be trusted
+as input, and Phase 7 reverts to the full 3-week rescan. That branch is budgeted
+for in the cut order (PLAN_3 §3.3) by dropping monitoring.
 
 ### Phase 8 — Monitoring and reports · ~2 weeks
 
@@ -387,12 +399,12 @@ cut first**, decided now rather than under deadline pressure.
 | 6R · exp_001 re-run | 0.2 | 14.2 | cheap, and commissions the provenance DAG on a known answer |
 | studies 2–4 | 3 | 17.2 | institutional selling first — 34,270 events, never examined |
 | 6S · Track S scan | 4 | 21.2 | procedure test is the deliverable, not surviving patterns |
-| 7 · seasonality — **validate, not rebuild** | 1 | 22.2 | **requires reversing owner decision 0006** — see §3.4 |
+| 7 · seasonality — **validate, not rebuild** | 1 | 22.2 | **approved by owner 2026-08-18**, reversing decision 0006 ([0026](../decisions/0026-validate-the-atlas-not-rebuild-it.md)) |
 | 8 · monitoring and reports | 2 | 24.2 | **cut first.** Reports can be written by hand until there is something to report |
 
 10.2 weeks of extensions against 13.9 weeks of buffer.
 
-### 3.4 The one cut that needs the owner
+### 3.4 The cut the owner approved
 
 Phase 7 is budgeted at 3 weeks for a **full 31.9M-cell rebuild**
 ([decision 0006](../decisions/0006-seasonality-full-rebuild.md)), chosen by the
@@ -403,8 +415,10 @@ when the decision was made: the predecessor already ran this scan and its own
 verdict was *"the best pattern sits at the 94th percentile of rotated noise"*,
 and the corrected fee schedule then killed both surviving effects.
 
-**This is the owner's call, not mine.** It is listed as an extension so that if
-the schedule holds, the full rebuild happens as decided.
+**Approved by the owner on 2026-08-18**, reversing decision 0006. Phase 7 is now
+1 week, and the 2-week saving is what the critical path's buffer is made of. If
+the 100,000-cell validation sample fails to reproduce, Phase 7 reverts to the
+full rescan and monitoring is dropped to pay for it.
 
 ### 3.5 What this changes about the kill criterion
 

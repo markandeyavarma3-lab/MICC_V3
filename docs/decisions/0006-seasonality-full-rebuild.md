@@ -2,7 +2,12 @@
 
 **Date:** 2026-08-16
 **Decided by:** Owner, against my recommendation, reaffirmed when challenged
-**Status:** ACTIVE
+**Status:** **SUPERSEDED by [0026](0026-validate-the-atlas-not-rebuild-it.md)** on 2026-08-18
+
+> The owner reversed this decision when the schedule rewrite showed only 1.7
+> weeks of slack against the 2027-02-28 deadline. The reasoning below stands as
+> the record of why the full rebuild was originally chosen; read 0026 for why
+> it was given up and what validation must still prove.
 
 ## Context
 MICCV2 built a seasonality atlas of 31,893,556 cells. Its own verdict: ratio 1.05
