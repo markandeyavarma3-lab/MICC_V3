@@ -103,6 +103,20 @@ next phase rather than being noted and passed.
 These three documents. Deliverable: integration map, schema proposal, feasibility
 findings, methodology, execution plan. **Gate: owner approval.**
 
+### Phase 0.6 — Decisions that block registration · **OWNER, NOT BUILD**
+
+Added 2026-08-18. These are not build steps and they gate everything downstream.
+Until they are answered, `design.py` **refuses** to register the affected studies
+rather than guessing — an open question stops the code instead of being resolved
+by a default nobody chose.
+
+| # | Decision | Blocks |
+|---|---|---|
+| **0018** | Does the plausible effect bound scale with horizon? | **every session-horizon study.** Under a fixed bound the current grid is partly powered; under a scaled one **every horizon becomes UNDERPOWERED**, including the two now marked detectable. This turns on whether disclosure causes a one-off repricing or a persistent rate of return. |
+
+**Gate:** answered in writing, as a decision record, before Phase 6 registers
+anything at a session horizon.
+
 ### Phase 1 — Skeleton, migrations, warehouse rebuild · ~3 weeks
 
 | Step | Detail |
@@ -215,6 +229,26 @@ the pipeline is faithful; flipping the net sign proves the fee fix is live.
 **Gate:** every `study_result` row has a non-null `correction_method` and
 `n_tests_in_family`. Enforced by the schema, verified by a test.
 
+### Phase 6R — Re-run exp_001 reproducibly · ~1 day
+
+Owner decision [0013](../decisions/0013-rerun-exp001-reproducibly.md), against my
+recommendation, and it had no step in this plan until 2026-08-18.
+
+**Finding 001 is not reproducible.** The registration was correctly ordered and
+the spec genuinely frozen, but the analysis code was never committed, and the
+holdout is recorded as prose — "the complementary half of names" — with no seed
+and no rule. Nobody can regenerate +0.237%/yr or −0.022%/yr, including me.
+
+| Step | Detail |
+|---|---|
+| 6R.1 | Rebuild the analysis as committed, hashed code under the ISIN partition |
+| 6R.2 | Re-derive both holdout numbers; any divergence is a finding in itself |
+| 6R.3 | Register every artefact in the provenance DAG — this is its first real exercise, on a case where the answer is already known |
+| 6R.4 | Carry a permanent `PRIOR_EXPOSURE` flag: ~100 exploratory cells were run against the full universe on 2026-08-16, so this can never be clean confirmation |
+
+**Gate:** the recorded verdict is reproduced from committed code, or the
+discrepancy is written up.
+
 ### Phase 7 — Seasonality rebuild and validation · ~3 weeks
 
 | Step | Detail |
@@ -235,6 +269,14 @@ anywhere — a test greps for it.
 
 Daily / weekly / monthly markdown reports (Q51), DQ gates, pause logic, and the
 verification suite built to the Plan 2 §9.2 rules. Dashboard deferred.
+
+**Gate:** the generated status page is derived from repository and database state,
+not written by hand, and reproduces the live figures — test count, family
+counters, collection status per source, unresolved-symbol rate against its 5%
+limit. A hand-written status drifts within a week; MICCV2's README drifted from
+its own crontab, this project's report claimed 146 tests against a live 220, and
+three plan PDFs sat a day stale while the build reported GREEN. **Every one of
+those was a number nobody had bound to anything.**
 
 ### Phase 9 — Deferred
 
@@ -463,13 +505,51 @@ cloud leg is not allowed to block Phase 1.
 
 ---
 
+## 6b. When the project stops
+
+Owner decision [0010](../decisions/0010-project-kill-criterion.md). It appeared
+in `research.yml` and in no phase of this plan until 2026-08-18, which meant the
+execution plan had no way to end.
+
+**The thesis is abandoned, and written up as REJECTED, when either:**
+
+- **3 of the 4 deal studies fail their portfolio gate**, or
+- **no study has passed the portfolio gate by 2027-02-28**,
+
+whichever comes first. Mid-point checkpoint **2026-11-30**: if no study has
+reached even the event gate by then, abandon early rather than running out the
+clock.
+
+**Deliverable on abandonment:** `docs/reports/FINAL_VERDICT.md`, stating plainly
+that public institutional deal disclosure does not contain a tradable edge for a
+retail participant after realistic costs.
+
+Note the schedule in §3 already runs to 2027-01-17, leaving six weeks of margin
+against the deadline. That margin is the whole buffer, and Phase 6S runs in
+parallel precisely because there is no room for it in sequence.
+
+**Only a dated written amendment by the owner moves these dates** — not a good
+week of results near the deadline. A deadline's entire value is being
+inconvenient when it arrives.
+
+---
+
 ## 7. Definition of done for v1
 
 The platform is complete when it can answer, with a re-derivable number and a
 recorded correction for how many times it looked:
 
 1. Which institutions disclosed activity, and which are market makers rather than investors?
-2. What happened after each disclosed transaction, at 9 horizons, against 6 benchmarks, net of a defensible cost model?
+2. What happened after each disclosed transaction, at the live horizon grid
+   (1/2/3/5/10/21 **sessions** primary, 3/6/12 months robustness — decision 0004
+   replaced the original nine-month grid), against 6 benchmarks, net of a
+   defensible cost model, **with the serial correction applied** (decision 0017)?
+2b. **And does a constructed book applying that signal beat the identical book
+   without it, net of costs on the incremental turnover?** An event effect and a
+   useless portfolio signal are entirely compatible: `exp_001` measured −0.805%
+   at t −3.93 on the event and −0.022%/yr at t −0.25 on the book, because the
+   filter touched 1.2% of names. **Without this question the project can ship a
+   correct event study as a tradable finding** (decision 0003).
 3. Does that differ between individual deals, accumulation, and consensus?
 4. Does institutional *selling* carry different information from buying?
 5. Are block deals different from bulk deals?

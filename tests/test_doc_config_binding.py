@@ -357,3 +357,68 @@ def test_plan_3_covers_the_scan_track():
     text = (PLANS / "PLAN_3_EXECUTION.md").read_text()
     assert "Phase 6S" in text, "PLAN_3 has no phase for the scan track"
     assert "TRACK_S" in text or "trial famil" in text.lower()
+
+
+class TestExecutionPlanIsComplete:
+    """Every commitment that creates work must appear in the execution plan.
+
+    Found 2026-08-18: five did not. The worst was the portfolio gate — the
+    Definition of Done asked only what happened after each event, which is the
+    gate `exp_001` passed before failing on the book. A project whose definition
+    of "finished" omits the portfolio gate can ship a correct event study as a
+    tradable finding.
+    """
+
+    @staticmethod
+    def _plan3() -> str:
+        return (PLANS / "PLAN_3_EXECUTION.md").read_text()
+
+    def test_definition_of_done_requires_the_portfolio_gate(self):
+        dod = self._plan3().split("## 7. Definition of done")[1]
+        assert re.search(r"constructed book|portfolio gate", dod, re.I), (
+            "the Definition of Done does not require a portfolio test — this is "
+            "the omission that would have let exp_001 ship as a PASS"
+        )
+
+    def test_definition_of_done_does_not_quote_the_dropped_horizon_count(self):
+        """It said '9 horizons' long after decision 0004 cut the grid."""
+        dod = self._plan3().split("## 7. Definition of done")[1]
+        assert "9 horizons" not in dod
+
+    def test_the_plan_says_when_the_project_stops(self):
+        """Decision 0010 lived in research.yml and in no phase, so the execution
+        plan had no way to end."""
+        text = self._plan3()
+        assert "2027-02-28" in text, "no deadline in the execution plan"
+        assert "FINAL_VERDICT" in text, "no abandonment deliverable"
+        assert "2026-11-30" in text, "no mid-point checkpoint"
+
+    def test_blocking_owner_decisions_have_a_phase(self):
+        """0018 blocks every session-horizon study and appeared nowhere."""
+        assert "0018" in self._plan3()
+
+    def test_exp001_rerun_has_a_phase(self):
+        """Decision 0013 committed to it; no step existed."""
+        text = self._plan3()
+        assert "Phase 6R" in text
+        assert "PRIOR_EXPOSURE" in text
+
+    def test_the_serial_correction_is_required_somewhere(self):
+        assert re.search(r"serial correction", self._plan3(), re.I)
+
+    def test_every_phase_has_a_gate(self):
+        """A phase without a gate is a phase that cannot fail."""
+        text = self._plan3()
+        # Capture the WHOLE heading: "Phase 6S dependencies…" and "Phase 9 —
+        # Deferred" are not gated phases, and matching only the number made both
+        # look like violations.
+        phases = re.findall(r"^### (Phase [^\n]*)\n(.*?)(?=^### |\Z)",
+                            text, re.M | re.S)
+        assert phases, "no phases parsed"
+        exempt = ("COMPLETE", "Deferred", "dependencies")
+        ungated = [
+            heading.split("—")[0].strip() for heading, body in phases
+            if not any(e.lower() in heading.lower() for e in exempt)
+            and not re.search(r"\*\*Gate", body)
+        ]
+        assert not ungated, f"phases with no gate: {ungated}"
