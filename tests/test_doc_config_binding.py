@@ -213,3 +213,72 @@ def test_split_is_described_in_the_plan_at_all():
         "plan documents do not describe the EXPLORE/SELECT/CONFIRM partition "
         "(configs/split.yml, docs/decisions/0008)"
     )
+
+
+# --- the two-track configs must not drift apart (added 2026-08-18) -----------
+#
+# These exist because three gaps between Track D and Track S went unnoticed until
+# a manual check: scan.yml referenced no split, no confound applied to a scan,
+# and two config files disagreed about the trial counter in a way that would have
+# destroyed Track D. Nothing bound them together, so nothing caught it.
+
+
+class TestTwoTrackConsistency:
+    def test_scan_references_the_split_and_family_specs(self):
+        """scan.yml must POINT AT its partition, not restate or omit it."""
+        cfg = _cfg("scan.yml")
+        assert cfg["split_spec"] == "configs/split.yml#scan"
+        assert cfg["trial_families"] == "configs/trials.yml"
+
+    def test_the_scan_partition_exists_where_scan_yml_says_it_is(self):
+        assert "scan" in _cfg("split.yml"), "scan.yml points at a section that is absent"
+
+    def test_research_yml_no_longer_claims_a_single_global_counter(self):
+        """The literal contradiction that would have killed Track D.
+
+        research.yml said the counter applied to EVERYTHING; scan.yml was silent.
+        """
+        tc = _cfg("research.yml")["trial_counter"]
+        assert tc["superseded_by"] == "configs/trials.yml"
+        assert tc["family_for_this_track"] == "TRACK_D_DEALS"
+
+    def test_every_family_referenced_anywhere_actually_exists(self):
+        known = {f["id"] for f in _cfg("trials.yml")["families"]}
+        scan = _cfg("split.yml")["scan"]
+        for key in ("family_calendar", "family_signals", "family_procedure"):
+            assert scan[key] in known, f"{key}={scan[key]} is not a declared family"
+        assert _cfg("research.yml")["trial_counter"]["family_for_this_track"] in known
+
+    def test_track_d_carried_count_agrees_between_the_two_files(self):
+        """68 appears in research.yml and 171 in trials.yml; the difference is the
+        ~100-cell exploratory episode plus logged rows. If they drift the bar is
+        computed from one number and justified by another."""
+        assert _cfg("research.yml")["trial_counter"]["carried_from_predecessor"] == 68
+        d = next(f for f in _cfg("trials.yml")["families"] if f["id"] == "TRACK_D_DEALS")
+        assert d["carried"] == 171
+
+    def test_the_procedure_exemption_is_explicit_not_implied(self):
+        """A family whose width does not charge is a large claim. It must say so
+        in words, not be inferred from a missing field."""
+        p = next(f for f in _cfg("trials.yml")["families"] if f["id"] == "TRACK_S_PROCEDURE")
+        assert p["width_does_not_charge"] is True
+        assert p["fixed_family_size"] > 0
+        assert p["selection_happens_within"] is False
+
+    def test_the_calendar_family_declares_the_predecessors_prior_search(self):
+        c = next(f for f in _cfg("trials.yml")["families"] if f["id"] == "TRACK_S_CALENDAR")
+        assert c["prior_external_search"] == 31_893_556
+
+    def test_every_study_kind_has_at_least_one_blocking_confound(self):
+        """A kind with no blocking confound is a kind outside the checklist —
+        which is what `scan` was until 2026-08-18."""
+        from src.research.design import required_confounds
+
+        for kind in ("event_study", "portfolio", "seasonality", "scan"):
+            assert required_confounds(kind), f"{kind} has no blocking confounds"
+
+    def test_plan_4_describes_the_family_scheme(self):
+        text = (PLANS / "PLAN_4_SCAN.md").read_text()
+        assert "TRACK_S_" in text, "Plan 4 does not mention the trial families"
+        assert re.search(r"time split|temporal", text, re.I), \
+            "Plan 4 does not describe the Track S partition"
