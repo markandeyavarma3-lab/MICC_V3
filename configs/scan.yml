@@ -32,23 +32,38 @@
 version: 1
 
 # =============================================================================
-# THE MEASUREMENT THAT DETERMINED THIS ENTIRE DESIGN — 2026-08-18
+# THE MEASUREMENT THAT DETERMINED THIS DESIGN — 2026-08-18, CORRECTED SAME DAY
 # =============================================================================
-# Pooling stocks to gain observations does not work on raw prices, because every
-# stock experiences a given calendar day SIMULTANEOUSLY and therefore shares the
-# market factor. Measured on 657 liquid names, 2015+:
+# CORRECTION. An earlier version of this file reported:
 #
-#   basis              mean pairwise rho    n_eff of 21,000    MDE/yr
-#   PRICE (raw)              +0.2350               4.3         33.95%   DEAD
-#   MARKET_RELATIVE          +0.0001           6,694.1          0.86%   USABLE
+#   PRICE (raw)        rho +0.2350   n_eff     4.3 of 21,000   MDE 33.95%/yr
+#   MARKET_RELATIVE    rho +0.0001   n_eff 6,694.1 of 21,000   MDE  0.86%/yr
 #
-# Removing the market factor multiplies effective sample size by ~1,550. This is
-# not a refinement; it is the difference between a design that can conclude
-# something and one that cannot.
+# and concluded that removing the market factor multiplies effective sample size
+# by ~1,550. THE SECOND ROW WAS AN ARTIFACT AND THE CONCLUSION DID NOT FOLLOW.
 #
-# CONSEQUENCE: the predecessor's PRICE-basis cells were arithmetically worthless
-# whenever pooled, and it treated the two bases as equals. Here PRICE is retained
-# ONLY for single-stock reporting, where it is honest but underpowered.
+# Subtracting the cross-sectional mean forces the average pairwise correlation to
+# -1/(N-1) NO MATTER WHAT THE INPUT IS. Verified against simulated controls:
+#
+#   input                              raw rho      after demeaning
+#   pure independence, N=657           -0.00003        -0.00148
+#   strong market factor, N=657        +0.4035         -0.00145
+#   theoretical -1/(N-1)                                -0.00152
+#
+# The statistic cannot tell a market factor from independence, so it measured the
+# arithmetic of subtraction rather than the data.
+#
+# AND THE REAL CONSEQUENCE, WHICH IS LARGER. If market-relative means "minus the
+# cross-sectional mean", then the cross-sectional mean OF market-relative returns
+# is identically zero. Measured on 656 stocks x 2,870 sessions: the largest
+# absolute value across every day is 1.698e-17.
+#
+#   "Is trading day 47 good on average, market-relative?" is not a weak question.
+#   IT HAS NO CONTENT. The answer is exactly zero for every day, by construction.
+#
+# So the pooled-average formulation is not underpowered, it is undefined. The
+# cross-sectional formulation below is therefore not the strongest option among
+# several — IT IS THE ONLY ONE. See docs/decisions/0021.
 basis:
   primary: MARKET_RELATIVE
   # Retained for per-stock reporting and for comparison with the predecessor's
@@ -56,10 +71,13 @@ basis:
   secondary: PRICE
   secondary_pooled_verdicts_allowed: false
   market_definition: cross_sectional_mean_of_universe
+  # Forbidden outright: it can only ever return zero.
+  pooled_average_of_market_relative: FORBIDDEN_IDENTICALLY_ZERO
   measured_2026_08_18:
-    panel: "657 stocks x 322 sessions, 2015+"
+    panel: "656 stocks x 2,870 sessions, 2015+"
     rho_raw: 0.2350
-    rho_market_relative: 0.0001
+    rho_market_relative_is_an_artifact: true
+    max_abs_cross_sectional_mean_of_relative: 1.698e-17
 
 # =============================================================================
 # THE UNIT PROBLEM — why per-stock calendar work cannot be done
@@ -97,9 +115,31 @@ units:
 # already the right basis for it.
 cross_sectional:
   enabled: true
+  mandatory: true                   # not a choice; the alternative is undefined
   statistic: rank_ic                # Spearman corr(signal rank, forward return rank)
   persistence_test: sign_agreement_across_folds
   min_names_per_date: 100
+  # THE UNIT OF EVIDENCE IS THE DATE, NOT THE STOCK-YEAR. Each date yields ONE
+  # IC observation no matter how many stocks it ranks. This is the correction
+  # that the artifact above was hiding: pooling stocks buys precision WITHIN a
+  # date, and buys no additional dates.
+  #
+  # Measured 2026-08-18 on 656 stocks x 2,870 sessions, using 21-session momentum
+  # against 5-session forward returns purely as a worked example of the
+  # estimator (NOT as a finding — the forward-return alignment in that probe was
+  # not audited):
+  #
+  #   n IC observations   568
+  #   sd of IC            0.1190
+  #   SE(mean IC)         0.0050
+  #   MDE on mean IC      0.0140
+  #
+  # So an IC of ~0.014 is the detection floor at this sampling. Typical real
+  # equity signal ICs are 0.02-0.05, so this estimator CAN see a genuine signal —
+  # which is more than can be said for anything else considered here.
+  unit_of_evidence: date
+  measured_mde_mean_ic: 0.0140
+  measured_ic_sd: 0.1190
 
 # =============================================================================
 # FOLDS — the owner's walk-forward, plus what it cannot give

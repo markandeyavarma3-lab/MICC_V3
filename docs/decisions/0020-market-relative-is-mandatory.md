@@ -2,7 +2,12 @@
 
 **Date:** 2026-08-18
 **Decided by:** Claude, forced by measurement
-**Status:** ACTIVE
+**Status:** ACTIVE — **conclusion stands, reasoning corrected by [0021](0021-pooled-average-is-undefined.md)**
+
+> **Read 0021 first.** The measurement below (rho +0.0001 for market-relative)
+> is an ARTIFACT of cross-sectional demeaning and does not support the 1,550x
+> claim. The decision it produced is still correct, for a stronger reason than
+> the one given here.
 
 ## Context
 Per-stock calendar analysis is arithmetically impossible: a cell fires once a
