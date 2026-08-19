@@ -557,3 +557,24 @@ def test_report_covers_the_search_track_in_depth():
         f"the search-track section is {len(section.split())} words. It was 171 "
         f"when the owner objected that the combinations had been buried."
     )
+
+
+def test_report_covers_all_three_tracks():
+    """The owner's brief had institutional flow AND the combinations. The report
+    carried two tracks and left FII/DII out entirely — 22 days of cash data and
+    a twelve-year series that measures something else, neither mentioned."""
+    r = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+    for track in ("Track D", "Track S", "Track F"):
+        assert track in r, f"{track} is missing from the report"
+    assert "Three tracks" in r
+    # The distinction that keeps Track F honest.
+    assert "derivatives positioning" in r, (
+        "the report does not distinguish F&O positioning from cash flow — "
+        "treating one as a proxy for the other produces a confident wrong answer"
+    )
+
+
+def test_report_has_no_appendices():
+    """Removed at the owner's request 2026-08-18."""
+    r = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+    assert "## Appendix" not in r, "an appendix has come back"

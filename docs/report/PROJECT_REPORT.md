@@ -297,43 +297,20 @@ research code, not after.
 | **7** | Seasonality rescan | not started |
 | **8** | Reporting | not started |
 
-### 4.3 Two tracks
+### 4.3 Three tracks
 
-The project runs two research tracks in parallel. They share the discipline
-machinery — registration, decision records, multiple-testing correction — and
-almost nothing else, because the statistics of an event and the statistics of a
-calendar pattern are genuinely different.
+The project runs three research tracks in parallel. They share the discipline
+machinery — registration, decision records, correction for how many things were
+tried — and almost nothing else, because the statistics of an event, a calendar
+pattern and a flow series are genuinely different.
 
-| | **Track D — institutional deals** | **Track S — mass pattern search** |
-|---|---|---|
-| Question | do disclosed institutional trades predict returns? | do *any* patterns, found by searching, survive out of sample? |
-| Data | 223,450 bulk + 12,430 block deals | 21 years of prices, 4,200 stocks |
-| Unit | one deal event | one calendar cell or signal combination |
-| Machinery | **built** | **not built** |
-
-**Track S was under-specified until 18 August.** It existed in configuration
-files and prose but had no code and no proper design.
-
-Worse, when the two tracks were finally checked against each other, they had
-never been connected. Three faults, each of which would only have appeared once
-scan code ran:
-
-1. The search track had **no held-back data at all**, while the deal track sat
-   behind a guard that refuses access.
-2. A search study **could not be registered** — the checklist of required
-   controls covered the deal track and left the search track, which has far more
-   opportunity to fool itself, with none.
-3. Two configuration files disagreed about how attempts are counted. Read
-   literally, running the search once would have **raised the deal track's
-   evidence bar so high that its one completed experiment would retroactively
-   have failed** — and no future deal study could ever have passed.
-
-All three are fixed. Attempts are now counted per research family rather than in
-one pool, so a search charges its own budget and not another track's; the search
-track has its own held-back period (2016 onward); and search studies face five
-required controls of their own. A fourth fault was found inside that fix — the
-new counters were declared permanent and nothing actually incremented them, which
-is the same defect the whole scheme exists to prevent, one level up.
+| | **Track D — deals** | **Track S — combinations** | **Track F — FII/DII flows** |
+|---|---|---|---|
+| Question | do disclosed institutional trades predict returns? | do *any* patterns, found by searching, survive out of sample? | does aggregate foreign and domestic institutional flow predict returns? |
+| Data | 223,450 bulk + 12,430 block deals, 2006–2026 | 31.9 million calendar patterns + signal combinations | 15,359 rows of derivatives positioning, 2014–2026 · 68 rows of cash flow |
+| Unit | one deal event | one pattern | one trading day |
+| Machinery | **built** | **not built** | **not built** |
+| Honest state | usable data, one study rejected | already scanned once, found nothing | **almost no cash data — see below** |
 
 ### 4.3.1 Track D — the four deal studies
 
@@ -442,6 +419,47 @@ badly searching overfits.
 **Honest expectation, stated in advance:** most likely the answer is "about half
 the time", and almost nothing survives. That is the outcome I expect and it is
 still worth having.
+
+### 4.3.3 Track F — FII/DII flows, and why it is barely a track yet
+
+Every day the exchange publishes how much foreign institutional investors and
+domestic institutional investors bought and sold in total. It is the most-watched
+number in Indian financial media, and the obvious question is whether it predicts
+anything.
+
+**The honest state of this track is that I have almost no data.**
+
+| Source | Rows | Period | What it actually is |
+|---|---:|---|---|
+| Cash-market flow | **68** | 17 Jun – 8 Jul 2026 | the real thing — **22 days** |
+| Derivatives positioning | 15,359 | 2014 – 2026 | **a different measure** (see below) |
+
+**Twenty-two days is not a dataset**, and this is the one gap that cannot be
+solved by working harder. The exchange publishes today's figure and does not
+serve history, so the only way to obtain it is to collect it going forward, one
+day at a time. Roughly two years of collection are needed before any study is
+possible — which is past this project's own deadline. **The daily collector runs
+for exactly this reason: every day not captured is lost permanently.**
+
+**The twelve-year series is not the same measure, and saying so matters.** It
+records how institutions were positioned in *futures and options*, not how much
+stock they bought. Those two things can move in opposite directions — an
+institution can buy shares while hedging with futures. Treating one as a proxy
+for the other is the sort of quiet substitution that produces a confident wrong
+answer, so every study using it will state plainly that it measures derivatives
+positioning.
+
+**What this track can honestly do now:** ask whether *derivatives positioning*
+predicts returns, using twelve years of real data, clearly labelled as a
+different question from the cash-flow one. That study is possible today.
+
+**What it cannot do:** answer the question people actually mean by "FII/DII
+flows" — not before roughly 2028.
+
+This is the clearest example in the project of a limit set by data rather than by
+effort or method, and it is stated here rather than discovered later.
+
+---
 
 ### 4.4 The rules every study must follow
 
@@ -1141,7 +1159,7 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 237 tests that enforces honest research
+- A discipline framework with 239 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
 - Twenty-six decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
@@ -1210,56 +1228,3 @@ that gets cut before this list does.
    Studies 2 to 4 are extensions.
 
 ---
-
-## Appendix A — How to verify this report
-
-```bash
-# Version 1
-cd ~/Workspace/MICC && git rev-list --count HEAD          # 67
-git log --reverse --format='%ad %h %s' --date=short | head -1
-
-# Version 2
-cd ~/Workspace/MICCV2 && git rev-list --count HEAD        # 107
-git tag                                                   # frozen-2026-08-16
-grep -l "0 promotions" reports/*.md | wc -l               # 18
-sed -n '1,30p' reports/p7_verdict_2026-08-15.md
-
-# Version 3
-cd ~/Workspace/institutional-research
-RESEARCH_ENV=dev python -m pytest tests/ -q               # 146 passed
-git log --oneline
-ls docs/decisions/                                        # 18 records
-
-# The pre-registration ordering — registration BEFORE result
-git log --oneline --reverse | grep -E "f25608d|c31e128"
-```
-
-## Appendix B — Key files
-
-| File | Purpose |
-|---|---|
-| `src/research/power.py` | Can this study see anything? |
-| `src/research/split.py` | Explore / select / confirm partition |
-| `src/research/multiplicity.py` | How much did we look? |
-| `src/research/design.py` | Is this study allowed to exist? |
-| `src/archive/stopgap.py` | Daily capture |
-| `configs/*.yml` | All parameters — single source of truth |
-| `docs/decisions/` | 18 decision records |
-| `docs/plan/PLAN_[1-3]_*.md` | The full plan |
-
-## Appendix C — Glossary
-
-| Term | Meaning |
-|---|---|
-| **Bulk deal** | A trade above 0.5% of a company's shares in one day; must be disclosed |
-| **Block deal** | A large pre-arranged trade in a separate exchange window |
-| **MDE** | Minimum detectable effect — the smallest effect a study could reliably find |
-| **t-statistic** | How many standard errors a result is from zero; above ~2 is conventionally "significant" |
-| **Sharpe ratio** | Return divided by volatility; higher is better |
-| **Basis point** | One hundredth of a percent |
-| **Pre-registration** | Writing down predictions and pass marks before looking |
-| **ISIN** | A permanent 12-character code identifying a company's shares. Unlike a ticker symbol it does not change when a company is renamed |
-| **Monotonic** | Moving in one direction only — a counter that can rise but never fall |
-| **Point-in-time** | Using only information that existed on the date in question |
-| **Provenance** | A record of which data and code produced a number |
-| **UNDERPOWERED** | The study could not have detected the effect either way — silence, not evidence |
