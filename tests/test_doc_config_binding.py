@@ -552,10 +552,21 @@ def test_report_covers_the_search_track_in_depth():
     missing = [k for k, v in required.items() if v.lower() not in flat.lower()]
     assert not missing, f"the search-track section has been thinned; missing: {missing}"
 
-    section = raw.split("### 4.3.2")[1].split("### 4.4")[0]
-    assert len(section.split()) >= 500, (
+    # The SIGNAL half was missing when the section was 762 words — seven
+    # families and ~190 variants, unmentioned — as was the fold design, which is
+    # the owner's own idea and the thing that distinguishes this from V2.
+    for label, needle in {
+        "the seven signal families": "Seven families",
+        "each signal needs a stated reason": "reason stated before it is allowed in",
+        "the fold design, concretely": "learn from 2005",
+        "rounds are not evidence": "report both numbers",
+    }.items():
+        assert needle.lower() in flat.lower(), f"search track is missing: {label}"
+
+    section = raw.split("### 4.3.2")[1].split("### 4.3.3")[0]
+    assert len(section.split()) >= 1000, (
         f"the search-track section is {len(section.split())} words. It was 171 "
-        f"when the owner objected that the combinations had been buried."
+        f"when the owner first objected and 762 when they objected again."
     )
 
 
