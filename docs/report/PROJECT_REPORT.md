@@ -398,6 +398,62 @@ real-world values of 0.02 to 0.05. It is the only formulation in this project
 that can see something real, and that single fact is why the search track is
 worth building at all.
 
+#### The second half: combinations of trading signals
+
+Calendar patterns are only one of the two things being searched. The other is
+**combinations of trading signals** — and these have much better arithmetic,
+because a signal can fire dozens of times a year per company rather than once.
+
+A "signal" is a simple observable fact about a share on a given day. Seven
+families are in scope, and **each one has to have a reason stated before it is
+allowed in**:
+
+| Family | Roughly | Why it might work |
+|---|---:|---|
+| Momentum | 40 variants | prices react to news slowly, so recent movement continues |
+| Reversal | 30 | whoever supplies liquidity in a panic gets paid for it |
+| Volatility | 25 | calmer shares have historically returned more than their risk suggests |
+| Volume | 25 | unusual activity marks unusual attention |
+| Liquidity | 20 | harder-to-trade shares must offer more to compensate |
+| Seasonal | 30 | money genuinely does arrive on a calendar — salaries, index changes |
+| Institutional | 20 | Track D's deal signals, reused as inputs here |
+
+These get combined up to three deep, with thresholds — *"momentum in the top
+fifth, AND volume more than twice normal, AND an institution bought last week"* —
+which produces hundreds of thousands of candidates.
+
+**Requiring a reason for each ingredient is not a formality.** The search is
+deliberately wide, but width is not a licence to include things nobody can
+explain. A combination that works and cannot be explained is far more likely to
+be a coincidence than a discovery.
+
+#### How the testing actually works
+
+This is the part that separates it from V2's approach. Each candidate is judged
+by repeated rounds of **train on the past, test on what comes next**:
+
+```
+round 1:  learn from 2005–2010    then test on 2010–2012
+round 2:  learn from 2005–2011    then test on 2011–2013
+round 3:  learn from 2005–2012    then test on 2012–2014
+              ... and so on, sixteen rounds
+```
+
+The training window always starts in 2005 and stretches further each time, which
+mimics how the method would actually have been used: at any point you know
+everything up to today and nothing after it.
+
+**But sixteen rounds are not sixteen pieces of evidence.** Because each training
+window contains almost all of the previous one, consecutive rounds are roughly
+95% the same calculation. Counted honestly, sixteen rounds carry about **eight**
+genuinely independent tests. A second scheme that shuffles which stretches of
+time are used for testing produces about 120 rounds worth roughly 20.
+
+**Every result will report both numbers** — the rounds run and the independent
+tests they actually represent. Quoting the first without the second is one of the
+easiest ways to make thin evidence look thick, and it is exactly the sort of
+thing this project exists to avoid.
+
 #### The deliverable is not a list of patterns
 
 Picking the best of 31.9 million is hopeless — the best of that many coin flips
