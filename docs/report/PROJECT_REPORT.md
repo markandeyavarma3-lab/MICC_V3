@@ -352,25 +352,96 @@ rebalancing) but sell for fewer. 34,270 sell events have never been examined.
 When three or more different institutions buy the same share within 21 days, is
 that stronger than one institution buying? 10,098 such events exist.
 
-### 4.3.2 Track S — the search track
+### 4.3.2 Track S — the search track, and the 31.9 million combinations
 
-V2 scanned **31,893,556** calendar patterns and concluded the best one sat at the
-94th percentile of random noise — it looked like nothing. But it only ever asked
-*"is this better than chance in this sample?"*, never *"does it happen again?"*
+This is half the project, and it is the half where it is easiest to fool
+yourself.
 
-Track S asks the second question, using expanding training windows: find a
-pattern in 2005–2010, require it to repeat in 2010–2012, and so on across many
-folds.
+**What the 31.9 million are.** A "calendar pattern" is a question of the form:
+*does this share tend to rise during a particular stretch of the year?* Each one
+is a combination of a window length, a starting point in the calendar, and a
+company:
 
-**The headline result is deliberately not a list of patterns.** It is a measured
-answer to: *across all folds, how often does a pattern chosen in training
-actually win in testing?* If the answer is about 50%, mass searching does not
-work on this data — which is a real and useful finding, and the most likely one.
-Individual surviving patterns are reported second.
+```
+13 window lengths  ×  242 starting points  ×  4,200 companies  =  13.2 million
+plus index-level variants, four calendar alignments, two ways of measuring
+                                                    =  31,893,556
+```
 
-That reframing matters because it turns the enormous size of the search from a
-liability into an instrument: the wider you search, the more precisely you
-measure how badly searching overfits.
+**V2 already scanned all of them, and found nothing.** Its own conclusion:
+
+> *"Essentially none of it survives contact with its own null. The single best
+> pattern found — a 3-day window that rose in 94.7% of years — sits at the 94th
+> percentile of what randomly rotated data produces, which is to say it is an
+> ordinary result of looking 31.9 million times."*
+
+And the part that matters most: **the scan of millions found nothing, while eight
+carefully-reasoned guesses found two.** Both of those two were then killed by the
+corrected cost model.
+
+**So why do it again?** Because V2 only ever asked *"is this better than chance in
+the data I have?"* It never asked *"does it happen again?"* — which is the only
+question a pattern claim actually makes. Track S asks the second one: find a
+pattern in 2005–2015, then require it to repeat in 2016 onward, which it has
+never seen.
+
+#### What measuring it honestly revealed
+
+Three findings, each of which changed the design before any code was written.
+
+**A calendar pattern happens once a year.** So a company with 21 years of history
+gives 21 observations for any one pattern — total, ever. Split into training and
+testing, that leaves two to five. With two observations you could only detect an
+effect of about **50% a year**. Per-company calendar analysis is not difficult;
+it is arithmetically impossible. And the history is not there either: the median
+company has **5.5 years** of prices, and only 513 of 4,200 have twenty.
+
+**Combining companies does not rescue it.** The obvious fix is to pool all 4,200
+together. But every company experiences a given calendar day *simultaneously*, so
+they all share whatever the market did that day. Measured on real data, the
+average pairwise correlation of daily returns is **+0.235**, which reduces 21,000
+apparent observations to about **four** genuinely independent ones.
+
+**And the obvious repair turned out to be empty.** Subtracting the market's own
+movement removes the shared part — but if "the market" is defined as the average
+of those same companies, then the average of what is left is **exactly zero, on
+every single day**. I had designed a measurement incapable of producing a number,
+and only found it by checking.
+
+#### What survived
+
+One approach. Instead of asking *"is this stretch of the calendar good?"*, ask
+**"does it rank companies consistently, and does that ranking hold up in years it
+has never seen?"** A persistent *ordering* is far harder to produce by luck than
+a persistent average — chance does not put four thousand things in the same order
+twice.
+
+Measured, this can detect a signal strength of about **0.014**, against typical
+real-world values of 0.02 to 0.05. It is the only formulation in this project
+that can see something real, and that single fact is why the search track is
+worth building at all.
+
+#### The deliverable is not a list of patterns
+
+Picking the best of 31.9 million is hopeless — the best of that many coin flips
+looks impressive too. So the headline result is deliberately a different thing:
+
+> **Across many training-and-testing rounds, how often does a pattern chosen in
+> training actually win in testing?**
+
+If the answer is about half the time, then searching does not work on this data —
+a real and useful finding that goes well beyond this project. If it is
+meaningfully better than half, that is a durable discovery about *method*, which
+is worth far more than any single pattern.
+
+This reframing is what makes searching 31.9 million things defensible rather than
+reckless: **the size of the search stops being a liability and becomes the
+measuring instrument.** The wider you search, the more precisely you measure how
+badly searching overfits.
+
+**Honest expectation, stated in advance:** most likely the answer is "about half
+the time", and almost nothing survives. That is the outcome I expect and it is
+still worth having.
 
 ### 4.4 The rules every study must follow
 
@@ -1070,7 +1141,7 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 236 tests that enforces honest research
+- A discipline framework with 237 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
 - Twenty-six decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%

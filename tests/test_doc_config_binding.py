@@ -521,3 +521,39 @@ class TestReportMatchesThePlan:
         failure this project just spent a day fixing."""
         r = self._report()
         assert re.search(r"\bone\b[^.]{0,40}study|one study answered", r, re.I)
+
+
+def test_report_covers_the_search_track_in_depth():
+    """The 31.9M combinations are half the project and were twice buried.
+
+    First as "Study 4 of 4", listed last; then as a 171-word paragraph that
+    never said what the 31.9 million ARE, that the predecessor already scanned
+    them and found nothing, or what the deliverable is. The owner caught both.
+
+    NOTE ON MATCHING: strip markdown line prefixes BEFORE collapsing whitespace.
+    Two false negatives today came from blockquote '>' markers surviving a naive
+    whitespace collapse, which made present text look absent.
+    """
+    raw = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+    flat = re.sub(r"\s+", " ", re.sub(r"(?m)^\s*[>\-\*]\s?", "", raw))
+
+    required = {
+        "the composition of the 31.9M": "13 window lengths",
+        "the predecessor already scanned it": "94th percentile",
+        "scan found nothing, guesses found two": "eight carefully-reasoned guesses found two",
+        "a pattern fires once a year": "happens once a year",
+        "per-company is impossible": "arithmetically impossible",
+        "pooling fails on raw prices": "+0.235",
+        "the pooled average is identically zero": "exactly zero, on every single day",
+        "ranking is what survived": "rank companies consistently",
+        "the deliverable is the procedure": "how often does a pattern chosen in training",
+        "width becomes the instrument": "measuring instrument",
+    }
+    missing = [k for k, v in required.items() if v.lower() not in flat.lower()]
+    assert not missing, f"the search-track section has been thinned; missing: {missing}"
+
+    section = raw.split("### 4.3.2")[1].split("### 4.4")[0]
+    assert len(section.split()) >= 500, (
+        f"the search-track section is {len(section.split())} words. It was 171 "
+        f"when the owner objected that the combinations had been buried."
+    )
