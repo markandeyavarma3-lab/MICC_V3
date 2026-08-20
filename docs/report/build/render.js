@@ -23,6 +23,23 @@ const render = async () => {
     headless: 'new', args: ['--no-sandbox','--allow-file-access-from-files'],
   });
   const page = await browser.newPage();
+  // HIGH-DPI VIEWPORT, SET BEFORE LOAD.
+  //
+  // The diagrams ship as PNG screenshots (see rasteriseDiagrams below). At the
+  // default deviceScaleFactor of 1 the PNG has exactly as many pixels as the
+  // diagram has CSS pixels, so the print step has nothing extra to work with and
+  // every label comes out soft — reported by the owner on 2026-08-20.
+  //
+  // deviceScaleFactor 4 captures 4x the pixels. The image is then placed back at
+  // its CSS width, so a diagram laid out at 960px screen width and printed into
+  // a 174mm text column (~658 CSS px) carries 3840 real pixels across that
+  // column — roughly 560 DPI, well past what any printer resolves.
+  //
+  // The viewport WIDTH also matters: mermaid lays flowcharts out against the
+  // container, so a narrow viewport wraps labels and stacks nodes. 960px is
+  // close to the printed column's proportions, which keeps the on-page layout
+  // the same shape as the captured one.
+  await page.setViewport({width: 960, height: 1400, deviceScaleFactor: 4});
   await page.goto('file://' + path.resolve(src), {waitUntil: 'networkidle0', timeout: 120000});
   // RASTERISE THE DIAGRAMS BEFORE PRINTING.
   //
@@ -35,6 +52,17 @@ const render = async () => {
   // makes the diagram a single flat image, which survives conversion into Docs,
   // Word, and anything else that cannot parse vector markup.
   const rasteriseDiagrams = async () => {
+    // UNCLAMP BEFORE CAPTURE. The stylesheet caps a diagram at the printable
+    // height with `max-height: 195mm`, but an SVG with a viewBox does not crop
+    // to that — it LETTERBOXES, keeping a full-width box and shrinking the
+    // drawing inside it. The screenshot then spends its pixels on white bars.
+    // Capture at natural size instead; the fit maths below does the scaling, and
+    // does it on the real aspect ratio.
+    await page.addStyleTag({content:
+      '.mermaid svg { max-width: none !important; max-height: none !important;' +
+      ' width: auto !important; height: auto !important; }'});
+    await new Promise(r => setTimeout(r, 400));
+
     // TAG FIRST, THEN REPLACE. The first version of this iterated a snapshot of
     // .mermaid elements but re-selected by INDEX inside the loop. Every
     // replacement shrinks the live NodeList, so the indices drift and the last
@@ -50,22 +78,49 @@ const render = async () => {
 
     let done = 0;
     for (const id of ids) {
-      const el = await page.$(`[data-diagram="${id}"]`);
+      // Screenshot the SVG, NOT its <pre> wrapper. The wrapper is a block
+      // element and always spans the full container width; a tall diagram that
+      // the `max-height: 195mm` rule has shrunk sits in the middle of it
+      // surrounded by white. Capturing the wrapper spent half the pixel budget
+      // on that margin and halved the effective resolution of exactly the
+      // diagrams that needed it most.
+      const el = (await page.$(`[data-diagram="${id}"] svg`))
+              || (await page.$(`[data-diagram="${id}"]`));
       if (!el) continue;
       const box = await el.boundingBox();
       if (!box || box.width < 5 || box.height < 5) continue;
       const b64 = (await el.screenshot({type: 'png', omitBackground: false})).toString('base64');
-      await page.evaluate((sel, data) => {
+      // FIT THE IMAGE TO THE PRINTABLE BOX, IN BOTH DIRECTIONS.
+      //
+      // A4 minus 18mm side and 20mm top/bottom margins is 174 x 257mm, and a
+      // diagram is given at most 195mm of height so a caption and some text can
+      // share the page. At 96 CSS px per inch that is 658 x 737 px.
+      //
+      // The CSS rule `.mermaid svg { max-height: 195mm }` used to enforce this,
+      // but it stops applying the moment the SVG becomes an <img> — so without
+      // this a tall diagram would print past the page edge and be silently
+      // guillotined by the paginator. Scale on the binding dimension, never up.
+      const FIT_W = 658, FIT_H = 737;
+      const scale = Math.min(FIT_W / box.width, FIT_H / box.height, 1);
+      const drawWidth = Math.round(box.width * scale);
+      await page.evaluate((sel, data, cssWidth) => {
         const node = document.querySelector(`[data-diagram="${sel}"]`);
         if (!node) return;
         const img = document.createElement('img');
         img.src = 'data:image/png;base64,' + data;
+        // Pin the image back to the width the diagram actually occupied. Without
+        // this an <img> defaults to its NATURAL size, which at deviceScaleFactor
+        // 4 is four times too wide; max-width:100% would then rescale every
+        // diagram to the full column regardless of how small it really is.
+        img.style.width = cssWidth + 'px';
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
         img.style.display = 'block';
         img.style.margin = '0 auto';
         node.replaceWith(img);
-      }, id, b64);
+      }, id, b64, drawWidth);
+      console.error(`    diagram ${id}: ${Math.round(box.width)}x${Math.round(box.height)} css` +
+        ` -> ${drawWidth}px wide (${(box.width * 4 / drawWidth).toFixed(1)}x pixel density)`);
       done++;
     }
 

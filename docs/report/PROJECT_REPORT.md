@@ -573,39 +573,35 @@ deleted and regenerated. Only the raw layer is precious.
 ### 5.2 The layers
 
 ```mermaid
-flowchart TB
-  subgraph EXT["EXTERNAL SOURCES"]
-    direction LR
-    NSE["NSE archive<br/>bulk.csv / block.csv<br/><b>WORKS</b> — rolling daily"]
-    NSEH["NSE historical API<br/><b>BLOCKED</b> — HTTP 503"]
-    BSE["BSE deals API<br/><b>BLOCKED</b> — HTTP 301"]
+flowchart LR
+  subgraph EXT["SOURCES"]
+    NSE["NSE archive<br/>bulk.csv · block.csv<br/>WORKS — daily"]
+    NSEH["NSE historical API<br/>BLOCKED · 503"]
+    BSE["BSE deals API<br/>BLOCKED · 301"]
   end
 
-  subgraph RAW["LAYER 1 — RAW ARCHIVE (never modified)"]
-    direction LR
-    SEED["<b>V1 seed</b><br/>116 tables · 11,276,328 rows · 1.2 GB<br/>2005–2026 · irreplaceable"]
-    ARCH["<b>Daily archive</b><br/>gzip + SHA-256 + manifest<br/>write-once, deduplicated"]
+  subgraph RAW["LAYER 1 · RAW ARCHIVE — never modified · BUILT"]
+    SEED["V1 seed<br/>11,276,328 rows · 1.2 GB<br/>2005–2026 · irreplaceable"]
+    ARCH["Daily archive<br/>gzip + SHA-256<br/>write-once, deduplicated"]
   end
 
-  subgraph MART["LAYER 2 — MARTS (rebuildable)"]
-    direction LR
+  subgraph MART["LAYER 2 · MARTS — rebuildable · NOT YET BUILT"]
     SEC["security_master<br/>symbol_history<br/>sector_history"]
     DEAL["institutional_deals<br/>raw → clean"]
     OUT["deal_forward_outcomes<br/>what happened after"]
     SEAS["seasonality_cell"]
   end
 
-  subgraph GOV["LAYER 3 — GOVERNANCE (append-only, SQLite)"]
-    direction LR
-    REG["experiment_registry<br/><i>locked by trigger</i>"]
+  subgraph GOV["LAYER 3 · GOVERNANCE — append-only SQLite · BUILT"]
+    REG["experiment_registry<br/>locked by trigger"]
     RES["study_result"]
-    DAG["artefact + artefact_edge<br/><i>provenance graph</i>"]
+    DAG["artefact + artefact_edge<br/>provenance graph"]
     TC["trial_counter"]
   end
 
-  NSE -->|"daily 20:00 IST"| ARCH
-  NSEH -.->|blocked| ARCH
-  BSE -.->|blocked| ARCH
+  NSE -->|"20:00 IST"| ARCH
+  NSEH -.-> ARCH
+  BSE -.-> ARCH
   SEED --> SEC
   ARCH --> DEAL
   SEED --> DEAL
@@ -617,18 +613,14 @@ flowchart TB
   REG --> RES
   RES --> DAG
 
-  classDef ok fill:#dcfce7,stroke:#16a34a,stroke-width:2px
-  classDef bad fill:#fee2e2,stroke:#dc2626,stroke-width:2px
-  classDef todo fill:#fef9c3,stroke:#ca8a04,stroke-width:2px
-  classDef done fill:#dbeafe,stroke:#2563eb,stroke-width:2px
-  class NSE,SEED,ARCH ok
-  class NSEH,BSE bad
-  class SEC,DEAL,OUT,SEAS todo
-  class REG,RES,DAG,TC done
+  classDef pending stroke-dasharray:5 4
+  class NSEH,BSE,SEC,DEAL,OUT,SEAS pending
 ```
 
-**Legend.** Green = working. Red = blocked. Blue = built. Yellow = designed but
-not yet built.
+**How to read it.** A solid outline is something that exists and runs today. A
+dashed outline is something that does not — either an external source that
+refuses to answer, or a table designed on paper but never created. Each box says
+its own status; nothing is carried by colour.
 
 ### 5.3 Honest status of the warehouse
 
@@ -681,82 +673,53 @@ it.
 
 ### 6.1 Overview
 
+The system is a straight line in two halves. The first half turns a web page into
+a trustworthy table. The second half decides whether anything in that table is
+real. Nothing may skip a stage.
+
+**The data path — stages 1 to 4.**
+
+```mermaid
+flowchart LR
+  C["1 · COLLECTION<br/>part built<br/>cron 20:00 · 22:30 · 08:00 IST"]
+  S["2 · RAW STORAGE<br/>BUILT<br/>write-once + SHA-256<br/>V1 seed · 11.3M rows"]
+  I["3 · IDENTITY<br/>NOT BUILT<br/>participant name → company<br/>HFT rule: 95% same-day"]
+  M["4 · MARTS<br/>NOT BUILT<br/>DuckDB · 0 of 7 tables"]
+
+  C --> S --> I --> M
+
+  classDef pending stroke-dasharray:5 4
+  class I,M pending
+```
+
+**The decision path — stages 5 to 7, plus the side-car that polices them.**
+
 ```mermaid
 flowchart TB
-  subgraph COLLECT["1 · COLLECTION"]
-    direction LR
-    C1["stopgap.py<br/><b>BUILT</b><br/>fetch → hash → store"]
-    C2["full collector<br/><i>not built</i><br/>parse · holidays · retries"]
-    CRON["cron<br/>20:00 · 22:30 · 08:00 IST"]
-  end
+  R["5 · RESEARCH ENGINE — BUILT<br/>power · split · multiplicity · design"]
+  G1["6a · EVENT GATE — does the deal move the price at all?"]
+  G2["6b · PORTFOLIO GATE — does a real book holding it<br/>beat the same book without it?"]
+  O["7 · OUTPUT — PASS · FAIL · UNDERPOWERED<br/>decision record + provenance chain"]
+  GOV["GOVERNANCE SIDE-CAR — BUILT · append-only SQLite<br/>freezes the spec before any data is read"]
 
-  subgraph STORE["2 · RAW STORAGE"]
-    direction LR
-    S1["raw archive<br/><b>BUILT</b><br/>write-once + SHA-256"]
-    SEEDN["V1 seed<br/>11.3M rows"]
-  end
-
-  subgraph IDENT["3 · IDENTITY"]
-    direction LR
-    I1["name → company<br/><i>not built</i><br/>34.2% currently unmatched"]
-    I2["HFT detection<br/><i>not built</i><br/>rule: ≥95% same-day"]
-  end
-
-  subgraph MARTS["4 · MARTS"]
-    direction LR
-    S2["DuckDB marts<br/><i>not built</i><br/>0 of 7 tables"]
-  end
-
-  subgraph GOVN["GOVERNANCE (side-car)"]
-    S3["SQLite governance<br/><b>BUILT</b><br/>append-only + triggers"]
-  end
-
-  subgraph RESEARCH["5 · RESEARCH ENGINE"]
-    direction LR
-    R1["power.py<br/><b>BUILT</b><br/>can we even see it?"]
-    R2["split.py<br/><b>BUILT</b><br/>explore / select / confirm"]
-    R3["multiplicity.py<br/><b>BUILT</b><br/>how much did we look?"]
-    R4["design.py<br/><b>BUILT</b><br/>is this study allowed?"]
-  end
-
-  subgraph GATES["6 · THE TWO GATES"]
-    direction LR
-    G1["EVENT GATE<br/>does it move prices?"]
-    G2["PORTFOLIO GATE<br/>does a real book<br/>beat the same book<br/>without it?"]
-  end
-
-  subgraph OUT["7 · OUTPUT"]
-    direction LR
-    O1["PASS · FAIL<br/>UNDERPOWERED"]
-    O2["decision record<br/>+ provenance"]
-    O3["FINAL_VERDICT.md<br/>if project is killed"]
-  end
-
-  CRON --> C1 --> S1
-  C2 -.-> S1
-  S1 --> I1
-  SEEDN --> I1
-  I1 --> I2 --> S2
-  S2 --> R1
-  R2 --> R4
-  R3 --> R4
-  R1 --> R4
-  R4 -->|"design approved"| G1
+  R -->|"design approved"| G1
   G1 -->|"passes"| G2
-  G1 -->|"fails"| O1
-  G2 --> O1 --> O2
-  S3 -.->|"locks specs"| R4
-  O2 -.->|"writes back"| S3
-  O2 -.-> O3
+  G2 --> O
+  G1 -->|"fails"| O
+  GOV -.->|"locks the spec"| R
+  O -.->|"writes the result back"| GOV
+```
 
-  classDef built fill:#dbeafe,stroke:#2563eb,stroke-width:2px
-  classDef notbuilt fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,stroke-dasharray:4 3
-  classDef gate fill:#fce7f3,stroke:#db2777,stroke-width:2px
-  classDef seed fill:#dcfce7,stroke:#16a34a,stroke-width:2px
-  class C1,S1,S3,R1,R2,R3,R4 built
-  class C2,S2,I1,I2 notbuilt
-  class G1,G2 gate
-  class SEEDN seed
+Stage 5 is the part that is finished, and it is four small modules, each asking
+one question that V2 never asked:
+
+```mermaid
+flowchart LR
+  R(["RESEARCH<br/>ENGINE"])
+  R --- P["power.py — could we even see it if it were there?"]
+  R --- SP["split.py — is this exploring, or confirming?"]
+  R --- MU["multiplicity.py — how many things did we already try?"]
+  R --- DE["design.py — is this study allowed to run at all?"]
 ```
 
 ### 6.2 How a study flows through the system

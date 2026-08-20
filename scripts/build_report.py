@@ -41,7 +41,7 @@ CSS = """
 * { box-sizing: border-box; }
 body {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 10.8pt; line-height: 1.5; color: #14181f; margin: 0;
+  font-size: 10.8pt; line-height: 1.45; color: #14181f; margin: 0;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 h1, h2, h3, h4 { font-family: "Helvetica Neue", Arial, sans-serif; color: #0d1117;
@@ -84,6 +84,15 @@ pre.mermaid, .mermaid {
 /* No diagram may exceed the printable height of one page, or it is silently
    clipped by the paginator with no error anywhere. */
 .mermaid svg { max-width: 100%; max-height: 195mm; height: auto; }
+/* Mermaid draws node labels as real HTML inside <foreignObject>, so they inherit
+   from body — including `text-align: justify` and `hyphens: auto`. That stretched
+   short labels into ransom-note spacing ("5 · RESEARCH  ENGINE  —") and
+   hyphenated words mid-box. Diagram text is centred and never justified. */
+.mermaid foreignObject div, .mermaid foreignObject span, .mermaid foreignObject p,
+.mermaid .nodeLabel, .mermaid .edgeLabel, .mermaid .cluster-label {
+  text-align: center !important; hyphens: none !important; text-justify: none;
+  margin: 0; line-height: 1.35;
+}
 figcaption, p.caption, .caption {
   font-size: 8.6pt; color: #5b6572; text-align: center; hyphens: none;
   margin: 0 auto 16px; max-width: 88%; font-style: italic; line-height: 1.4;
@@ -142,9 +151,57 @@ def wrap(body: str, title: str) -> str:
 </head><body>
 {body}
 <script>
-mermaid.initialize({{startOnLoad: true, theme: 'neutral',
-  themeVariables: {{fontFamily: 'Helvetica Neue, Arial, sans-serif', fontSize: '13px'}},
-  flowchart: {{curve: 'basis', useMaxWidth: true}} }});
+// MONOCHROME BY CONSTRUCTION.
+//
+// Every stock mermaid theme fills nodes with pastel colour. That looks fine on a
+// screen and wrong in a submitted document: it prints as muddy grey on a
+// black-and-white printer, it carries no meaning a reader can decode without a
+// legend, and it fights the typography. Owner instruction, 2026-08-20: no
+// coloured blocks.
+//
+// So the palette is set explicitly to white fills and near-black strokes, and
+// meaning is carried by TEXT (a node says BUILT or NOT BUILT) and by LINE STYLE
+// (dashed = not yet real) — both of which survive a photocopier.
+mermaid.initialize({{
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {{
+    fontFamily: 'Helvetica Neue, Arial, sans-serif',
+    fontSize: '14px',
+    background: '#ffffff',
+    primaryColor: '#ffffff',      // node fill
+    primaryBorderColor: '#1a1a1a',
+    primaryTextColor: '#1a1a1a',
+    secondaryColor: '#ffffff',
+    tertiaryColor: '#ffffff',
+    mainBkg: '#ffffff',
+    nodeBorder: '#1a1a1a',
+    lineColor: '#333333',
+    textColor: '#1a1a1a',
+    titleColor: '#1a1a1a',
+    edgeLabelBackground: '#ffffff',
+    clusterBkg: '#ffffff',
+    clusterBorder: '#8c8c8c',
+    defaultLinkColor: '#333333',
+    // sequence diagram
+    actorBkg: '#ffffff', actorBorder: '#1a1a1a', actorTextColor: '#1a1a1a',
+    actorLineColor: '#8c8c8c',
+    signalColor: '#1a1a1a', signalTextColor: '#1a1a1a',
+    labelBoxBkgColor: '#ffffff', labelBoxBorderColor: '#1a1a1a',
+    labelTextColor: '#1a1a1a', loopTextColor: '#1a1a1a',
+    noteBkgColor: '#ffffff', noteBorderColor: '#8c8c8c', noteTextColor: '#1a1a1a',
+    activationBkgColor: '#ffffff', activationBorderColor: '#8c8c8c',
+    sequenceNumberColor: '#1a1a1a',
+  }},
+  // wrappingWidth defaults to ~200px, which re-wraps any label longer than a
+  // few words. That makes every node narrow and tall, so a column of nodes is
+  // tall and thin, so it hits the one-page height cap and gets scaled down to
+  // ~70% of the text column — small type with white space either side. Letting
+  // labels run wider trades height for width, which is the direction with room.
+  flowchart: {{curve: 'basis', useMaxWidth: true, nodeSpacing: 34,
+               rankSpacing: 44, wrappingWidth: 400}},
+  sequence: {{useMaxWidth: true, mirrorActors: false, boxMargin: 8}},
+}});
 </script>
 </body></html>"""
 
