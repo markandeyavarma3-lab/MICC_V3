@@ -41,7 +41,7 @@ CSS = """
 * { box-sizing: border-box; }
 body {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 10.8pt; line-height: 1.45; color: #14181f; margin: 0;
+  font-size: 10.8pt; line-height: 1.40; color: #14181f; margin: 0;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
 }
 h1, h2, h3, h4 { font-family: "Helvetica Neue", Arial, sans-serif; color: #0d1117;
