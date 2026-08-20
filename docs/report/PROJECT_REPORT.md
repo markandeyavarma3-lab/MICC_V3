@@ -573,54 +573,22 @@ deleted and regenerated. Only the raw layer is precious.
 ### 5.2 The layers
 
 ```mermaid
-flowchart LR
-  subgraph EXT["SOURCES"]
-    NSE["NSE archive<br/>bulk.csv · block.csv<br/>WORKS — daily"]
-    NSEH["NSE historical API<br/>BLOCKED · 503"]
-    BSE["BSE deals API<br/>BLOCKED · 301"]
-  end
+flowchart TB
+  SRC["SOURCES · NSE archive WORKS, collected daily 20:00 IST<br/>NSE historical API BLOCKED 503 — BSE deals API BLOCKED 301"]
+  RAW["LAYER 1 · RAW ARCHIVE — BUILT, and never modified<br/>V1 seed: 11,276,328 rows · 1.2 GB · 2005–2026 · irreplaceable<br/>daily archive: gzip + SHA-256 + manifest, write-once, deduplicated"]
+  MART["LAYER 2 · MARTS — NOT YET BUILT, and rebuildable from raw<br/>security_master · symbol_history · sector_history<br/>institutional_deals · deal_forward_outcomes · seasonality_cell"]
+  GOV["LAYER 3 · GOVERNANCE — BUILT, append-only SQLite<br/>experiment_registry, locked by trigger · study_result<br/>artefact + artefact_edge, the provenance graph · trial_counter"]
 
-  subgraph RAW["LAYER 1 · RAW ARCHIVE — never modified · BUILT"]
-    SEED["V1 seed<br/>11,276,328 rows · 1.2 GB<br/>2005–2026 · irreplaceable"]
-    ARCH["Daily archive<br/>gzip + SHA-256<br/>write-once, deduplicated"]
-  end
-
-  subgraph MART["LAYER 2 · MARTS — rebuildable · NOT YET BUILT"]
-    SEC["security_master<br/>symbol_history<br/>sector_history"]
-    DEAL["institutional_deals<br/>raw → clean"]
-    OUT["deal_forward_outcomes<br/>what happened after"]
-    SEAS["seasonality_cell"]
-  end
-
-  subgraph GOV["LAYER 3 · GOVERNANCE — append-only SQLite · BUILT"]
-    REG["experiment_registry<br/>locked by trigger"]
-    RES["study_result"]
-    DAG["artefact + artefact_edge<br/>provenance graph"]
-    TC["trial_counter"]
-  end
-
-  NSE -->|"20:00 IST"| ARCH
-  NSEH -.-> ARCH
-  BSE -.-> ARCH
-  SEED --> SEC
-  ARCH --> DEAL
-  SEED --> DEAL
-  SEC --> DEAL
-  DEAL --> OUT
-  SEED --> SEAS
-  OUT --> RES
-  SEAS --> RES
-  REG --> RES
-  RES --> DAG
+  SRC --> RAW --> MART --> GOV
 
   classDef pending stroke-dasharray:5 4
-  class NSEH,BSE,SEC,DEAL,OUT,SEAS pending
+  class MART pending
 ```
 
-**How to read it.** A solid outline is something that exists and runs today. A
-dashed outline is something that does not — either an external source that
-refuses to answer, or a table designed on paper but never created. Each box says
-its own status; nothing is carried by colour.
+**How to read it.** A solid outline is a layer that exists and runs today; the
+dashed outline is the one that does not yet exist. Each box names its own status
+in words, so nothing depends on colour. Layer 2 is the gap: the tables are
+specified in detail in the plan, but none has been created.
 
 ### 5.3 Honest status of the warehouse
 
@@ -673,41 +641,32 @@ it.
 
 ### 6.1 Overview
 
-The system is a straight line in two halves. The first half turns a web page into
-a trustworthy table. The second half decides whether anything in that table is
-real. Nothing may skip a stage.
-
-**The data path — stages 1 to 4.**
-
-```mermaid
-flowchart LR
-  C["1 · COLLECTION<br/>part built<br/>cron 20:00 · 22:30 · 08:00 IST"]
-  S["2 · RAW STORAGE<br/>BUILT<br/>write-once + SHA-256<br/>V1 seed · 11.3M rows"]
-  I["3 · IDENTITY<br/>NOT BUILT<br/>participant name → company<br/>HFT rule: 95% same-day"]
-  M["4 · MARTS<br/>NOT BUILT<br/>DuckDB · 0 of 7 tables"]
-
-  C --> S --> I --> M
-
-  classDef pending stroke-dasharray:5 4
-  class I,M pending
-```
-
-**The decision path — stages 5 to 7, plus the side-car that polices them.**
+The system is a straight line with one side-car. The first four stages turn a web
+page into a trustworthy table. The last three decide whether anything in that
+table is real. Nothing may skip a stage, and the side-car freezes the question
+before the data is ever read.
 
 ```mermaid
 flowchart TB
-  R["5 · RESEARCH ENGINE — BUILT<br/>power · split · multiplicity · design"]
-  G1["6a · EVENT GATE — does the deal move the price at all?"]
-  G2["6b · PORTFOLIO GATE — does a real book holding it<br/>beat the same book without it?"]
-  O["7 · OUTPUT — PASS · FAIL · UNDERPOWERED<br/>decision record + provenance chain"]
-  GOV["GOVERNANCE SIDE-CAR — BUILT · append-only SQLite<br/>freezes the spec before any data is read"]
+  C["1 · COLLECTION — part built"]
+  S["2 · RAW STORAGE — BUILT · write-once + SHA-256"]
+  I["3 · IDENTITY — NOT BUILT · name → company, HFT rule"]
+  M["4 · MARTS — NOT BUILT · 0 of 7 tables"]
+  R["5 · RESEARCH ENGINE — BUILT · power, split, multiplicity, design"]
+  G1["6a · EVENT GATE — does the deal move the price?"]
+  G2["6b · PORTFOLIO GATE — does a real book beat one without it?"]
+  O["7 · OUTPUT — PASS · FAIL · UNDERPOWERED + provenance"]
+  GOV["GOVERNANCE SIDE-CAR — BUILT · freezes the spec first"]
 
-  R -->|"design approved"| G1
-  G1 -->|"passes"| G2
-  G2 --> O
+  C --> S --> I --> M --> R
+  R -->|"approved"| G1
+  G1 -->|"passes"| G2 --> O
   G1 -->|"fails"| O
-  GOV -.->|"locks the spec"| R
-  O -.->|"writes the result back"| GOV
+  GOV -.->|"locks spec"| R
+  O -.-> GOV
+
+  classDef pending stroke-dasharray:5 4
+  class I,M pending
 ```
 
 Stage 5 is the part that is finished, and it is four small modules, each asking
@@ -727,30 +686,22 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant A as Researcher
-  participant D as design.py
-  participant G as governance DB
-  participant S as split.py
-  participant P as power.py
-  participant R as Result
+  participant E as Research engine
+  participant G as Governance DB
 
-  A->>D: propose a study
-  D->>D: has it a mechanism?
-  D->>D: a prediction that could fail?
-  D->>P: what is the smallest<br/>effect we could detect?
-  P-->>D: MDE per horizon
-  D->>D: are ALL horizons blind?
-  Note over D: refuse if yes
-  D-->>A: design accepted
-  A->>G: register + lock spec
-  G-->>A: spec_hash frozen
-  A->>S: read EXPLORE data
-  Note over S: free · uncharged
-  A->>S: read CONFIRM data
-  S->>S: registered? used before?
-  S-->>A: allowed once only
-  A->>R: event gate
-  R->>R: portfolio gate
-  R->>G: write result + trial count
+  A->>E: propose a study
+  E->>E: has it a mechanism?
+  E->>E: a prediction that could fail?
+  E->>E: what is the smallest effect we could detect?
+  Note over E: refuse if every horizon is blind
+  E-->>A: design accepted
+  A->>G: register the study, freeze spec_hash
+  G-->>A: spec locked — it can no longer be edited
+  A->>E: read EXPLORE data (free, uncharged)
+  A->>E: read CONFIRM data
+  E-->>A: allowed once only
+  E->>E: event gate, then portfolio gate
+  E->>G: write result + trial count
   Note over G: append-only
 ```
 
