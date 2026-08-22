@@ -110,9 +110,61 @@ def run(env: str | None = None) -> list[Check]:
     ]
 
 
+def quality(env: str | None = None) -> list[Check]:
+    """Is the data SANE, not merely the right size?
+
+    ADDED 2026-08-23, after an audit asked what the gate actually proves. It
+    proved eight row counts and nothing about their contents — and the thing it
+    could not have caught is exactly what went wrong: the spine was built from
+    `stock_data` (raw) when `universe.yml` requires `research_prices: adjusted`,
+    and 17.1% of rows differ. A row count is identical either way.
+
+    Every threshold below is zero except the ones measured as legitimately
+    non-zero, and those carry the measured value rather than a round number, so
+    a regression moves them.
+    """
+    c = duckdb.connect()
+    c.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false;")
+    adj = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+
+    rows, nonpos_c, nonpos_o, hl, outside, negvol = c.execute(
+        f"""SELECT COUNT(*),
+              SUM(CASE WHEN close<=0 THEN 1 ELSE 0 END),
+              SUM(CASE WHEN open<=0 THEN 1 ELSE 0 END),
+              SUM(CASE WHEN high<low THEN 1 ELSE 0 END),
+              SUM(CASE WHEN close>high OR close<low THEN 1 ELSE 0 END),
+              SUM(CASE WHEN volume<0 THEN 1 ELSE 0 END)
+            FROM read_parquet('{adj}')"""
+    ).fetchone()
+    dupes = c.execute(
+        f"SELECT COUNT(*) FROM (SELECT symbol,date,COUNT(*) n FROM read_parquet('{adj}')"
+        f" GROUP BY 1,2 HAVING n>1)"
+    ).fetchone()[0]
+    crashes = c.execute(
+        f"""WITH x AS (SELECT close, LAG(close) OVER (PARTITION BY symbol ORDER BY date) p
+                       FROM read_parquet('{adj}'))
+            SELECT SUM(CASE WHEN close/p < 0.1 THEN 1 ELSE 0 END) FROM x WHERE p>0"""
+    ).fetchone()[0]
+
+    return [
+        Check("adj_nonpositive_close", 0, nonpos_c),
+        Check("adj_nonpositive_open", 0, nonpos_o),
+        Check("adj_high_below_low", 0, hl),
+        Check("adj_close_outside_hl", 0, outside),
+        Check("adj_negative_volume", 0, negvol),
+        Check("adj_duplicate_symbol_date", 0, dupes),
+        Check(
+            "adj_extreme_drops", 73, crashes,
+            "single-session falls below 0.1x. The RAW spine has 149; adjustment "
+            "halves them because most are unadjusted splits. A rise here means "
+            "corporate actions stopped being applied",
+        ),
+    ]
+
+
 def main() -> int:
     print("PHASE 1 RECONCILIATION GATE  (Plan 1 §3.4, tolerance 0)")
-    checks = run()
+    checks = run() + quality()
     for chk in checks:
         print(chk.render())
 

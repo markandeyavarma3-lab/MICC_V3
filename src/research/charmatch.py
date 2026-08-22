@@ -168,11 +168,20 @@ def build_panel(env: str | None = None, buckets: int = 5) -> PanelResult:
     conditional on the first and the cells would stop being comparable across
     dates as the cross-sectional distribution moved.
     """
-    spine = str(warehouse_dir(env) / "price_spine" / "**" / "*.parquet")
-    if not list((warehouse_dir(env) / "price_spine").glob("**/*.parquet")):
+    # THE ADJUSTED SPINE, NOT THE RAW ONE. `universe.yml` sets
+    # `research_prices: adjusted`, and this module computes momentum and
+    # volatility — both of which are RETURNS, and a return on raw prices reads a
+    # 1:2 split as -50%.
+    #
+    # CORRECTED 2026-08-23. The first version read `price_spine` (raw), so every
+    # quintile the panel assigned was contaminated by unadjusted corporate
+    # actions, and so was every measurement built on it.
+    spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+    if not list((warehouse_dir(env) / "price_spine_adj").glob("**/*.parquet")):
         raise CharMatchError(
-            "no price spine. Run `python -m src.warehouse.spine` first — the "
-            "panel is derived from it and cannot be built without it."
+            "no ADJUSTED price spine. Run `python -m src.warehouse.spine` first. "
+            "The raw spine is not a substitute: research_prices is `adjusted` in "
+            "universe.yml, and raw and adjusted differ on 17.1% of rows."
         )
 
     con = duckdb.connect()
