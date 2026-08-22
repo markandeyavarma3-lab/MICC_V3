@@ -1,7 +1,7 @@
 # Institutional Behaviour Research Platform — Project Report
 
 **Author:** Markandeya Varma
-**Date:** 18 August 2026
+**Date:** 23 August 2026
 **Repositories:** `MICC` (V1) · `MICCV2` (V2) · `institutional-research` (V3, current)
 
 ---
@@ -25,11 +25,10 @@ first two were stopped, and what the current version is doing.
 I want to say clearly at the start what the honest position is, because the rest
 of the report only makes sense with this in view:
 
-> **The system has not found a way to make money. Two versions have been built
-> and stopped. The current version is about 15% built. The most likely outcome,
-> based on everything measured so far, is that the answer is "there is no usable
-> edge here" — and the project is now deliberately designed so that it can say
-> that clearly instead of avoiding it.**
+> **The system has not found a way to make money.** Two versions have been built
+> and stopped. The third is about a quarter built. On everything measured so far
+> the likely answer is *"there is no usable edge here"* — and this version is
+> built so that it can say so plainly instead of avoiding it.
 
 That may read like failure. I would argue it is the opposite. The first two
 versions could not have told me they were failing, and that is why they ran for
@@ -54,7 +53,9 @@ report is about why.
 ### 1.2 Reading this report
 
 All numbers in this report were measured from the actual repositories and data on
-17–18 August 2026. Nothing is estimated. Where a number is uncertain I say so.
+17–23 August 2026, and re-measured against the rebuilt warehouse on 22–23
+August where that changed the answer. Nothing is estimated. Where a number is
+uncertain I say so.
 Git commit hashes are given so any claim can be checked.
 
 ---
@@ -70,10 +71,10 @@ to be the entire subject.
 
 ### 2.2 The intellectual reason
 
-Financial markets produce enormous amounts of data, and almost all patterns found
-in that data are false. If you test ten thousand ideas against past prices, some
-of them will look brilliant purely by chance. This is not a small problem or a
-technicality. It is the central problem of the field.
+Financial markets produce enormous amounts of data, and almost every pattern
+found in that data is false. Test ten thousand ideas against past prices and some
+will look brilliant purely by chance. This is not a technicality. It is the
+central problem of the field.
 
 The professional literature has developed real tools for this — pre-registration,
 multiple-testing corrections, out-of-sample testing, power analysis. Most amateur
@@ -246,11 +247,11 @@ and why V3 is designed the way it is.
 
 | Measure | Value |
 |---|---|
-| Commits | 30 |
+| Commits | 31 |
 | Period | 16 August 2026 → present |
-| Python code | 5,105 lines |
-| Tests | 246, all passing |
-| Decision records | 28 |
+| Python code | 6,243 lines |
+| Tests | 325, all passing |
+| Decision records | 35 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -261,8 +262,8 @@ the rest of this report.
 |---|---|---|---|
 | Duration | 11 days | 34 days | ongoing |
 | Commits | 67 | 107 | 30 |
-| Lines of Python | 23,172 | 35,762 | 5,105 |
-| Tests | — | 375 | 246 |
+| Lines of Python | 23,172 | 35,762 | 6,243 |
+| Tests | — | 375 | 325 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -314,30 +315,72 @@ pattern and a flow series are genuinely different.
 
 ### 4.3.1 Track D — the four deal studies
 
-The deal track comes down to four questions.
+Four studies are registered. They run in the order below, which is descending
+order of how much each is expected to be worth.
 
-**Study 1 — Do institutional buys predict anything?**
-When an institution buys, does the share beat comparable shares over the next
-1, 2, 3, 5, 10 or 21 trading days?
+| # | Study | The question | Events |
+|---|---|---|---:|
+| 1 | **Consensus** | Do three or more unrelated institutions buying the same share within 21 days predict outperformance? | 10,098 |
+| 2 | **Selling** | Do disclosed institutional sales predict underperformance? | 34,270 |
+| 3 | **Block deals** | Do negotiated blocks behave differently from ordinary bulk deals? | 12,430 |
+| 4 | **Bulk buys** | The original premise, run properly | 30,771 |
 
-**Study 2 — Do institutional sells predict anything?**
-The same question for selling. There is a reason to think selling is more
-informative: institutions buy for many reasons (money coming in, index tracking,
-rebalancing) but sell for fewer. 34,270 sell events have never been examined.
+**Why this order.** Consensus is the statistically strongest. Judging a single
+institution is hopeless — one large fund has 80 buys in twenty years, and at that
+count skill and luck cannot be told apart. A convergence of several institutions
+needs no individual one of them to be clever.
 
-**Study 3 — Does agreement between institutions mean more?**
-When three or more different institutions buy the same share within 21 days, is
-that stronger than one institution buying? 10,098 such events exist.
+Selling comes next because 34,270 events have never been examined, and there is a
+reason to expect more from them: institutions buy for many reasons — money coming
+in, index tracking, rebalancing — but they sell for fewer.
+
+Blocks are the cleanest data in the project, but there are only about 620 a year.
+
+Bulk buys come last because they already look dead, at t ≈ −0.8. The study exists
+to close that honestly rather than leave it informally dismissed.
+
+**Study 4 carries a disclosure.** An exploratory pass over bulk buys was run on
+16 August 2026, before registration. The registry records that it happened and
+what it found. A registration that hides an earlier look is not a registration.
+
+**Only one of the four is on the critical path.** The schedule in §9.4
+guarantees a single study through both gates; the other three are extensions,
+and §9.4 fixes in advance the order they are dropped in.
+
+**Study 1, Consensus, is the one on the critical path** (decision 0031, 23
+August). Selling, Blocks and Bulk buys are extensions in that order, with Selling
+leading them.
+
+That had never actually been decided until now — only implied, and implied two
+different ways. The plan's critical-path row said "one outcome study" without
+naming it; its numbering implied Consensus; and this report said Selling, which
+came from reading the plan's note "institutional selling first" as *first study*
+rather than *first among the extensions*. An audit of this report on 22 August
+found the contradiction, and a grep of every decision record confirmed that none
+of them resolved it.
+
+It was settled on the reasoning already attached to the ranking: Consensus is the
+only one of the four whose power does not depend on any single institution being
+good. The cost is accepted rather than argued away — **Selling is the largest
+unexamined block of evidence in the project, and it does not run on the critical
+path.**
+
+The ordering is, for the moment, academic. Every short horizon sits below its
+detection floor, and the design gate refuses to register a study whose horizons
+are all blind. Only the twelve-month horizon can conclude, and only by 5% (§8.2),
+so no study runs until that margin is shown to survive. 0031 settles *which*
+study, not *when*.
 
 ### 4.3.2 Track S — the search track, and the 31.9 million combinations
 
 This is half the project, and it is the half where it is easiest to fool
 yourself.
 
-**What the 31.9 million are.** A "calendar pattern" is a question of the form:
-*does this share tend to rise during a particular stretch of the year?* Each one
-is a combination of a window length, a starting point in the calendar, and a
-company:
+**What the 31.9 million are.** A "calendar pattern" asks one question: *does this
+share tend to rise during a particular stretch of the year?* Each pattern is one
+combination of three things — how long the stretch is, where in the calendar it
+starts, and which company it applies to. Multiplying those out is where the
+number comes from:
 
 ```
 13 window lengths  ×  242 starting points  ×  4,200 companies  =  13.2 million
@@ -559,8 +602,8 @@ the conclusion is written up as a negative result and the project stops.
 ### 5.1 Design principles
 
 **Raw data is never changed or deleted.** Files are downloaded, hashed, stored
-compressed, and never touched again. If a file is understood wrongly, it can be
-re-read later. V2 stored nothing raw and had 1.2 GB of data it could not re-derive.
+compressed, and never touched again. If one is read wrongly today, it can be read
+again tomorrow. V2 kept nothing raw, so its 1.2 GB could never be re-derived.
 
 **Every day not collected is lost forever.** The exchange publishes today's deals
 at one web address, and replaces it tomorrow. The historical service returns an
@@ -572,30 +615,35 @@ deleted and regenerated. Only the raw layer is precious.
 
 ### 5.2 The layers
 
+Data moves in one direction through three layers.
+
 ```mermaid
-flowchart TB
-  SRC["SOURCES · NSE archive WORKS, collected daily 20:00 IST<br/>NSE historical API BLOCKED 503 — BSE deals API BLOCKED 301"]
-  RAW["LAYER 1 · RAW ARCHIVE — BUILT, and never modified<br/>V1 seed: 11,276,328 rows · 1.2 GB · 2005–2026 · irreplaceable<br/>daily archive: gzip + SHA-256 + manifest, write-once, deduplicated"]
-  MART["LAYER 2 · MARTS — NOT YET BUILT, and rebuildable from raw<br/>security_master · symbol_history · sector_history<br/>institutional_deals · deal_forward_outcomes · seasonality_cell"]
-  GOV["LAYER 3 · GOVERNANCE — BUILT, append-only SQLite<br/>experiment_registry, locked by trigger · study_result<br/>artefact + artefact_edge, the provenance graph · trial_counter"]
-
-  SRC --> RAW --> MART --> GOV
-
+flowchart LR
+  SRC["SOURCES"] --> RAW["LAYER 1<br/>RAW ARCHIVE"] --> MART["LAYER 2<br/>MARTS"] --> GOV["LAYER 3<br/>GOVERNANCE"]
   classDef pending stroke-dasharray:5 4
   class MART pending
 ```
 
-**How to read it.** A solid outline is a layer that exists and runs today; the
-dashed outline is the one that does not yet exist. Each box names its own status
-in words, so nothing depends on colour. Layer 2 is the gap: the tables are
-specified in detail in the plan, but none has been created.
+*A solid box exists and runs today. The dashed box does not exist yet.*
+
+| Layer | What it holds | Status |
+|---|---|---|
+| Sources | The exchange's daily file, fetched at 20:00 IST | working |
+| **1 · Raw archive** | Every file as downloaded — compressed, hashed, never changed | **built** |
+| **2 · Marts** | The seven clean tables the studies would read | **not built** |
+| **3 · Governance** | Registered studies, results, and the provenance trail | **built** |
+
+Layer 2 is the gap. The tables are specified in the plan down to the column, but
+none has been created.
 
 ### 5.3 Honest status of the warehouse
 
 | Layer | Designed | Built | Note |
 |---|---|---|---|
 | Raw archive | yes | **yes** | 9 files captured so far (3 report types × 3 sessions); 48 KB |
-| V1 seed carried across | yes | **no** | still sits in the V2 folder, not copied |
+| V1 seed carried across | yes | **yes** | 2.47 GB carried 22 Aug, every file hash-verified (decision 0027) |
+| Price + F&O spines | yes | **yes** | 7,749,148 and 174,272,768 rows; Phase 1 gate passes 9/9 exact |
+| Provenance DAG | yes | **yes** | commissioned 22 Aug — 9 artefacts, live lineage (was 0 rows for five days) |
 | Marts | yes | **no** | 0 of 7 tables exist as real schemas |
 | Governance | yes | **yes** | 9 tables, live and enforcing |
 
@@ -605,23 +653,54 @@ prose in a document, not as a database.
 
 ### 5.4 Two data problems found by measurement
 
-These were found on 17 August 2026 by running real queries. Both are serious and
-neither was in the plan.
+These were found by running real queries. Both are serious and neither was in the
+plan.
 
-**Problem 1 — one third of deals cannot be matched to a price.**
+**Problem 1 — 8% of deals refer to shares with no price history at all.**
 
-Of 25,097 institutional buy events, only 16,517 could be linked to price data:
+Measured against the rebuilt price spine on 22 August:
 
-| Reason | Events | Share |
-|---|---|---|
-| Company not in the price database at all | 5,080 | 20.2% |
-| Deal happened before price coverage begins | 1,808 | 7.2% |
-| Deal happened after price coverage ends | 83 | 0.3% |
-| Price data exists but not for that exact day | 1,609 | 6.4% |
-| **Successfully matched** | **16,517** | **65.8%** |
+| | Rows | Share |
+|---|---:|---:|
+| Deal rows, bulk and block | 235,880 | |
+| Match a symbol in the price spine | 215,349 | 91.30% |
+| Rights entitlements, already out of the universe | 1,401 | |
+| **Unresolved** | **19,130** | **8.16%** |
 
-The plan sets a 5% limit for unmatched records. The reality is 34.2% — seven
-times over. Every result computed so far uses only the surviving two thirds.
+The first measurement of this, on 17 August, put the failure at 34.2% and the
+plan explained it as **naming mismatches** — the same company under two symbols —
+which the identity layer would repair. Re-measured against the real spine, both
+halves of that turned out to be wrong.
+
+The rate is far lower than 34.2%. But of the 680 symbols behind it:
+
+- **0 can be recovered by matching on ISIN.**
+- **1 is known to any identity master the project holds.**
+
+**There is nothing to map them to.** The identity layer cannot convert these
+events, because conversion needs a target that does not exist.
+
+**What they are was not established.** 634 of the 680 first appear in 2018 or
+later, and the names — One Click Logistics, Bright Solar, MOS Utility — look like
+small-company listings on the SME platforms, which the spine does not cover. That
+explanation is consistent with everything measured and **could not be confirmed**:
+the seed holds no NSE SME master to check against. So the decision rests on
+coverage, which is proven, not on the explanation, which is not.
+
+**The decision (0032): they leave the universe.** An event on a share with no
+price series has no forward return to measure, whatever the reason for the gap.
+They are excluded, flagged, and **reported as an explicit exclusion count beside
+every study rather than silently dropped**.
+
+Two costs are accepted and must be stated wherever the gate is quoted:
+
+1. **The under-5% gate now passes by exclusion, not by resolution.** A gate that
+   passes because the failing rows were removed is not making the same claim as
+   one that passes because they were fixed.
+2. **The excluded events are not random.** They concentrate in small, recently
+   listed companies, so this is now explicitly a mainboard universe and any
+   finding generalises only there — and small-company institutional activity is
+   exactly where an edge is most plausible.
 
 **Problem 2 — there is no historical industry classification.**
 
@@ -641,44 +720,54 @@ it.
 
 ### 6.1 Overview
 
-The system is a straight line with one side-car. The first four stages turn a web
-page into a trustworthy table. The last three decide whether anything in that
-table is real. Nothing may skip a stage, and the side-car freezes the question
-before the data is ever read.
+The system is a straight line with one side-car. Nothing may skip a stage.
+
+**First, the data path.** Four stages turn a web page into a trustworthy table.
 
 ```mermaid
-flowchart TB
-  C["1 · COLLECTION — part built"]
-  S["2 · RAW STORAGE — BUILT · write-once + SHA-256"]
-  I["3 · IDENTITY — NOT BUILT · name → company, HFT rule"]
-  M["4 · MARTS — NOT BUILT · 0 of 7 tables"]
-  R["5 · RESEARCH ENGINE — BUILT · power, split, multiplicity, design"]
-  G1["6a · EVENT GATE — does the deal move the price?"]
-  G2["6b · PORTFOLIO GATE — does a real book beat one without it?"]
-  O["7 · OUTPUT — PASS · FAIL · UNDERPOWERED + provenance"]
-  GOV["GOVERNANCE SIDE-CAR — BUILT · freezes the spec first"]
-
-  C --> S --> I --> M --> R
-  R -->|"approved"| G1
-  G1 -->|"passes"| G2 --> O
-  G1 -->|"fails"| O
-  GOV -.->|"locks spec"| R
-  O -.-> GOV
-
+flowchart LR
+  C["1 · COLLECT"] --> S["2 · STORE"] --> I["3 · IDENTITY"] --> M["4 · MARTS"]
   classDef pending stroke-dasharray:5 4
   class I,M pending
 ```
+
+**Then, the research path.** Three stages decide whether anything in that table
+is real. A finding must pass both gates; failing the first sends it straight to
+the verdict.
+
+```mermaid
+flowchart LR
+  R["5 · RESEARCH<br/>ENGINE"] --> G1{"6a · EVENT<br/>GATE"}
+  G1 -->|"pass"| G2{"6b · PORTFOLIO<br/>GATE"}
+  G2 --> O["7 · VERDICT"]
+  G1 -->|"fail"| O
+```
+
+*Dashed boxes are not built yet. Governance sits beside all of this: it freezes
+the question before stage 5 is allowed to read any data.*
+
+| Stage | What it does | Status |
+|---|---|---|
+| 1 · Collect | Fetch today's file from the exchange | part built |
+| 2 · Store | Write it once, hash it, never touch it again | **built** |
+| 3 · Identity | Work out which company a name refers to | not built |
+| 4 · Marts | Turn raw files into clean tables | not built |
+| 5 · Research engine | Decide whether a study may run at all | **built** |
+| 6a · Event gate | Did the deal move the price? | design done |
+| 6b · Portfolio gate | Does a real book beat the same book without the rule? | design done |
+| 7 · Verdict | PASS, FAIL, or UNDERPOWERED — with its provenance | design done |
+| Governance | Freezes the question before the data is read | **built** |
 
 Stage 5 is the part that is finished, and it is four small modules, each asking
 one question that V2 never asked:
 
 ```mermaid
-flowchart LR
-  R(["RESEARCH<br/>ENGINE"])
-  R --- P["power.py — could we even see it if it were there?"]
-  R --- SP["split.py — is this exploring, or confirming?"]
-  R --- MU["multiplicity.py — how many things did we already try?"]
-  R --- DE["design.py — is this study allowed to run at all?"]
+flowchart TB
+  R(["5 · RESEARCH ENGINE"])
+  R --- P["power.py<br/>could we see it?"]
+  R --- SP["split.py<br/>explore or confirm?"]
+  R --- MU["multiplicity.py<br/>how many tried?"]
+  R --- DE["design.py<br/>may it run at all?"]
 ```
 
 ### 6.2 How a study flows through the system
@@ -686,24 +775,30 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant A as Researcher
-  participant E as Research engine
-  participant G as Governance DB
+  participant E as Engine
+  participant G as Governance
 
   A->>E: propose a study
-  E->>E: has it a mechanism?
-  E->>E: a prediction that could fail?
-  E->>E: what is the smallest effect we could detect?
-  Note over E: refuse if every horizon is blind
   E-->>A: design accepted
-  A->>G: register the study, freeze spec_hash
-  G-->>A: spec locked — it can no longer be edited
-  A->>E: read EXPLORE data (free, uncharged)
-  A->>E: read CONFIRM data
-  E-->>A: allowed once only
-  E->>E: event gate, then portfolio gate
-  E->>G: write result + trial count
-  Note over G: append-only
+  A->>G: register it
+  G-->>A: spec locked
+  A->>E: explore (free)
+  A->>E: confirm (once only)
+  E->>G: write the verdict
 ```
+
+**The seven steps in words.**
+
+1. **Propose.** The researcher describes a study.
+2. **Check the design.** The engine asks for a mechanism, a prediction that could
+   fail, and the smallest effect the data could detect. If every horizon is
+   blind, it refuses.
+3. **Register.** The hypothesis and the pass mark go into the database.
+4. **Lock.** A database trigger refuses any later edit to them.
+5. **Explore.** 30% of the data may be looked at freely, at no cost.
+6. **Confirm.** The 50% held back may be read once, enforced by code.
+7. **Record.** The verdict and the number of things tried are written down, to a
+   table that only ever appends.
 
 ### 6.3 Why the architecture looks like this
 
@@ -726,7 +821,7 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 246 automated tests, all passing.
+This is the substantial achievement so far. 325 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
@@ -736,6 +831,19 @@ This distinction did not exist in V2.
 **Data split (`split.py`, 341 lines).** Divides companies into three groups by a
 mathematical hash of their ISIN code. Exploration is free; confirmation is
 enforced by code that raises an error.
+
+**A boundary in this rule was undefined until 23 August.** An audit of that day's
+own work found it had never consulted the split at all — roughly a dozen
+measurements ran across the whole corpus, confirmation names included. It was
+legitimate: everything computed was *dispersion* — how noisy the data is — and
+never an effect, and the detectability calculation a study must produce before it
+may exist has to describe the universe the study will run on, not 30% of it.
+
+But it came out clean by recollection, in a project whose entire argument is that
+discipline must be mechanical rather than remembered. Decision 0035 draws the
+line explicitly: **anything that could change a belief about the hypothesis goes
+through the guard and charges its family; anything that only describes the noise
+does not.** It is written down now because nothing enforced it before.
 
 The choice of ISIN rather than company symbol was driven by measurement:
 
@@ -771,7 +879,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Twenty-eight decision records, each recording what was decided, by whom, why, **what
+Thirty-five decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -815,9 +923,9 @@ attempts to kill it:
 nothing.
 
 **This is the most valuable thing learned so far.** Every statistic in the event
-study was correct and pointed the same way. The study was still useless. Only
-building the actual portfolio revealed it. **An event study is not a strategy
-test**, and the gap between them is not a technicality.
+study was correct. Every one pointed the same way. The study was still useless,
+and only building the actual portfolio showed it. **An event study is not a
+strategy test.** The gap between the two is where most amateur work dies.
 
 Under V2's design this would have been recorded as a success.
 
@@ -848,12 +956,13 @@ compressed, hashed, never overwritten, and duplicates are detected.
 Sessions captured so far: 17, 18, 20 August — **19 August is missing**, with no
 record in the manifest of an attempt. The cause has not yet been diagnosed.
 
-### 7.6 Four errors of my own, found by verification
+### 7.6 Five errors of my own, found by verification
 
 On 18 August I was asked simply *"are you sure about the whole thing?"* Checking
-found four errors in work committed within the previous day. I record them
-because a report listing only successes is not a report, and because how they
-were found matters more than that they existed.
+found four errors in work committed within the previous day. A fifth, of the same
+kind, was found on 23 August. I record them because a report listing only
+successes is not a report, and because how they were found matters more than that
+they existed.
 
 **Error 1 — a statistic that measured itself.** I reported that removing the
 market's overall movement from returns made stocks statistically independent, and
@@ -880,6 +989,24 @@ how strong evidence must be had two independent faults, and both made results
 
 Corrected, the bar for the deal track rises from t = 3.62 to **t = 3.71**. The
 one completed experiment still clears it, so **no recorded verdict changes.**
+
+**Error 5 — the correction for overlapping windows did not reach far enough.**
+Found on 23 August. When the same tool corrects for observations that overlap in
+time, it chose how far back to look using a standard rule that depends only on
+*how many* observations there are — and knows nothing about how far each one
+reaches forward. This project is built almost entirely on overlapping windows: a
+twelve-month return measured every month shares eleven twelfths of its window
+with the next one.
+
+On a 252-session label the rule looked back 9 periods against a true overlap of
+252, and **understated the inflation fivefold**. Two results reported as POWERED
+on 22–23 August were artefacts of it, and both fail once the correction reaches
+the full overlap. The fix makes the look-back at least as long as the label.
+
+It is the same shape as errors 3 and 4 — every one of these five made results
+*easier* to pass, never harder. That is not chance. An error that makes a finding
+harder to obtain gets investigated immediately, because it looks like a bug; one
+that makes a finding easier looks like a result.
 
 **Why they survived 146 tests.** The tests compared the tool against *its own
 output*, pinned as expected values. A test asserting that code agrees with itself
@@ -921,7 +1048,12 @@ comparing against companies of similar volatility, and it was that tighter
 comparison that provided the sensitivity — not the effect being robust to any
 comparison.
 
-### 8.2 The question that affected everything, now answered
+**The "Conclusion" column above is superseded.** It compares each horizon against
+a single fixed threshold, and §8.2 explains why that comparison was the wrong one.
+The table is kept because it is what the measurement said at the time and because
+the sign flip it shows is unaffected.
+
+### 8.2 The question that affected everything, and what answering it exposed
 
 The system judges whether a study is worth running by comparing what it can
 detect against what size of effect is realistic. That threshold was a single
@@ -932,36 +1064,54 @@ monthly threshold is a units error.
 Which fix applies turned on how the effect behaves:
 
 - **If a disclosure causes a single one-off price adjustment**, a fixed threshold
-  is right and the table above stands.
+  is right.
 - **If institutions have persistent skill that accrues over time**, the threshold
-  must scale with the horizon — and then **every row in the table becomes
-  undetectable**, including the two marked otherwise.
+  must scale with the horizon.
 
-**The owner chose the second on 21 August 2026** (decision 0028, closing the open
-defect 0018). An informed institution does not earn its whole edge in the first
-session and stop. The threshold now scales, and the consequence is accepted
-rather than argued around:
+**The owner chose the second on 21 August** (decision 0028). An informed
+institution does not earn its whole edge in the first session and stop. Every
+short horizon then went blind, and the design gate refuses to register a study
+where that is true of all of them.
 
-| horizon | detectable effect | scaled threshold | verdict |
+**That choice quietly invalidated an earlier one, and it took two days to
+notice.** Decision 0004 had dropped every horizon beyond 21 sessions, reasoning
+that at 12 months the detectable effect was already 7.38% against a bound of
+0.50% — so longer could only be more hopeless. That arithmetic was right *under a
+fixed bound*. Once the bound scales, it inverts: **the detectable effect grows
+with the square root of the horizon, while the bound grows in proportion to it.**
+Longer horizons get easier, not harder. Decision 0028 had made the long horizons
+viable and dropped them in the same breath.
+
+Re-measured on 23 August — 17,988 eligible buys, round trips and high-frequency
+participants removed, with the serial-correlation fix of §7.6 applied:
+
+| horizon | detectable effect | scaled bound | verdict |
 |---|---:|---:|---|
-| 1 session | 0.191% | 0.024% | **undetectable** |
-| 5 sessions | 0.423% | 0.119% | **undetectable** |
-| 10 sessions | 0.660% | 0.238% | **undetectable** |
-| 21 sessions | 0.968% | 0.500% | **undetectable** |
+| 21 sessions (1 month) | 0.8403% | 0.50% | 1.68× short |
+| 63 sessions (3 months) | 1.8506% | 1.50% | 1.23× short |
+| **252 sessions (12 months)** | **5.7273%** | **6.00%** | **within reach** |
 
-Every horizon in the primary grid is now blind, and the design gate refuses to
-register a study where that is true of all of them. This is not a setback — it is
-the machinery reporting that the data cannot answer the question at the
-resolution being asked, which is *silence, not a negative result*.
+**Twelve months is now the primary horizon** (decision 0034); the session grid is
+kept as robustness with its underpowered verdicts intact. It is the only horizon
+in the entire grid that can reach a conclusion, and a project that cannot
+conclude anywhere has no path to a result at all.
 
-The route forward is to raise power rather than lower the bar. Characteristic
-matching alone cut dispersion 8.55% → 5.91% and the detection floor 1.52% →
-1.05% on a single dimension, so it moves from being a control to being a
-precondition for any study worth registering.
+**It must not be read as comfortable.** The margin is 5%. It depends on a
+judgement call about how far the serial-correlation correction should reach — at
+a more conservative setting the same measurement comes out 1.01× short, which is
+to say *failing*. It has not yet faced its confound checklist. Twelve-month
+outcomes also mature slowly: events after August 2025 have no complete window, so
+the usable events stop roughly a year before the data does and the most recent
+market regime is invisible to the primary horizon.
 
-The convenient answer was the first one, and it was rejected. Adopting the
-interpretation that licenses your own conclusions is the failure this project
-exists to prevent.
+And the claim itself is weaker than the one the project set out to test. "An
+effect that takes a year to appear" is a materially smaller thing than "a
+disclosure moves the price", even if it clears statistically.
+
+The convenient answer at each step was the other one, and it was rejected each
+time. Adopting the interpretation that licenses your own conclusions is the
+failure this project exists to prevent — and 0004 surviving two days past its own
+invalidation is a reminder that the machinery does not catch this by itself.
 
 ---
 
@@ -975,8 +1125,9 @@ exists to prevent.
 | Discipline framework | **built** |
 | Daily capture (basic) | **built** |
 | Trading calendar | not built |
-| V1 data copied into the project | **not done** |
-| Reconciliation check | **never run** |
+| V1 data copied into the project | **done** — 22 Aug, every file hash-verified |
+| Price and F&O spines | **built** — 7.7M and 174.3M rows |
+| Reconciliation check | **passes, 9 of 9 exact** |
 | Full collector | not built |
 | Company identity matching | not built |
 | Institution name normalisation | not built |
@@ -988,27 +1139,40 @@ exists to prevent.
 | **Track S — calendar scan** | **not built** |
 | **Track S — signal combinations** | **not built** |
 | **Track S — the procedure test** | **not built** |
-| Provenance graph populated | **0 rows** |
+| Provenance graph populated | **9 artefacts, 16 edges** |
 
-**Seven of seven core data tables do not exist, and all seven Track S modules
-are unwritten.** The project folder currently
-holds 48 KB of data.
+**Seven of seven marts still do not exist, and all seven Track S modules are
+unwritten.** What did land on 22 August is the layer beneath them: 4.5 GB of
+verified data, two spines, and a provenance trail that was empty for its first
+five days.
 
-**About 15% of the system is built**, and the completed portion is the framework
-rather than the research machinery.
+**Roughly a quarter of the system is built.** The completed portion is the
+framework and the raw layer — not the research machinery, which is the part that
+would actually answer the question.
 
-### 9.2 Three things in the plan that cannot be built as written
+### 9.2 Three things in the plan that could not be built as written
 
 **1. No historical industry data (Section 5.4).** The plan's main comparison
 method needs it. It covers 33.7% of companies and is a single 2026 snapshot.
 There is no known source. **This is a genuine blocker, not a task.**
 
-**2. Company matching is unspecified.** The plan sets a 5% limit and gives no
-method for reaching it. Measured reality is 34.2%.
+**2. Company matching, now measured and decided.** The plan set a 5% limit and
+gave no method for reaching it. Measured against the rebuilt spine the failure is
+8.16%, and none of it is repairable — the shares have no price history anywhere in
+the project. Decision 0032 excludes them, so the gate passes by exclusion rather
+than resolution (§5.4). This is no longer an open problem, but the resolution
+narrows the universe rather than fixing the data.
 
 **3. The seasonality rescan has no time estimate.** "About three weeks" is an
 assertion; no single unit of the calculation has ever been timed, and a later
 decision roughly quadrupled the work.
+
+A fourth has appeared since. **Phase 3, the identity layer, was sized at four
+weeks on the premise that it would recover the unmatched events.** Decision 0032
+established there is nothing to recover, so the phase keeps its other jobs —
+point-in-time sectors, participant classification, delisting and merger handling
+— but the four weeks were costed against work that no longer exists and have not
+been re-cut.
 
 ### 9.3 Risks
 
@@ -1043,10 +1207,10 @@ The fix is not a better estimate. It is deciding **in advance** what gets cut.
 |---|---:|---|
 | Warehouse and reconciliation | 3 | 7 Sep 2026 |
 | Collection *(reduced — the daily capture already runs)* | 1 | 14 Sep 2026 |
-| Identity layer *(where the 34.2% matching failure lives)* | 4 | 12 Oct 2026 |
+| Identity layer *(4 weeks, now due a re-cut — §9.2)* | 4 | 12 Oct 2026 |
 | Clean data mart | 2 | 26 Oct 2026 |
 | Costs and benchmarks | 2 | 9 Nov 2026 |
-| **One** outcome study | 2 | **23 Nov 2026** |
+| **One** outcome study — Consensus | 2 | **23 Nov 2026** |
 
 This lands one week inside the checkpoint, with **13.9 weeks of buffer** — 36%
 overrun tolerance in place of 6%.
@@ -1062,7 +1226,7 @@ is worth more than four half-answered.
 | Extension | Weeks | Cut order |
 |---|---:|---|
 | Re-run the first experiment reproducibly | 0.2 | last |
-| Studies 2–4 | 3 | |
+| The other three deal studies | 3 | |
 | The search track | 4 | |
 | Seasonality | 1 | |
 | Monitoring and automated reports | 2 | **first** |
@@ -1084,6 +1248,23 @@ check and expensive to regenerate.
 **Honest limit.** This makes the deadline survivable for the thing that matters —
 one answer by the checkpoint — but not for everything. Running the full extension
 list still misses a 25% overrun by 2.4 weeks. That is what the cut order is for.
+
+**Where the schedule has actually got to.** A plan-versus-actual check on 23
+August found three separate drifts, and none of them is visible from the phase
+table alone:
+
+- **Phase 1 finished about two weeks early.** That is the buffer's only real
+  contribution so far.
+- **Phases 2′ and 3 are untouched, while parts of 4 and 5 were built ahead of
+  them.** Eligibility filtering and characteristic matching exist because the
+  detectability question demanded them, not because the plan ordered them. Work
+  done out of order is still work done, but it means the phase table overstates
+  how much of the *sequence* has been completed.
+- **Phase 3 still carries its four-week estimate**, whose justification decision
+  0032 removed (§9.2). Nobody has re-cut it.
+
+So the critical path is not behind, but it is not on the track the table
+describes either.
 
 | Date | Milestone |
 |---|---|
@@ -1127,11 +1308,14 @@ documented, reproducible finding about Indian institutional behaviour, with its
 provenance recorded. Whether that would be worth trading is a separate question
 requiring capital, execution and risk management that do not exist here.
 
-**Based on the evidence so far I would put the probability of a tradable finding
-below 20%.** The signals point the wrong way: the effect reverses across
-horizons, most bulk-deal activity is market-making rather than investment, the
-one completed experiment failed, and the detectability question in Section 8.2
-may render the whole range unusable.
+**On the evidence so far I would put the chance of a tradable finding below
+20%.** Four things point the wrong way:
+
+- The effect reverses across horizons — up on day one, down by day 21.
+- Most bulk-deal activity is market-making, not investment.
+- The one completed experiment failed.
+- Every short horizon is below its detection floor, leaving one twelve-month
+  horizon that clears its own bound by 5% and has faced no confound checks (§8.2).
 
 ### 10.4 The most likely honest outcome
 
@@ -1153,20 +1337,22 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 246 tests that enforces honest research
+- A discipline framework with 325 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Twenty-eight decision records with reversal conditions
+- Thirty-five decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
-  market-making contamination, a 34.2% matching failure, and a missing industry
-  history
+  market-making contamination, an 8.16% unresolvable share of the deal corpus,
+  and a missing industry history
 
 ### 11.2 What has not been achieved
 
 - **No validated finding.** Zero results have passed both gates.
 - **No profitable strategy.** V2 promoted zero strategies in five weeks.
-- **The V3 system is ~15% built.** No core data table exists.
+- **The V3 system is roughly a quarter built.** No mart exists, and no study
+  has been run on the data now carried in.
 - **Two plan components have no data source.**
-- **One critical question is unresolved** and may invalidate every current result.
+- **Only one horizon in the grid can reach a conclusion at all**, and it does so
+  by a 5% margin that has not yet faced its confound checks.
 
 ### 11.3 The honest assessment
 
@@ -1205,20 +1391,28 @@ made and corrected within hours on 17 August.
 These are the critical path of §9.4, in order. Everything else is an extension
 that gets cut before this list does.
 
-1. **Answer the detectability question** — one judgement, and it gates everything
-   downstream. The code now *refuses* to register the affected studies rather
-   than guessing, so this is a hard block rather than a nagging one.
+1. **Test whether the twelve-month margin survives.** It is the only horizon
+   that can conclude, and it clears its own bound by 5% (§8.2). It has not yet
+   met the confound checklist, era splits, or delisting recovery, and a more
+   conservative serial correction already turns it negative. If it does not hold,
+   no horizon is registrable and the honest conclusion is that Track D cannot
+   conclude. Characteristic matching stays a precondition either way — it cut the
+   detection floor from 1.52% to 1.05% on a single dimension.
 2. **Arrange a backup.** A single disk failure currently loses irreplaceable
    data, including trading days that cannot be re-obtained at any price. Cheap,
    and it is the only item here whose cost of neglect is permanent.
-3. **Copy the data in and run the reconciliation check.** Nothing downstream can
-   be trusted until it passes, and it is also the cheapest way to find out
-   whether the 34.2% matching failure is fixable or structural.
+3. **Re-cut the identity layer's four weeks.** That estimate was built on
+   recovering the unmatched events, and decision 0032 established there is
+   nothing to recover. The phase is still needed — point-in-time sectors,
+   participant classification, delistings — but not for the reason it was sized
+   on, and the schedule assumes a number nobody has revisited.
 4. **Establish whether the industry-history problem is solvable.** If it is not,
    the primary comparison method has to change, and I would rather know that in
    September than in January.
-5. **Then run one study, properly** — institutional selling, 34,270 events, never
-   examined. One study through both gates by 23 November is the deliverable.
-   Studies 2 to 4 are extensions.
+5. **Then run one study, properly** — **Consensus**, fixed by decision 0031:
+   do three or more unrelated institutions buying the same share within 21
+   sessions predict outperformance? One study through both gates by 23 November
+   is the deliverable. Selling, Blocks and Bulk buys are extensions, in that
+   order. Nothing can be registered until step 1 lands.
 
 ---
