@@ -93,3 +93,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0026](0026-validate-the-atlas-not-rebuild-it.md) | Validate the seasonality atlas instead of rebuilding it | 2026-08-18 | ACTIVE |
 | [0027](0027-carry-the-warehouse-increments.md) | **The seed is `v1_export` plus the warehouse increments** — the Phase 1 gate was unpassable | 2026-08-21 | ACTIVE |
 | [0028](0028-plausible-bound-scales-with-horizon.md) | **The plausible bound scales with horizon (rate view)** — every horizon becomes UNDERPOWERED | 2026-08-21 | ACTIVE |
+| [0029](0029-fno-gate-figure-was-a-double-count.md) | **The F&O gate figure was a double-count** — 174,616,363 → 174,272,768 | 2026-08-21 | ACTIVE |
+| [0030](0030-derived-tables-addressed-by-data-not-bytes.md) | **Derived tables are addressed by data, not bytes** — parquet writes are not byte-deterministic | 2026-08-22 | ACTIVE |

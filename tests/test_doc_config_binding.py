@@ -44,6 +44,28 @@ def _plan_text() -> str:
     return "\n".join(p.read_text() for p in sorted(PLANS.glob("PLAN_*.md")))
 
 
+_ONES = (
+    "Zero One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve "
+    "Thirteen Fourteen Fifteen Sixteen Seventeen Eighteen Nineteen"
+).split()
+_TENS = "  Twenty Thirty Forty Fifty Sixty Seventy Eighty Ninety".split(" ")
+
+
+def _spell(n: int) -> str:
+    """Spell 0-99 the way the report writes counts in prose.
+
+    Replaces a hard-coded {18: "Eighteen", 26: "Twenty-six", ...} lookup that had
+    to be edited by hand every time a decision record was added — and which, when
+    it fell through to `str(n)`, silently passed on any stray numeral anywhere in
+    a 1,200-line document. A maintenance trap guarding against drift is itself a
+    source of drift.
+    """
+    if n < 20:
+        return _ONES[n]
+    tens, ones = divmod(n, 10)
+    return _TENS[tens] + (f"-{_ONES[ones].lower()}" if ones else "")
+
+
 # --- the promised structure must exist ---------------------------------------
 
 
@@ -507,14 +529,9 @@ class TestReportMatchesThePlan:
         exists to prevent.
         """
         n = len(list((DOCS / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md")))
-        words = {18: "Eighteen", 26: "Twenty-six", 28: "Twenty-eight"}
-        word = words.get(n)
-        assert word is not None, (
-            f"{n} decision records exist and this test has no spelling for it. "
-            f"Add it to `words` and update the report in the same commit."
-        )
-        assert re.search(rf"{word} decision records", self._report(), re.I), (
-            f"the report does not state the live decision count ({n} = {word!r})"
+        assert re.search(rf"{_spell(n)} decision records", self._report(), re.I), (
+            f"the report does not state the live decision count "
+            f"({n} = {_spell(n)!r})"
         )
 
     def test_report_carries_the_critical_path(self):
