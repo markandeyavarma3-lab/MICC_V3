@@ -63,7 +63,18 @@ reconciliation:
   expect_dead_symbols: 1497
   expect_date_min: "2005-01-03"
   expect_date_max: "2026-08-14"
-  expect_fno_rows: 174616363
+  # CORRECTED 2026-08-21, decision 0029. This read 174616363, which is the SUM of
+  # the seed's fo_data (69,193,526) and the carried increment (105,422,837) — two
+  # sources that OVERLAP on ten trading dates, 2016-07-01..2016-07-15, carrying
+  # 343,595 rows present in both. An INTERSECT on the full contract key returns
+  # exactly 343,595, so they are the same rows written twice.
+  #
+  # The predecessor evidently published the sum, so its "174.6M F&O rows" figure
+  # overstates by 0.20%. Keeping it here would have required the pipeline to
+  # deliberately double-count in order to match, which is writing the test to fit
+  # the answer.
+  expect_fno_rows: 174272768
+  expect_fno_rows_superseded: 174616363   # naive sum, retained so the correction is legible
   expect_trading_sessions: 5339
   expect_bulk_deals: 223450
   expect_block_deals: 12430

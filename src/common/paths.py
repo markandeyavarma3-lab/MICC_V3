@@ -59,6 +59,29 @@ LOGS: Final[Path] = ROOT / "logs"
 #: Irreplaceable — NSE does not serve this history. Never written to.
 SEED: Final[Path] = ROOT / "data" / "raw" / "v1_export"
 
+#: The warehouse partitions that `v1_export` does NOT contain, carried under
+#: decision 0027. Measured 2026-08-21: the seed was frozen 2026-07-08, so it is
+#: missing 72,530 price rows AND F&O years 2017-2025 in their entirety —
+#: `fo_data/` jumps from `_y=2016` straight to `_y=2026`.
+#:
+#: These are "derived" in provenance and IRREPLACEABLE in fact: MICCV2's
+#: collector accumulated them against endpoints that no longer serve history.
+#: The Phase 1 reconciliation gate is unreachable without them, which is how the
+#: gap was found.
+SEED_INCREMENTS: Final[Path] = ROOT / "data" / "raw" / "v1_increments"
+
+
+def predecessor_root() -> Path:
+    """Where MICCV2 lives, resolved relative to this repo rather than hard-coded.
+
+    An absolute path here would be audit defect #8 in a new costume — its
+    predecessor stored 166 views containing `/Users/.../MICCV2/...` and they broke
+    on any move. Overridable so a restore onto a different machine works without
+    editing source.
+    """
+    override = os.environ.get("PREDECESSOR_ROOT")
+    return Path(override).expanduser().resolve() if override else ROOT.parent / "MICCV2"
+
 #: Permanent raw archive. Plan 1 §5. Append-only; files are never rewritten.
 ARCHIVE: Final[Path] = ROOT / "data" / "raw" / "archive"
 
