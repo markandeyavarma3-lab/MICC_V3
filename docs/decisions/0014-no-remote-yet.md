@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-17
 **Decided by:** Owner, against my recommendation
-**Status:** ACTIVE
+**Status:** SUPERSEDED by [0036](0036-private-remote-reversing-no-remote.md) — a private remote was created on 2026-08-23, after the exposure grew from 48 KB to 2.47 GB.
 
 ## Context
 The repo has no remote. There is no pendrive, `restic` is not installed, and no

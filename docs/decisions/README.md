@@ -78,7 +78,7 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0011](0011-plausible-effect-bound.md) | Plausible effect bound stays 0.5%/month | 2026-08-17 | ACTIVE |
 | [0012](0012-seasonality-dual-split.md) | Seasonality cells must survive a time AND an index split | 2026-08-17 | ACTIVE |
 | [0013](0013-rerun-exp001-reproducibly.md) | Re-run exp_001 under the DAG rather than annotate it | 2026-08-17 | ACTIVE |
-| [0014](0014-no-remote-yet.md) | No git remote; Risk 8 accepted with zero backup | 2026-08-17 | ACTIVE |
+| [0014](0014-no-remote-yet.md) | No git remote; Risk 8 accepted with zero backup | 2026-08-17 | **SUPERSEDED by 0036** |
 | [0015](0015-rights-entitlements-excluded.md) | `-RE` and `DVR` instruments leave the universe | 2026-08-17 | ACTIVE |
 | [0016](0016-era-balance-breach-accepted.md) | Split era-balance breach disclosed, not re-drawn | 2026-08-17 | ACTIVE |
 | [0017](0017-serial-not-cross-sectional-correction.md) | The MDE correction is serial, not cross-sectional | 2026-08-17 | ACTIVE |
@@ -100,3 +100,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0033](0033-serial-lag-must-cover-the-label-overlap.md) | **The serial lag must cover the label overlap** — the NW rule under-corrected fivefold | 2026-08-23 | ACTIVE |
 | [0034](0034-twelve-month-becomes-the-primary-horizon.md) | **12 months becomes the primary horizon**, reversing 0004 | 2026-08-23 | ACTIVE |
 | [0035](0035-power-may-use-the-full-universe-effects-may-not.md) | Power analysis may use the full universe; effect estimates may not | 2026-08-23 | ACTIVE |
+| [0036](0036-private-remote-reversing-no-remote.md) | **A private remote**, reversing 0014 — but Risk 8 stays open, data is gitignored | 2026-08-23 | ACTIVE |
