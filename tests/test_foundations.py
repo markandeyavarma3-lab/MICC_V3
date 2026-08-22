@@ -318,3 +318,94 @@ def test_no_order_placement_code_exists_anywhere():
             if token in text:
                 offenders.append(f"{py.relative_to(ROOT)}: {token}")
     assert not offenders, f"order-placement code present: {offenders}"
+
+
+# --- the DuckDB side: step 1.6, arriving late -------------------------------
+
+
+class TestDuckDBMigrations:
+    """`discover()` always accepted a `duckdb` target and no runner existed, so
+    the fourteen tables of Plan 1 §5-§7 had nowhere to be created. Found by
+    audit 2026-08-23; it is why the archive parser could produce rows and then
+    had nowhere to land them.
+    """
+
+    #: Every table step 1.6 promised. Named explicitly rather than counted, so a
+    #: missing one says WHICH.
+    REQUIRED = (
+        "deal_source_files", "institutional_deals_raw", "source_revisions",
+        "security_master", "symbol_history", "sector_history",
+        "participant_master", "participant_aliases", "promoter_entities",
+        "institutional_deals_clean", "deal_interpretation",
+        "deal_forward_outcomes", "outcome_benchmark_returns", "seasonality_cell",
+    )
+
+    def test_a_semicolon_inside_a_comment_is_not_a_terminator(self):
+        """The bug that broke the first real migration. This schema carries the
+        line "a large downward bias; ignoring it is an upward one", and a naive
+        split cut it in half and tried to execute the remainder as SQL."""
+        sql = "CREATE TABLE a (x INT);\n-- a bias; ignoring it is wrong\nCREATE TABLE b (y INT);"
+        stmts = migrate.split_statements(sql)
+        assert len(stmts) == 2
+        assert "ignoring" not in " ".join(stmts)
+
+    def test_a_semicolon_inside_a_string_literal_is_not_a_terminator(self):
+        stmts = migrate.split_statements("INSERT INTO t VALUES ('a;b');")
+        assert stmts == ["INSERT INTO t VALUES ('a;b')"]
+
+    def test_an_escaped_quote_does_not_end_the_literal(self):
+        stmts = migrate.split_statements("INSERT INTO t VALUES ('it''s; fine');")
+        assert len(stmts) == 1 and "fine" in stmts[0]
+
+    def test_migrations_apply_and_are_idempotent(self, tmp_path):
+        db = tmp_path / "research_test.duckdb"
+        assert migrate.migrate_duckdb(db) == [1]
+        assert migrate.migrate_duckdb(db) == [], "a second run must apply nothing"
+
+    def test_editing_an_applied_migration_is_refused(self, tmp_path, monkeypatch):
+        db = tmp_path / "research_test.duckdb"
+        migrate.migrate_duckdb(db)
+        d = tmp_path / "migrations"
+        d.mkdir()
+        (d / "0001_warehouse.duckdb.sql").write_text("CREATE TABLE tampered (x INT);")
+        with pytest.raises(migrate.MigrationError, match="changed after it was applied"):
+            migrate.migrate_duckdb(db, directory=d)
+
+    @pytest.mark.parametrize("table", REQUIRED)
+    def test_every_plan_1_table_exists(self, tmp_path, table):
+        import duckdb
+
+        db = tmp_path / "research_test.duckdb"
+        migrate.migrate_duckdb(db)
+        con = duckdb.connect(str(db))
+        try:
+            names = {
+                r[0] for r in con.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema='main'"
+                ).fetchall()
+            }
+        finally:
+            con.close()
+        assert table in names, f"{table} is promised by Phase 1 step 1.6"
+
+    def test_available_from_carries_a_mandatory_confidence(self, tmp_path):
+        """available_from is the field the whole study rests on. Where
+        publication cannot be proven the row must SAY the bound is weak, so the
+        confidence column cannot be null."""
+        import duckdb
+
+        db = tmp_path / "research_test.duckdb"
+        migrate.migrate_duckdb(db)
+        con = duckdb.connect(str(db))
+        try:
+            nullable = {
+                r[0]: r[1] for r in con.execute(
+                    "SELECT column_name, is_nullable FROM information_schema.columns"
+                    " WHERE table_name='institutional_deals_clean'"
+                ).fetchall()
+            }
+        finally:
+            con.close()
+        assert nullable["available_from"] == "NO"
+        assert nullable["available_from_confidence"] == "NO"
