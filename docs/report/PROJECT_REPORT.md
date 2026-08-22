@@ -246,11 +246,11 @@ and why V3 is designed the way it is.
 
 | Measure | Value |
 |---|---|
-| Commits | 10 |
+| Commits | 30 |
 | Period | 16 August 2026 → present |
-| Python code | 3,316 lines |
-| Tests | 146, all passing |
-| Decision records | 18 |
+| Python code | 5,105 lines |
+| Tests | 246, all passing |
+| Decision records | 28 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -260,9 +260,9 @@ the rest of this report.
 | | V1 | V2 | V3 |
 |---|---|---|---|
 | Duration | 11 days | 34 days | ongoing |
-| Commits | 67 | 107 | 10 |
-| Lines of Python | 23,172 | 35,762 | 3,316 |
-| Tests | — | 375 | 146 |
+| Commits | 67 | 107 | 30 |
+| Lines of Python | 23,172 | 35,762 | 5,105 |
+| Tests | — | 375 | 246 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -594,7 +594,7 @@ specified in detail in the plan, but none has been created.
 
 | Layer | Designed | Built | Note |
 |---|---|---|---|
-| Raw archive | yes | **yes** | 3 files captured so far; 16 KB |
+| Raw archive | yes | **yes** | 9 files captured so far (3 report types × 3 sessions); 48 KB |
 | V1 seed carried across | yes | **no** | still sits in the V2 folder, not copied |
 | Marts | yes | **no** | 0 of 7 tables exist as real schemas |
 | Governance | yes | **yes** | 9 tables, live and enforcing |
@@ -726,14 +726,14 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 146 automated tests, all passing.
+This is the substantial achievement so far. 246 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
 verdict is UNDERPOWERED — reported as *silence*, not as evidence of absence.
 This distinction did not exist in V2.
 
-**Data split (`split.py`, 237 lines).** Divides companies into three groups by a
+**Data split (`split.py`, 341 lines).** Divides companies into three groups by a
 mathematical hash of their ISIN code. Exploration is free; confirmation is
 enforced by code that raises an error.
 
@@ -750,7 +750,7 @@ the split used symbols, those companies would sit in the exploration group under
 one name and the confirmation group under the other — contaminating the
 confirmation set for 11% of the data, with nothing looking wrong in any output.
 
-**Multiple testing (`multiplicity.py`, 186 lines).** Converts "how many things did
+**Multiple testing (`multiplicity.py`, 275 lines).** Converts "how many things did
 we try" into a required standard of evidence:
 
 | Attempts | Best result from pure noise | Required standard |
@@ -762,7 +762,7 @@ we try" into a required standard of evidence:
 
 *(Corrected 18 August. The figures first published were lower — see §7.6.)*
 
-**Design gate (`design.py`, 275 lines).** Refuses to let a study exist unless it
+**Design gate (`design.py`, 388 lines).** Refuses to let a study exist unless it
 has a mechanism, a prediction that could fail, computed detectability, and a plan
 for all ten standard confusions.
 
@@ -771,7 +771,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Twenty-six decision records, each recording what was decided, by whom, why, **what
+Twenty-eight decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -844,6 +844,9 @@ it here because a report that only lists successes is not a report.
 A collector runs automatically at 20:00, 22:30 and 08:00 IST. On its first night
 it captured 100 bulk deals and 4 block deals, verified by hash. Files are
 compressed, hashed, never overwritten, and duplicates are detected.
+
+Sessions captured so far: 17, 18, 20 August — **19 August is missing**, with no
+record in the manifest of an attempt. The cause has not yet been diagnosed.
 
 ### 7.6 Four errors of my own, found by verification
 
@@ -918,17 +921,15 @@ comparing against companies of similar volatility, and it was that tighter
 comparison that provided the sensitivity — not the effect being robust to any
 comparison.
 
-### 8.2 An unresolved question that affects everything
+### 8.2 The question that affected everything, now answered
 
 The system judges whether a study is worth running by comparing what it can
-detect against what size of effect is realistic. That threshold is currently a
-single number — 0.5% per month.
+detect against what size of effect is realistic. That threshold was a single
+number — 0.5% per month — compared against every time horizon, though it is only
+dimensionally correct at about 21 sessions. Comparing a one-day result against a
+monthly threshold is a units error.
 
-**The problem:** this number is compared against every time horizon, but it is
-only dimensionally correct at about 21 sessions. Comparing a one-day result
-against a monthly threshold is a units error.
-
-The fix depends on an unanswered question about how the effect should behave:
+Which fix applies turned on how the effect behaves:
 
 - **If a disclosure causes a single one-off price adjustment**, a fixed threshold
   is right and the table above stands.
@@ -936,8 +937,31 @@ The fix depends on an unanswered question about how the effect should behave:
   must scale with the horizon — and then **every row in the table becomes
   undetectable**, including the two marked otherwise.
 
-This is recorded as open decision 0018. **Until it is resolved, no result in this
-project should be quoted as final.** It is the single most important open item.
+**The owner chose the second on 21 August 2026** (decision 0028, closing the open
+defect 0018). An informed institution does not earn its whole edge in the first
+session and stop. The threshold now scales, and the consequence is accepted
+rather than argued around:
+
+| horizon | detectable effect | scaled threshold | verdict |
+|---|---:|---:|---|
+| 1 session | 0.191% | 0.024% | **undetectable** |
+| 5 sessions | 0.423% | 0.119% | **undetectable** |
+| 10 sessions | 0.660% | 0.238% | **undetectable** |
+| 21 sessions | 0.968% | 0.500% | **undetectable** |
+
+Every horizon in the primary grid is now blind, and the design gate refuses to
+register a study where that is true of all of them. This is not a setback — it is
+the machinery reporting that the data cannot answer the question at the
+resolution being asked, which is *silence, not a negative result*.
+
+The route forward is to raise power rather than lower the bar. Characteristic
+matching alone cut dispersion 8.55% → 5.91% and the detection floor 1.52% →
+1.05% on a single dimension, so it moves from being a control to being a
+precondition for any study worth registering.
+
+The convenient answer was the first one, and it was rejected. Adopting the
+interpretation that licenses your own conclusions is the failure this project
+exists to prevent.
 
 ---
 
@@ -968,7 +992,7 @@ project should be quoted as final.** It is the single most important open item.
 
 **Seven of seven core data tables do not exist, and all seven Track S modules
 are unwritten.** The project folder currently
-holds 16 KB of data.
+holds 48 KB of data.
 
 **About 15% of the system is built**, and the completed portion is the framework
 rather than the research machinery.
@@ -1129,9 +1153,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 239 tests that enforces honest research
+- A discipline framework with 246 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Twenty-six decision records with reversal conditions
+- Twenty-eight decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, a 34.2% matching failure, and a missing industry
   history

@@ -498,11 +498,23 @@ class TestReportMatchesThePlan:
         return (DOCS / "report" / "PROJECT_REPORT.md").read_text()
 
     def test_report_states_the_real_decision_count(self):
-        """It said "Eighteen decision records" while 26 existed."""
+        """It said "Eighteen decision records" while 26 existed.
+
+        The count is asserted against the phrase that carries it, not against a
+        bare numeral. Falling back to `str(n)` let this PASS on any stray "28"
+        anywhere in a 1,200-line document — a test that cannot fail is worse than
+        no test, and this one is guarding the exact class of drift the project
+        exists to prevent.
+        """
         n = len(list((DOCS / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md")))
-        words = {18: "Eighteen", 26: "Twenty-six"}
-        assert words.get(n, str(n)) in self._report(), (
-            f"the report does not state the live decision count ({n})"
+        words = {18: "Eighteen", 26: "Twenty-six", 28: "Twenty-eight"}
+        word = words.get(n)
+        assert word is not None, (
+            f"{n} decision records exist and this test has no spelling for it. "
+            f"Add it to `words` and update the report in the same commit."
+        )
+        assert re.search(rf"{word} decision records", self._report(), re.I), (
+            f"the report does not state the live decision count ({n} = {word!r})"
         )
 
     def test_report_carries_the_critical_path(self):

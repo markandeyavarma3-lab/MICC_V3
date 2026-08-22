@@ -82,7 +82,7 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0015](0015-rights-entitlements-excluded.md) | `-RE` and `DVR` instruments leave the universe | 2026-08-17 | ACTIVE |
 | [0016](0016-era-balance-breach-accepted.md) | Split era-balance breach disclosed, not re-drawn | 2026-08-17 | ACTIVE |
 | [0017](0017-serial-not-cross-sectional-correction.md) | The MDE correction is serial, not cross-sectional | 2026-08-17 | ACTIVE |
-| [0018](0018-plausible-bound-not-horizon-scaled.md) | **OPEN:** the plausible bound is not horizon-scaled | 2026-08-17 | **OPEN** |
+| [0018](0018-plausible-bound-not-horizon-scaled.md) | The plausible bound is not horizon-scaled | 2026-08-17 | **SUPERSEDED by 0028** |
 | [0019](0019-two-track-programme.md) | The project is two parallel tracks, not one with a side-quest | 2026-08-18 | ACTIVE |
 | [0020](0020-market-relative-is-mandatory.md) | Pooled scans must use market-relative returns | 2026-08-18 | ACTIVE* |
 | [0021](0021-pooled-average-is-undefined.md) | **The pooled market-relative average is undefined** — 0020's reasoning corrected | 2026-08-18 | ACTIVE |
@@ -91,3 +91,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0024](0024-design-gate-bypassed-its-own-machinery.md) | **The design gate bypassed the machinery built to set its bars** | 2026-08-18 | ACTIVE |
 | [0025](0025-critical-path-schedule.md) | Schedule becomes a critical path with a pre-declared cut order | 2026-08-18 | ACTIVE |
 | [0026](0026-validate-the-atlas-not-rebuild-it.md) | Validate the seasonality atlas instead of rebuilding it | 2026-08-18 | ACTIVE |
+| [0027](0027-carry-the-warehouse-increments.md) | **The seed is `v1_export` plus the warehouse increments** — the Phase 1 gate was unpassable | 2026-08-21 | ACTIVE |
+| [0028](0028-plausible-bound-scales-with-horizon.md) | **The plausible bound scales with horizon (rate view)** — every horizon becomes UNDERPOWERED | 2026-08-21 | ACTIVE |

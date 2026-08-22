@@ -57,6 +57,37 @@ power:
   # If MDE > plausible bound, the verdict is UNDERPOWERED — silence, not a
   # negative — regardless of the p-value.
   underpowered_rule: mde_exceeds_plausible_bound
+
+  # DECISION 0028 (2026-08-21) — the bound SCALES WITH HORIZON. Closes the open
+  # defect 0018, which sat unresolved from 2026-08-17 and blocked ALL Track D
+  # registration, because every primary horizon is expressed in sessions (0004)
+  # and design.py refused to guess a bound for them.
+  #
+  # The owner chose the RATE VIEW: an informed institution does not earn its
+  # whole edge in session one and stop. So:
+  #
+  #     bound(h sessions) = plausible_effect_bound_monthly * h / sessions_per_month
+  #
+  # THE CONSEQUENCE IS NOT COSMETIC. Every horizon in the current grid goes
+  # UNDERPOWERED, including the two previously marked detectable:
+  #
+  #   horizon   MDE corrected   scaled bound   verdict
+  #      1s        0.191%          0.024%      UNDERPOWERED
+  #      5s        0.423%          0.119%      UNDERPOWERED
+  #     10s        0.660%          0.238%      UNDERPOWERED
+  #     21s        0.968%          0.500%      UNDERPOWERED
+  #
+  # That is the machinery reporting that the data cannot answer the question at
+  # this resolution — silence, not a negative result. The route forward is to
+  # raise power (characteristic matching cut MDE 1.52% -> 1.05% on one dimension
+  # alone), never to relax the bound.
+  #
+  # The event view was the convenient answer and was rejected: adopting the
+  # interpretation that licenses your own conclusions is the failure mode this
+  # repository exists to prevent.
+  plausible_bound_scales_with_horizon: true
+  # A convention, not a measurement — in config so it can be challenged.
+  sessions_per_month: 21
   estimator: monthly_cohort_mean
   bootstrap_draws: 10000
   block_length_rule: at_least_horizon

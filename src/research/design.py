@@ -70,14 +70,33 @@ def research_spec() -> dict:
     return yaml.safe_load((CONFIGS / "research.yml").read_text())
 
 
-#: Horizon labels whose natural unit really is a month, so the config's
-#: per-month plausible bound applies without conversion. Anything else — "10s",
-#: "ic_5s", "21s" — must state its own bound until decision 0018 is settled.
-_MONTHLY = re.compile(r"^\d+\s*(m|mo|month|months)$", re.I)
+#: Horizon labels whose natural unit is a month.
+_MONTHLY = re.compile(r"^(\d+(?:\.\d+)?)\s*(?:m|mo|month|months)$", re.I)
+#: Horizon labels expressed in trading sessions — the primary grid (decision 0004).
+_SESSIONS = re.compile(r"^(\d+(?:\.\d+)?)\s*(?:s|sess|session|sessions)$", re.I)
 
 
 def _is_monthly_horizon(label: str) -> bool:
     return bool(_MONTHLY.match(str(label).strip()))
+
+
+def horizon_in_months(label: str) -> float | None:
+    """The horizon expressed in months, or None if the label declares no unit.
+
+    Sessions are converted with `power.sessions_per_month` from research.yml —
+    a convention (21) rather than a measurement, which is why it lives in config
+    where it can be challenged rather than in this function.
+
+    A label this cannot parse ("ic_5s", "event") returns None, and the caller
+    refuses it. Guessing a unit is how a 1-session MDE came to be judged against
+    a per-month bound in the first place.
+    """
+    s = str(label).strip()
+    if m := _MONTHLY.match(s):
+        return float(m.group(1))
+    if m := _SESSIONS.match(s):
+        return float(m.group(1)) / float(research_spec()["power"]["sessions_per_month"])
+    return None
 
 
 def required_confounds(kind: StudyKind) -> tuple[str, ...]:
@@ -100,37 +119,58 @@ class HorizonPower:
     plausible_bound: float | None = None
 
     @property
-    def is_powered(self) -> bool:
-        """Whether this horizon can see an effect inside the plausible range.
+    def resolved_bound(self) -> float:
+        """The plausible bound this horizon is actually judged against.
 
-        BUG FIXED 2026-08-18. This silently fell back to
-        `plausible_effect_bound_monthly` FOR EVERY HORIZON, including
-        single-session ones. Comparing a 1-session MDE against a per-month bound
-        is a unit error, and it was making short horizons look powered when they
-        may not be. It is decision 0018, live in code, producing wrong verdicts.
+        HISTORY. Until 2026-08-18 this silently used
+        `plausible_effect_bound_monthly` FOR EVERY HORIZON including
+        single-session ones — a unit error that made short horizons look powered.
+        The module then REFUSED any non-monthly horizon rather than guess, which
+        was correct while decision 0018 was open but blocked all Track D
+        registration, since every primary horizon is in sessions (0004).
 
-        0018 is still OPEN — whether the bound scales with horizon depends on
-        whether disclosure causes a one-off repricing or a persistent rate of
-        return, and that is the owner's call. So rather than silently pick one,
-        this now REFUSES any non-monthly horizon that does not carry an explicit
-        bound. An open question should stop the code, not be resolved by a
-        default nobody chose.
+        DECISION 0028, 2026-08-21: the owner chose the RATE VIEW. The bound
+        accrues with time, so it scales:
+
+            bound(h) = plausible_effect_bound_monthly * h_in_months
+
+        An explicit `plausible_bound` always wins — a study may state its own,
+        and must, for any label whose unit this cannot parse.
         """
         if self.plausible_bound is not None:
-            return self.mde <= self.plausible_bound
+            return self.plausible_bound
 
-        if not _is_monthly_horizon(self.horizon):
+        spec = research_spec()["power"]
+        base = float(spec["plausible_effect_bound_monthly"])
+
+        if not spec.get("plausible_bound_scales_with_horizon", False):
+            # Pre-0028 behaviour, retained so flipping the config off restores it
+            # exactly rather than approximately.
+            if not _is_monthly_horizon(self.horizon):
+                raise DesignRejected(
+                    f"horizon {self.horizon!r} has no explicit plausible_bound and "
+                    f"scaling is disabled, so only per-MONTH horizons can be judged."
+                )
+            return base
+
+        months = horizon_in_months(self.horizon)
+        if months is None:
             raise DesignRejected(
-                f"horizon {self.horizon!r} has no explicit plausible_bound, and "
-                f"the config default is per-MONTH. Comparing a "
-                f"{self.horizon} MDE against a monthly bound is a unit error.\n"
-                f"Decision 0018 is OPEN: whether the bound scales with horizon "
-                f"depends on whether disclosure causes a one-off repricing "
-                f"(fixed bound) or a persistent rate (scaled bound). Until that "
-                f"is decided, state plausible_bound explicitly for this horizon "
-                f"and record the reasoning."
+                f"horizon {self.horizon!r} declares no parseable unit, so its "
+                f"plausible bound cannot be derived. Labels this understands are "
+                f"'3m'/'6 months' and '10s'/'21 sessions'.\n"
+                f"State plausible_bound explicitly for this horizon and record "
+                f"why. Guessing a unit is how a 1-session MDE came to be judged "
+                f"against a monthly bound (decision 0018)."
             )
-        return self.mde <= research_spec()["power"]["plausible_effect_bound_monthly"]
+        if months <= 0:
+            raise DesignRejected(f"horizon {self.horizon!r} resolves to {months} months")
+        return base * months
+
+    @property
+    def is_powered(self) -> bool:
+        """Whether this horizon can see an effect inside the plausible range."""
+        return self.mde <= self.resolved_bound
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,11 +302,15 @@ class StudyDesign:
 
         blind = [h for h in self.horizons if not h.is_powered]
         if len(blind) == len(self.horizons):
-            bound = research_spec()["power"]["plausible_effect_bound_monthly"]
-            detail = ", ".join(f"{h.horizon} MDE={h.mde:.4f}" for h in blind)
+            # Per-horizon bounds, not one number: since decision 0028 the bound
+            # scales with horizon, so a single figure here would misreport what
+            # each horizon was actually judged against.
+            detail = ", ".join(
+                f"{h.horizon} MDE={h.mde:.4f} vs bound {h.resolved_bound:.4f}" for h in blind
+            )
             raise DesignRejected(
-                f"{self.study_id}: EVERY horizon is underpowered against the "
-                f"plausible bound of {bound:.4f}. [{detail}]\n"
+                f"{self.study_id}: EVERY horizon is underpowered against its "
+                f"plausible bound. [{detail}]\n"
                 f"This study cannot reach a conclusion at any horizon it declares. "
                 f"Collapse to a finer cohort frequency, add characteristic "
                 f"matching, or do not run it — but do not run it and report the "
