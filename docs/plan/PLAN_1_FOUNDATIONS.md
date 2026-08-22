@@ -120,6 +120,32 @@ feed and the price spine, not survivorship**. Fixing the identity layer
 (§5) converts most of them into usable events. The 6,574 delisting cases are
 real information and will be carried as realized outcomes, not dropped.
 
+> **FALSIFIED 2026-08-22. The second sentence of Finding D is wrong, and it was
+> the justification for Phase 3 being the four-week highest-priority phase.**
+>
+> Measured against the rebuilt spine, plain symbol matching resolves **91.30%**
+> of the 235,880 deal rows. Of the 19,130 rows (8.16%) that remain unresolved
+> after rights entitlements are set aside:
+>
+> - **0 of 680** symbols are recoverable by ISIN aliasing
+> - **1 of 680** is known to *any* identity master
+>
+> They are not naming mismatches. There is nothing to map them to. 93% first
+> appear in 2018 or later, and the companies are largely absent from
+> `bse_scrip_master` altogether, which points at NSE Emerge listings the price
+> spine does not cover — though that explanation could not be confirmed from the
+> data held, and the decision does not rest on it.
+>
+> The identity layer cannot convert these events because conversion needs a
+> target that does not exist. They leave the universe on coverage grounds instead
+> ([decision 0032](../decisions/0032-uncovered-symbols-leave-the-universe.md)),
+> and **Phase 3's headline justification goes with them** — it is still required
+> for PIT sectors, participant classification and delisting handling, but the
+> four-week estimate was built on recovering these events and should be re-cut.
+>
+> Left standing above rather than rewritten: the claim is what Phase 3 was sold
+> on, and deleting it would hide why the phase was sized the way it was.
+
 **Consequence for scope.** This is why the owner chose research-only with no
 engines. Engines A, B, E and G in the original plan are not being built. §2.2
 records why.
