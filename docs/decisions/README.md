@@ -95,3 +95,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0028](0028-plausible-bound-scales-with-horizon.md) | **The plausible bound scales with horizon (rate view)** — every horizon becomes UNDERPOWERED | 2026-08-21 | ACTIVE |
 | [0029](0029-fno-gate-figure-was-a-double-count.md) | **The F&O gate figure was a double-count** — 174,616,363 → 174,272,768 | 2026-08-21 | ACTIVE |
 | [0030](0030-derived-tables-addressed-by-data-not-bytes.md) | **Derived tables are addressed by data, not bytes** — parquet writes are not byte-deterministic | 2026-08-22 | ACTIVE |
+| [0031](0031-consensus-is-the-critical-path-study.md) | **Consensus is the single critical-path study**; selling leads the extensions | 2026-08-23 | ACTIVE |
+| [0032](0032-uncovered-symbols-leave-the-universe.md) | **Symbols with no price coverage leave the universe** — Plan 1 Finding D falsified | 2026-08-23 | ACTIVE |
