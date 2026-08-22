@@ -12,7 +12,7 @@ import duckdb
 import pytest
 import yaml
 
-from src.common.paths import CONFIGS, SEED, SEED_INCREMENTS, warehouse_dir
+from src.common.paths import CONFIGS, ROOT, SEED, SEED_INCREMENTS, warehouse_dir
 from src.warehouse import reconcile, seed, spine
 
 pytestmark = pytest.mark.data
@@ -124,7 +124,8 @@ def test_the_seed_is_registered_in_the_provenance_graph():
 
 @needs_spine
 @pytest.mark.parametrize(
-    "name,expected", [("price_spine", 7_749_148), ("fno_spine", 174_272_768)]
+    "name,expected",
+    [("price_spine", 7_749_148), ("price_spine_adj", 7_748_799), ("fno_spine", 174_272_768)],
 )
 def test_spine_row_counts(name, expected):
     con = duckdb.connect()
@@ -252,3 +253,55 @@ def test_the_phase_1_reconciliation_gate_passes():
     failed = [f"{c.name}: expected {c.expected}, got {c.actual}" for c in checks if not c.passed]
     assert not failed, "gate failures:\n  " + "\n  ".join(failed)
     assert len(checks) == 9
+
+
+@needs_spine
+def test_the_adjusted_spine_is_what_research_reads():
+    """universe.yml sets research_prices: adjusted. The raw spine is NOT a
+    substitute — measured 2026-08-23, they differ on 17.1% of rows, and a return
+    computed on raw prices reads a 1:2 split as -50%.
+
+    This existed as a config line and nothing enforced it. Every measurement on
+    22-23 Aug ran on the raw spine, including the 12-month result decision 0034
+    rests on.
+    """
+    import re
+
+    src = (ROOT / "src" / "research" / "charmatch.py").read_text()
+    assert "price_spine_adj" in src, "charmatch must read the ADJUSTED spine"
+    assert not re.search(r'"price_spine"', src), "charmatch still reads the raw spine"
+
+
+@needs_spine
+def test_adjustment_actually_removes_split_artefacts():
+    """The point of the adjusted series, asserted rather than assumed.
+
+    An unadjusted 1:2 split appears as a single-session fall below 0.5x. If
+    adjustment is working, the adjusted spine must carry materially FEWER
+    extreme drops than the raw one. Measured: 73 against 149.
+    """
+    con = duckdb.connect()
+    con.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false;")
+
+    def drops(name: str) -> int:
+        g = f"{warehouse_dir('prod') / name}/**/*.parquet"
+        return con.execute(
+            f"""WITH x AS (SELECT close, LAG(close) OVER (PARTITION BY symbol ORDER BY date) p
+                           FROM read_parquet('{g}'))
+                SELECT SUM(CASE WHEN close/p < 0.1 THEN 1 ELSE 0 END) FROM x WHERE p>0"""
+        ).fetchone()[0]
+
+    raw, adj = drops("price_spine"), drops("price_spine_adj")
+    assert adj < raw, f"adjusted ({adj}) should have fewer extreme drops than raw ({raw})"
+    assert adj <= 73, f"extreme drops rose to {adj}; corporate actions may have stopped applying"
+
+
+@needs_spine
+def test_the_gate_checks_correctness_not_only_size():
+    """A row count is identical whether the spine was built from raw or adjusted
+    prices. The gate proved eight counts and nothing about their contents, which
+    is exactly why the wrong-price defect survived it."""
+    q = reconcile.quality("prod")
+    failed = [f"{c.name}: expected {c.expected}, got {c.actual}" for c in q if not c.passed]
+    assert not failed, "quality failures:\n  " + "\n  ".join(failed)
+    assert len(q) >= 7

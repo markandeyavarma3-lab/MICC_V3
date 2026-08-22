@@ -194,6 +194,112 @@ def build(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyConnectio
     return BuildResult(spec.name, total, seed_rows, inc_rows, duplicates, out)
 
 
+#: The adjusted research spine. `universe.yml` is explicit:
+#:
+#:     research_prices: adjusted     # splits/bonuses applied
+#:     execution_prices: raw         # what a fill would actually have paid
+#:
+#: BOTH are needed and they are NOT interchangeable. A return computed on raw
+#: prices reads a 1:2 split as -50%. Measured 2026-08-23: raw and adjusted differ
+#: on 17.1% of rows — 27.3% in 2005-2010 falling to 10.6% in 2019-2026, which is
+#: the right shape, since older prices carry more subsequent adjustments.
+#:
+#: THIS EXISTS BECAUSE IT WAS MISSED. Step 1.8 required "the price spine, ADJUSTED
+#: spine, and PIT universe". Only the raw spine was built, and every measurement
+#: on 2026-08-22/23 — the whole MDE grid, the characteristic panel, and the
+#: 12-month result decision 0034 rests on — was computed on prices the config
+#: forbids for research. The conclusion survived re-measurement (MDE 5.28%
+#: adjusted against 5.55% raw, both inside the 6.00% bound) but that was luck.
+ADJUSTED = SpineSpec(
+    name="price_spine_adj",
+    seed_glob="stock_data_adj/**/*.parquet",
+    increment_glob="prices/**/*.parquet",
+    columns=("symbol", "date", "open", "high", "low", "close", "volume"),
+    unique_key=("symbol", "date"),
+)
+
+
+def build_adjusted(env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
+    """The adjusted spine, spliced and self-validating.
+
+    `stock_data_adj` stops on 2026-06-25 while raw runs to 2026-07-08 and the
+    increment to 2026-08-14, so the tail has to come from unadjusted sources.
+    That is CORRECT rather than a compromise, and only because of a fact that is
+    checked here rather than assumed:
+
+    **Adjustment is backward-looking.** A price series is adjusted for actions
+    that happen AFTER it, so the most recent prices carry no adjustment at all.
+    Verified at the boundary: on 2026-06-25 adjusted equals raw for 2,696 of
+    2,696 symbols — 100%.
+
+    So splicing raw onto the end is exact **provided no price-affecting action
+    falls after the boundary**. That proviso is the whole argument, so it is
+    enforced: a SPLIT, BONUS or RIGHTS after the adjusted series ends means the
+    tail genuinely needs adjusting and this refuses to build rather than
+    silently emitting a series that is adjusted at one end and not the other.
+    """
+    c = con or duckdb.connect()
+    seed_adj = str(SEED / ADJUSTED.seed_glob)
+    seed_raw = str(SEED / PRICE.seed_glob)
+    inc = str(SEED_INCREMENTS / "prices/**/*.parquet")
+
+    if not list(SEED.glob(ADJUSTED.seed_glob)):
+        raise SpineError(f"{ADJUSTED.name}: no adjusted seed at {seed_adj}")
+
+    boundary = c.execute(f"SELECT MAX(date) FROM read_parquet('{seed_adj}')").fetchone()[0]
+
+    # THE GUARD THAT MAKES THE SPLICE HONEST.
+    actions = str(SEED / "corporate_actions.parquet")
+    unadjusted = c.execute(
+        f"SELECT COUNT(*) FROM read_parquet('{actions}') WHERE CAST(date AS VARCHAR) > '{boundary}'"
+        f" AND action_type IN ('SPLIT','BONUS','RIGHTS')"
+    ).fetchone()[0]
+    if unadjusted:
+        raise SpineError(
+            f"{ADJUSTED.name}: {unadjusted} price-affecting corporate action(s) fall "
+            f"after {boundary}, where the adjusted series ends. Splicing raw prices "
+            f"onto the tail would produce a series adjusted at one end and not the "
+            f"other, and a split in that window reads as a -50% return. Extend "
+            f"stock_data_adj or apply the adjustment; do not build past this."
+        )
+
+    # Equality at the boundary is the premise; check it rather than trust it.
+    same, total = c.execute(
+        f"SELECT SUM(CASE WHEN abs(r.close-a.close)<0.01 THEN 1 ELSE 0 END), COUNT(*)"
+        f" FROM read_parquet('{seed_raw}') r JOIN read_parquet('{seed_adj}') a"
+        f" USING(symbol,date) WHERE r.date = '{boundary}'"
+    ).fetchone()
+    if total and same / total < 0.99:
+        raise SpineError(
+            f"{ADJUSTED.name}: adjusted and raw agree on only {same}/{total} symbols "
+            f"at the boundary {boundary}. Backward-looking adjustment implies they "
+            f"should be identical there, so the splice premise does not hold."
+        )
+
+    parts = [
+        _select(seed_adj, ADJUSTED, derive_year=False),
+        _select(seed_raw, PRICE, derive_year=False) + f" WHERE date > '{boundary}'",
+        _select(inc, ADJUSTED, derive_year=True),
+    ]
+    union = "\nUNION ALL\n".join(parts)
+
+    dupes = c.execute(
+        f"SELECT COUNT(*) FROM (SELECT symbol, date, COUNT(*) n FROM ({union})"
+        f" GROUP BY 1,2 HAVING n > 1)"
+    ).fetchone()[0]
+    if dupes:
+        raise SpineError(f"{ADJUSTED.name}: {dupes:,} duplicate (symbol,date) after splice")
+
+    out = warehouse_dir(env) / ADJUSTED.name
+    out.mkdir(parents=True, exist_ok=True)
+    c.execute(
+        f"COPY ({union}) TO '{out}' (FORMAT PARQUET, PARTITION_BY (_y), OVERWRITE_OR_IGNORE 1)"
+    )
+    total_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{out}/**/*.parquet')").fetchone()[0]
+    adj_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{seed_adj}')").fetchone()[0]
+    return BuildResult(ADJUSTED.name, total_rows, adj_rows, total_rows - adj_rows, 0, out)
+
+
 def build_all(env: str | None = None) -> list[BuildResult]:
     """Build every spine and register each in the provenance DAG.
 
@@ -225,11 +331,12 @@ def build_all(env: str | None = None) -> list[BuildResult]:
     # containing stock_data AND fo_data.
     per_spine = {
         PRICE.name: (SEED, SEED_INCREMENTS / "prices"),
+        ADJUSTED.name: (SEED, SEED_INCREMENTS / "prices"),
         FNO.name: (SEED, SEED_INCREMENTS / "fno"),
     }
 
-    for spec in (PRICE, FNO):
-        r = build(spec, env=env, con=con)
+    for spec in (PRICE, ADJUSTED, FNO):
+        r = build_adjusted(env=env, con=con) if spec is ADJUSTED else build(spec, env=env, con=con)
         parents = [
             (d, "input")
             for d in (_digest(p) for p in per_spine[spec.name])
