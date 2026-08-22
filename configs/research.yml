@@ -7,9 +7,36 @@
 # says why: monthly cohorts give 247 observations and MDE 1.52%; daily cohorts
 # give ~3,345 and MDE 0.163% — a 9x improvement. The plan was pointed at the
 # frequency where MDE exceeds any plausible effect.
-horizons_sessions: [1, 2, 3, 5, 10, 21]     # PRIMARY — where the power is
+# REVISED 2026-08-23 — decision 0034 supersedes 0004. THE PRIMARY HORIZON IS NOW
+# TWELVE MONTHS, and the session grid is demoted to robustness.
+#
+# 0004 dropped the long horizons because "at 12 months MDE is already 7.38%
+# against a plausible bound of 0.50%". That was right under a FIXED bound.
+# Decision 0028 made the bound scale with horizon, and the comparison inverts:
+# MDE grows with sqrt(horizon) while the bound grows linearly with it, so long
+# horizons became EASIER, not harder. 0028 did not notice it was invalidating
+# 0004.
+#
+# Measured on eligible size-filtered bulk buys (n=17,988), market-relative,
+# monthly cohorts, serial-corrected at a lag covering the label overlap (0033):
+#
+#   horizon      MDE       bound     verdict
+#     21s (1m)   0.8403%   0.50%     1.68x short
+#     63s (3m)   1.8506%   1.50%     1.23x short
+#     252s (12m) 5.7273%   6.00%     WITHIN REACH, 5% margin
+#
+# Every session horizon is 1.7-3.9x short. Twelve months is the only horizon in
+# the grid that reaches its own bound — and it does so marginally, so it is
+# reported as marginal and never as comfortable.
+primary_horizon_months: 12
+horizons_months: [3, 6, 12]
+# Retained and reported WITH their UNDERPOWERED verdicts intact, because "we
+# could not tell" is a more useful statement than silence. Not where a
+# conclusion comes from.
+horizons_sessions: [1, 2, 3, 5, 10, 21]      # ROBUSTNESS — all underpowered
 headline_horizons_sessions: [1, 3, 5, 10]
-horizons_months: [3, 6, 12]                  # ROBUSTNESS only, not where we look
+# The 8/10/15/18/24-month horizons stay dropped. Nothing measured argues for
+# reinstating them and each still spends multiplicity budget.
 # The 8/10/15/18/24-month horizons are dropped: MDE at 12m is already 7.38%
 # against a plausible bound of 0.50%, so longer is strictly more hopeless and
 # each one spends correction budget for a guaranteed UNDERPOWERED row.

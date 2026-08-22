@@ -287,3 +287,64 @@ class TestSerialCorrection:
         """
         observed, floor = -0.00603, 0.00660
         assert abs(observed) < floor
+
+
+# --- the lag must cover the label overlap (defect found 2026-08-23) ----------
+
+
+class TestLagCoversLabelOverlap:
+    """The Newey-West rule of thumb depends only on the NUMBER of observations
+    and knows nothing about how far each one's label reaches.
+
+    On 2026-08-23 that produced two POWERED verdicts that a correct lag removes:
+    a 252-session label on daily cohorts got lag 9 against a true overlap of 252,
+    understating the variance inflation fivefold.
+    """
+
+    @staticmethod
+    def _overlapping(n: int = 300, span: int = 12, seed: int = 0) -> pd.Series:
+        """A series whose observations genuinely share windows.
+
+        Each value is the mean of `span` consecutive shocks, which is exactly
+        what an overlapping forward-return label does to a cohort series.
+        """
+        rng = np.random.default_rng(seed)
+        shocks = rng.standard_normal(n + span)
+        vals = np.array([shocks[i : i + span].mean() for i in range(n)])
+        return pd.Series(vals, index=pd.period_range("2005-01", periods=n, freq="M"))
+
+    def test_the_rule_of_thumb_under_corrects_on_overlapping_labels(self):
+        s = self._overlapping()
+        rule, k_rule = power.serial_inflation(s)
+        covered, k_cov = power.serial_inflation(s, label_periods=12)
+        assert k_cov == 12 > k_rule, "the label horizon must widen the lag"
+        assert covered > rule, (
+            "a lag covering the overlap must find MORE dependence, not less — "
+            "under-correcting is what manufactures a false POWERED verdict"
+        )
+
+    def test_the_lag_is_never_rounded_down_to_the_rule(self):
+        """max(rule, label), never min. At large n the rule can exceed the label
+        and must then win."""
+        s = self._overlapping(n=5000, span=3)
+        _, k = power.serial_inflation(s, label_periods=3)
+        assert k >= power.nw_lag(5000), "the rule must win when it is the larger"
+
+    def test_an_explicit_max_lag_still_overrides_everything(self):
+        s = self._overlapping()
+        _, k = power.serial_inflation(s, max_lag=7, label_periods=12)
+        assert k == 7, "an explicit max_lag is the caller's decision and wins"
+
+    def test_mde_rises_once_the_overlap_is_covered(self):
+        """The verdict-changing consequence, not just the inflation number."""
+        s = self._overlapping()
+        assert power.mde_serial_corrected(s, label_periods=12) > power.mde_serial_corrected(s)
+
+    def test_non_overlapping_data_is_unaffected(self):
+        """The fix must not inflate a study that has no overlap to correct for."""
+        rng = np.random.default_rng(1)
+        s = pd.Series(rng.standard_normal(300),
+                      index=pd.period_range("2005-01", periods=300, freq="M"))
+        base, _ = power.serial_inflation(s)
+        covered, _ = power.serial_inflation(s, label_periods=1)
+        assert covered == pytest.approx(base, rel=0.01)

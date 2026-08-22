@@ -242,7 +242,16 @@ def block_bootstrap_ci(
 # independent observations. That is a real correction and a modest one: 6-27%.
 
 
-def serial_inflation(cohorts: pd.Series, max_lag: int | None = None) -> tuple[float, int]:
+def nw_lag(n: int) -> int:
+    """Newey-West rule of thumb, 4*(n/100)^(2/9). K=5 at n=247."""
+    return max(1, int(round(4 * (n / 100) ** (2 / 9))))
+
+
+def serial_inflation(
+    cohorts: pd.Series,
+    max_lag: int | None = None,
+    label_periods: int | None = None,
+) -> tuple[float, int]:
     """Bartlett-kernel variance inflation for the mean of an autocorrelated series.
 
     Returns (inflation, lag_used). The inflation multiplies the variance of the
@@ -254,14 +263,45 @@ def serial_inflation(cohorts: pd.Series, max_lag: int | None = None) -> tuple[fl
     untapered sum can and does go negative on real data, which would produce an
     n_eff above n and silently flatter the study.
 
-    `max_lag` defaults to the Newey-West rule of thumb 4*(n/100)^(2/9), which
-    gives K=5 at the n=247 months this project actually has.
+    THE LAG MUST COVER THE LABEL OVERLAP. Defect found 2026-08-23.
+
+    The rule of thumb depends only on the NUMBER of observations and knows
+    nothing about how far each one's label reaches. That is fine for
+    non-overlapping data and badly wrong for the overlapping windows this project
+    is built on. Two measurements from that day:
+
+        12-month label, 236 monthly cohorts (overlap 11/12):
+            NW rule    K= 5   inflation 1.77   MDE 4.97%   -> "POWERED"
+            K = 12            inflation 2.37   MDE 5.73%   -> POWERED, 5% margin
+            K = 18            inflation 2.66   MDE 6.07%   -> 1.01x SHORT
+
+        252-session label, 5,035 daily cohorts (overlap 251/252):
+            NW rule    K= 9   inflation  2.06  MDE 3.62%   -> "POWERED"
+            K = 252           inflation 10.02  MDE 7.97%   -> 1.3x SHORT
+
+    In the second case the rule picked lag 9 against a true overlap of 252 and
+    understated the variance inflation FIVEFOLD. Both produced a POWERED verdict
+    that a correct lag removes. A verdict that depends on a parameter nobody
+    chose deliberately is not a verdict.
+
+    `label_periods` is the horizon expressed in COHORT PERIODS — 12 for a
+    12-month label on monthly cohorts, 252 for a 252-session label on daily ones.
+    When given, the lag is at least that. Pass it for any overlapping study;
+    omitting it retains the old behaviour and is correct only when consecutive
+    observations do not share a window.
     """
     v = np.asarray(cohorts.dropna(), dtype=float)
     n = len(v)
     if n < 3:
         return 1.0, 0
-    k_max = max_lag if max_lag is not None else max(1, int(round(4 * (n / 100) ** (2 / 9))))
+    if max_lag is not None:
+        k_max = max_lag
+    else:
+        k_max = nw_lag(n)
+        if label_periods is not None:
+            # Never round DOWN to the rule of thumb: under-correcting is what
+            # manufactures a false POWERED verdict.
+            k_max = max(k_max, int(label_periods))
     k_max = min(k_max, n - 1)
     centred = v - v.mean()
     denom = float((centred**2).sum())
@@ -277,9 +317,13 @@ def serial_inflation(cohorts: pd.Series, max_lag: int | None = None) -> tuple[fl
     return max(1.0, 1 + 2 * total), k_max
 
 
-def effective_periods(cohorts: pd.Series, max_lag: int | None = None) -> float:
+def effective_periods(
+    cohorts: pd.Series,
+    max_lag: int | None = None,
+    label_periods: int | None = None,
+) -> float:
     """Independent-equivalent number of periods after the serial correction."""
-    infl, _ = serial_inflation(cohorts, max_lag)
+    infl, _ = serial_inflation(cohorts, max_lag, label_periods)
     return len(cohorts.dropna()) / infl
 
 
@@ -288,6 +332,7 @@ def mde_serial_corrected(
     power: float = 0.80,
     alpha: float = 0.05,
     max_lag: int | None = None,
+    label_periods: int | None = None,
 ) -> float:
     """MDE on the cohort mean, accounting for dependence between periods.
 
@@ -307,5 +352,5 @@ def mde_serial_corrected(
     clean = cohorts.dropna()
     if len(clean) < 3:
         return float("nan")
-    n_eff = max(2.0, effective_periods(clean, max_lag))
+    n_eff = max(2.0, effective_periods(clean, max_lag, label_periods))
     return mde(cohort_sd(clean), int(round(n_eff)), power=power, alpha=alpha)

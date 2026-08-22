@@ -68,7 +68,7 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0001](0001-full-teardown-and-new-repo.md) | Abandon MICCV2, rebuild in a new repo | 2026-08-16 | ACTIVE |
 | [0002](0002-preregistration-before-results.md) | Pre-registration with spec freezing | 2026-08-16 | ACTIVE |
 | [0003](0003-portfolio-gate-required.md) | Every study needs a portfolio gate, not just an event gate | 2026-08-16 | ACTIVE |
-| [0004](0004-horizons-in-sessions-not-months.md) | Primary horizons in sessions; monthly grid demoted | 2026-08-16 | ACTIVE |
+| [0004](0004-horizons-in-sessions-not-months.md) | Primary horizons in sessions; monthly grid demoted | 2026-08-16 | **SUPERSEDED by 0034** |
 | [0005](0005-room-2b-six-slices-not-crossed-grid.md) | Six pre-declared slices instead of 54,000 cells | 2026-08-16 | ACTIVE |
 | [0006](0006-seasonality-full-rebuild.md) | Full 31.9M-cell rescan rather than validating the atlas | 2026-08-16 | **SUPERSEDED by 0026** |
 | [0007](0007-stopgap-collector-first.md) | Ship a stopgap archiver before anything else | 2026-08-17 | ACTIVE |
@@ -97,3 +97,6 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0030](0030-derived-tables-addressed-by-data-not-bytes.md) | **Derived tables are addressed by data, not bytes** — parquet writes are not byte-deterministic | 2026-08-22 | ACTIVE |
 | [0031](0031-consensus-is-the-critical-path-study.md) | **Consensus is the single critical-path study**; selling leads the extensions | 2026-08-23 | ACTIVE |
 | [0032](0032-uncovered-symbols-leave-the-universe.md) | **Symbols with no price coverage leave the universe** — Plan 1 Finding D falsified | 2026-08-23 | ACTIVE |
+| [0033](0033-serial-lag-must-cover-the-label-overlap.md) | **The serial lag must cover the label overlap** — the NW rule under-corrected fivefold | 2026-08-23 | ACTIVE |
+| [0034](0034-twelve-month-becomes-the-primary-horizon.md) | **12 months becomes the primary horizon**, reversing 0004 | 2026-08-23 | ACTIVE |
+| [0035](0035-power-may-use-the-full-universe-effects-may-not.md) | Power analysis may use the full universe; effect estimates may not | 2026-08-23 | ACTIVE |

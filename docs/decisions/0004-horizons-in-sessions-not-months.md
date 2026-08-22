@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-16
 **Decided by:** Claude, from measured power
-**Status:** ACTIVE
+**Status:** SUPERSEDED by [0034](0034-twelve-month-becomes-the-primary-horizon.md) — decision 0028 made the plausible bound scale with horizon, which inverts this record's premise: longer horizons became easier, not harder.
 
 ## Context
 The original grid ran 1–24 months. Measured MDE at 80% power on monthly cohorts:
