@@ -1,7 +1,8 @@
 # Data and databases — never in git.
-# Verified by tests/test_repo_hygiene.py, which greps `git ls-files` rather than
-# trusting this file: MICCV2 had db/app_state.sqlite tracked despite an
-# equivalent rule here, because .gitignore does not untrack what is already in.
+# Verified by test_no_database_or_data_file_is_tracked_by_git in
+# tests/test_foundations.py, which greps `git ls-files` rather than trusting this
+# file: MICCV2 had db/app_state.sqlite tracked despite an equivalent rule here,
+# because .gitignore does not untrack what is already in.
 /data/
 /db/
 *.duckdb
@@ -36,3 +37,6 @@ htmlcov/
 # report build artefacts — node_modules is 54 MB, regenerable
 docs/report/build/node_modules/
 docs/report/build/*.html
+# Scratch from one-off render experiments (raster-vs-vector diagram comparison,
+# Google Docs export spike). Underscore-prefixed by convention = disposable.
+docs/report/build/_*

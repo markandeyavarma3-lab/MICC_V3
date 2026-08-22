@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.institutional-research.collect.plist — the stopgap archiver's real schedule.
+
+  WHY THIS EXISTS ALONGSIDE CRON, RATHER THAN AS A TIDIER VERSION OF IT.
+
+  cron does NOT replay a job missed while the Mac was asleep or shut down. It
+  fires only if the machine happens to be awake at the instant. launchd's
+  StartCalendarInterval DOES: a missed interval runs when the machine next wakes.
+
+  That difference is not theoretical. Measured from logs/collect_2026-08.log:
+
+      2026-08-17 20:50   manual
+      2026-08-18 08:00
+      2026-08-18 22:30
+      2026-08-20 22:30   <- Aug 19 missing ENTIRELY
+
+  Aug 19 was a Wednesday trading session. All three cron slots missed it, and the
+  20:00 slot has never fired once. Because nseindia's historical endpoint answers
+  503, that session's bulk and block deals are gone permanently — not
+  inconvenient to recover, gone.
+
+  Plan 3 Phase 2.9 specified launchd from day one. The implementation used cron,
+  and this is the day that cost a session.
+
+  CRON IS DELIBERATELY LEFT IN PLACE. The stopgap dedupes on sha256, so a
+  duplicate run costs exactly one HTTP request and writes nothing. Two independent
+  schedulers that both no-op on success is the correct trade when the failure mode
+  is permanent data loss.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.institutional-research.collect</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/satya_03/Workspace/institutional-research/scripts/collect_daily.sh</string>
+    </array>
+
+    <!--
+      Three slots per session, mirroring the cron entries.
+
+      NSE publishes around 19:00 IST and does not republish, so at 08:00 the
+      endpoint is STILL serving the prior session. The morning slot is a genuine
+      catch-up for a missed evening, not a repeat.
+
+      Weekday: 1=Monday .. 6=Saturday. 20:00 and 22:30 run Mon-Fri; 08:00 runs
+      Mon-Sat so a Friday evening miss is still caught on Saturday morning.
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <!--
+      The script writes its own timestamped log. These capture anything that dies
+      BEFORE the script's own redirection takes effect — a missing interpreter, a
+      bad path, a permissions refusal. Without them that class of failure is
+      invisible, which is the same "looks like a covered day" failure the script's
+      own header warns about.
+    -->
+    <key>StandardOutPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_collect.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_collect.err</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/satya_03/Workspace/institutional-research</string>
+
+    <!-- Do not fire on load: loading is not a session boundary. -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-17
 **Decided by:** Not yet decided — raised by Claude, awaiting the owner
-**Status:** OPEN
+**Status:** SUPERSEDED by [0028](0028-plausible-bound-scales-with-horizon.md) — the owner chose the **rate view** on 2026-08-21
 
 ## Context
 `configs/research.yml` carries a single `plausible_effect_bound_monthly: 0.005`,

@@ -11,14 +11,29 @@ A test asserts no order-placement code exists anywhere in the repo.
 > are mostly expected to be negative, and a platform whose negative results
 > appear only after they're safe is not one you should trust.
 
-## Status — 2026-08-17
+## Status — 2026-08-21
 
 | | |
 |---|---|
 | **Phase** | 1 of 9 — skeleton, migrations, warehouse rebuild |
-| **Tests** | 27 pass |
-| **Research findings** | None yet. Nothing has been measured under a registered experiment |
+| **Tests** | 246 pass |
+| **Decision records** | 28 |
+| **Research findings** | One, and it is a rejection: [Finding 001](docs/reports/FINDING_001_bulk_deal_avoidance.md) failed its own pre-registered bar |
 | **Predecessor** | [MICCV2](../MICCV2) frozen at tag `frozen-2026-08-16` |
+
+**Two things a reader should know before the numbers below.**
+
+1. **Every horizon is currently UNDERPOWERED.** Decision
+   [0028](docs/decisions/0028-plausible-bound-scales-with-horizon.md) (2026-08-21)
+   settled that the plausible effect bound scales with horizon. Under that
+   reading the detection floor exceeds the plausible effect at 1, 5, 10 and 21
+   sessions alike, so the design gate will refuse to register the studies as
+   currently specified. Raising power — characteristic matching first — is
+   prerequisite work, not a refinement.
+2. **There is no backup of any kind.** Decision
+   [0014](docs/decisions/0014-no-remote-yet.md). Sessions archived from
+   2026-08-17 onward cannot be re-fetched at any price, because the historical
+   endpoint answers 503.
 
 ## Why this exists
 

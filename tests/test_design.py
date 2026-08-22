@@ -89,12 +89,15 @@ def test_summary_names_the_bar_and_the_dilution():
 def test_a_study_blind_at_every_horizon_is_refused():
     """The defect the original plan shipped with.
 
-    At 12 months MDE is 7.38% against a plausible bound of 0.50%, and the
+    At 12 months MDE is 7.38% against a scaled bound of 6.00%, and the
     "+7.80% signal" sat directly on its own detection floor.
+
+    The 1-session horizon is the decision-0028 case: MDE 0.191% against a bound
+    of 0.024%, which is eight times too weak.
     """
     with pytest.raises(DesignRejected, match="EVERY horizon is underpowered"):
         _design(horizons=(HorizonPower("12m", 247, 0.0738),
-                          HorizonPower("24m", 120, 0.1150)))
+                          HorizonPower("1s", 3345, 0.00191)))
 
 
 def test_a_study_with_one_powered_horizon_survives():
@@ -277,24 +280,58 @@ class TestBarIntegration:
         assert _design(dof=246).required_t == pytest.approx(_design().required_t, abs=0.06)
 
 
-class TestOpenDecisionStopsTheCode:
-    """Decision 0018 is unresolved. The code must refuse, not guess."""
+class TestScaledBoundUnderDecision0028:
+    """The bound scales with horizon — the owner's rate view, 2026-08-21.
 
-    def test_a_session_horizon_without_an_explicit_bound_is_refused(self):
-        """BUG: it silently compared a 1-session MDE to a PER-MONTH bound.
+    This class replaces `TestOpenDecisionStopsTheCode`, which asserted that a
+    session horizon must be REFUSED while decision 0018 was open. 0018 is now
+    closed by 0028, so the refusal is gone and the arithmetic takes its place.
+    """
 
-        A unit error that made short horizons look powered when they may not be.
+    def test_a_session_horizon_now_resolves_instead_of_refusing(self):
+        """While 0018 was open this raised. It must not any more."""
+        h = HorizonPower("1s", 3345, 0.00191)
+        assert h.resolved_bound == pytest.approx(0.005 / 21)
+
+    @pytest.mark.parametrize(
+        "label,mde,expected_bound",
+        [
+            ("1s", 0.00191, 0.005 * 1 / 21),
+            ("5s", 0.00423, 0.005 * 5 / 21),
+            ("10s", 0.00660, 0.005 * 10 / 21),
+            ("21s", 0.00968, 0.005 * 21 / 21),
+        ],
+    )
+    def test_every_measured_session_horizon_is_underpowered(self, label, mde, expected_bound):
+        """THE CONSEQUENCE THE OWNER ACCEPTED, pinned so it cannot drift back.
+
+        These are the real serial-corrected MDEs from decision 0017. Under the
+        rate view every one of them is blind — including 1s and 5s, which the
+        fixed bound had marked detectable.
         """
-        with pytest.raises(DesignRejected, match="unit error"):
-            _design(horizons=(HorizonPower("1s", 3345, 0.00191),))
+        h = HorizonPower(label, 247, mde)
+        assert h.resolved_bound == pytest.approx(expected_bound)
+        assert h.is_powered is False
 
-    def test_a_monthly_horizon_may_still_use_the_config_default(self):
+    def test_a_monthly_horizon_scales_too(self):
+        """12 months earns twelve months of bound, not one."""
         h = HorizonPower("12m", 247, 0.0738)
-        assert h.is_powered is False  # 7.38% against a 0.50% bound
+        assert h.resolved_bound == pytest.approx(0.06)
+        assert h.is_powered is False  # 7.38% still exceeds 6.00%
 
-    def test_an_explicit_bound_is_always_honoured(self):
+    def test_an_explicit_bound_always_wins(self):
         assert HorizonPower("1s", 3345, 0.00191, plausible_bound=0.0024).is_powered
         assert not HorizonPower("1s", 3345, 0.00191, plausible_bound=0.0010).is_powered
+
+    @pytest.mark.parametrize("label", ["ic_5s", "10d", "session_5", "event"])
+    def test_an_unparseable_unit_is_still_refused(self, label):
+        """Scaling resolved the unit question; it did not licence guessing.
+
+        A label whose unit cannot be read must still stop the code, or the exact
+        defect 0018 recorded returns through a different door.
+        """
+        with pytest.raises(DesignRejected, match="no parseable unit"):
+            _ = HorizonPower(label, 247, 0.00191).is_powered
 
     @pytest.mark.parametrize("label", ["12m", "3 months", "6mo", "1M"])
     def test_monthly_labels_are_recognised(self, label):
@@ -302,8 +339,10 @@ class TestOpenDecisionStopsTheCode:
 
         assert _is_monthly_horizon(label)
 
-    @pytest.mark.parametrize("label", ["10s", "ic_5s", "21s", "10d", "session_5"])
-    def test_non_monthly_labels_are_not(self, label):
-        from src.research.design import _is_monthly_horizon
+    @pytest.mark.parametrize(
+        "label,months", [("21s", 1.0), ("10s", 10 / 21), ("3m", 3.0), ("6 months", 6.0)]
+    )
+    def test_horizon_conversion(self, label, months):
+        from src.research.design import horizon_in_months
 
-        assert not _is_monthly_horizon(label)
+        assert horizon_in_months(label) == pytest.approx(months)

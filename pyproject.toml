@@ -5,19 +5,36 @@ description = "Research platform for disclosed institutional activity in Indian 
 requires-python = ">=3.14"
 license = { text = "MIT" }
 
+# PIN WHAT IS ACTUALLY TESTED.
+#
+# Corrected 2026-08-21. Every pin below had drifted from the environment the
+# suite actually runs in — duckdb 1.4.1 pinned against 1.5.5 installed, pandas
+# 2.3.3 against 3.0.5, and so on for all of them. A pin that does not describe
+# the interpreter the tests passed on is not reproducibility, it is a claim of
+# reproducibility, which is worse: it survives review and fails on a clean clone.
+#
+# `requests` was declared and NEVER IMPORTED anywhere in src/, tests/ or
+# scripts/. src/archive/stopgap.py deliberately uses urllib from the standard
+# library. Removed rather than installed — an unused dependency is a supply-chain
+# surface and a false statement about what the project needs.
+#
+# duckdb and pyarrow are retained though nothing imports them yet: the Phase 1
+# warehouse rebuild is written against DuckDB reading the parquet seed.
 dependencies = [
-    "duckdb==1.4.1",
-    "pandas==2.3.3",
-    "numpy==2.3.4",
-    "pyarrow==24.0.0",
-    "scipy==1.16.2",
-    "requests==2.32.5",
+    "duckdb==1.5.5",
+    "pandas==3.0.5",
+    "numpy==2.5.2",
+    "pyarrow==25.0.1",
+    "scipy==1.18.0",
     "pyyaml==6.0.3",
 ]
 
 [project.optional-dependencies]
+# pytest-cov and ruff are pinned but NOT currently installed in .venv. Listed so
+# a clean environment gets them; their absence is why no coverage number and no
+# lint result appears anywhere in this project's reporting.
 dev = [
-    "pytest==8.4.2",
+    "pytest==9.1.1",
     "pytest-cov==7.0.0",
     "ruff==0.14.1",
 ]
