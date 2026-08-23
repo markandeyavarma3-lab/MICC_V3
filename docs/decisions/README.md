@@ -100,4 +100,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0033](0033-serial-lag-must-cover-the-label-overlap.md) | **The serial lag must cover the label overlap** — the NW rule under-corrected fivefold | 2026-08-23 | ACTIVE |
 | [0034](0034-twelve-month-becomes-the-primary-horizon.md) | **12 months becomes the primary horizon**, reversing 0004 | 2026-08-23 | ACTIVE |
 | [0035](0035-power-may-use-the-full-universe-effects-may-not.md) | Power analysis may use the full universe; effect estimates may not | 2026-08-23 | ACTIVE |
-| [0036](0036-private-remote-reversing-no-remote.md) | **A private remote**, reversing 0014 — but Risk 8 stays open, data is gitignored | 2026-08-23 | ACTIVE |
+| [0036](0036-private-remote-reversing-no-remote.md) | A private remote, reversing 0014 | 2026-08-23 | **SUPERSEDED by 0037 — never executed** |
+| [0037](0037-backup-by-bundle-not-by-remote.md) | **Backup by bundle to cloud, not by remote** — the irreplaceable material is 23 MB, not 2.5 GB | 2026-08-23 | ACTIVE |

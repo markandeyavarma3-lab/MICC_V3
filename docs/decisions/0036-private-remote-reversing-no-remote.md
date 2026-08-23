@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-23
 **Decided by:** Owner
-**Status:** ACTIVE — supersedes [0014](0014-no-remote-yet.md)
+**Status:** SUPERSEDED by [0037](0037-backup-by-bundle-not-by-remote.md) — NEVER EXECUTED. The owner declined the new repository before any remote was created, so the decision below describes a repository that does not exist.
 
 ## Context
 
