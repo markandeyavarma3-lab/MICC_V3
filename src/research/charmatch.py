@@ -196,6 +196,31 @@ def build_panel(env: str | None = None, buckets: int = 5) -> PanelResult:
     )
 
     glob = f"{out}/**/*.parquet"
+
+    # STEP 1.9: "every table written registers its artefact and edges". This
+    # module wrote 330,861 rows and registered nothing for two days — found by
+    # audit 2026-08-23, which is exactly how long an unregistered artefact stays
+    # invisible. Addressed by DATA, not bytes (decision 0030).
+    from src.governance import provenance as prov
+
+    panel_cols = ("rebalance_date", "symbol", "adv20", "vol21", "mom12_1",
+                  "size_q", "mom_q", "vol_q")
+    digest = prov.data_checksum(con, glob, panel_cols)
+    spine_hash = None
+    try:
+        spine_hash = prov.data_checksum(
+            con, spine, ("symbol", "date", "open", "high", "low", "close", "volume", "_y"))
+    except Exception:  # noqa: BLE001 - a missing parent must not block the build
+        pass
+    prov.register(
+        prov.Artefact(digest, "FEATURE", "warehouse:char_panel", PRODUCED_BY,
+                      params={"buckets": buckets, "dimensions": list(LIVE_DIMENSIONS),
+                              "missing_dimensions": list(MISSING_DIMENSIONS),
+                              "addressing": "data_checksum"}),
+        parents=[(spine_hash, "input")] if spine_hash else (),
+        env=env,
+    )
+
     rows, dates, syms = con.execute(
         f"SELECT COUNT(*), COUNT(DISTINCT rebalance_date), COUNT(DISTINCT symbol)"
         f" FROM read_parquet('{glob}')"

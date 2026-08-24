@@ -239,7 +239,30 @@ def migrate_duckdb(db_path: Path, directory: Path = MIGRATIONS, dry_run: bool = 
         con.close()
 
 
-def status(db_path: Path, directory: Path = MIGRATIONS) -> str:
+def status(db_path: Path, directory: Path = MIGRATIONS, target: str = "sqlite") -> str:
+    """Migration status for a database.
+
+    `target` is explicit because this opens the file with sqlite3, and calling it
+    on a .duckdb path raises "file is not a database" — an unhelpful error for
+    what is really a wrong-target call. Observed 2026-08-24.
+    """
+    if target == "duckdb":
+        import duckdb
+
+        if not db_path.exists():
+            return f"{db_path.name}: not created; {len(discover('duckdb', directory))} pending"
+        con = duckdb.connect(str(db_path))
+        try:
+            con.execute(_TRACKING)
+            done = {r[0] for r in con.execute("SELECT version FROM schema_migrations").fetchall()}
+        finally:
+            con.close()
+        pending = [m for m in discover("duckdb", directory) if m.version not in done]
+        return f"{db_path.name}: {len(done)} applied, {len(pending)} pending"
+    return _status_sqlite(db_path, directory)
+
+
+def _status_sqlite(db_path: Path, directory: Path = MIGRATIONS) -> str:
     if not db_path.exists():
         return f"{db_path.name}: not created; {len(discover('sqlite', directory))} pending"
     con = sqlite3.connect(db_path)

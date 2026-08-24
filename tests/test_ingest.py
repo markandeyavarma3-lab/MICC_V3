@@ -186,10 +186,22 @@ class TestLanding:
 
     @staticmethod
     def _db(tmp_path, monkeypatch):
+        """Isolate BOTH databases. Patching only `research_db` let every test run
+        write artefacts into the PRODUCTION provenance graph — 23 spurious
+        `warehouse:deal_source_files` nodes arrived that way on 2026-08-24, and
+        `artefact` is append-only so they are permanent.
+
+        This is the defect commit 7fd3e68 fixed for the trial ledger,
+        reintroduced for artefacts because the second database was not obvious
+        from land()'s signature.
+        """
+        from src.governance import provenance as prov_mod
         from src.ingest import land as land_mod
 
         db = tmp_path / "research_test.duckdb"
+        gov = tmp_path / "governance_test.sqlite"
         monkeypatch.setattr(land_mod, "research_db", lambda e=None: db)
+        monkeypatch.setattr(prov_mod, "governance_db", lambda e=None: gov)
         return db
 
     @staticmethod
