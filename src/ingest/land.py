@@ -162,9 +162,31 @@ def land(env: str | None = None) -> LandReport:
     migrate_duckdb(db)
     con = duckdb.connect(str(db))
     report = LandReport()
+    landed_sources: list[tuple[str, str]] = []
     try:
         for pf in parse_all():
+            before = report.files_landed
             land_file(con, pf, report)
+            if report.files_landed > before:
+                # REGISTER THE ARCHIVED FILE ITSELF, or the landed table has no
+                # ancestry. Found 2026-08-24: the landed tables were registered
+                # with ZERO parents, so "which archived bytes produced this row?"
+                # was a dead end in the graph — the one question Plan 2 §8.2 says
+                # a DAG answers and a hash chain cannot.
+                #
+                # Its content hash IS the file's sha256, which the manifest and
+                # the deal_source_files row already carry, so the graph, the
+                # database and the archive all agree by construction.
+                prov.register(
+                    prov.Artefact(pf.sha256, "SOURCE", f"archive:{pf.report_type}",
+                                  PRODUCED_BY, byte_size=pf.path.stat().st_size,
+                                  row_count=len(pf.rows),
+                                  params={"session_date": pf.session_date,
+                                          "file_name": pf.path.name,
+                                          "status": pf.status}),
+                    env=env,
+                )
+                landed_sources.append((pf.sha256, "input"))
     finally:
         con.close()
 
@@ -192,6 +214,7 @@ def land(env: str | None = None) -> LandReport:
                     prov.Artefact(digest, "TABLE", f"warehouse:{table}", PRODUCED_BY,
                                   row_count=n,
                                   params={"parser_version": PARSER_VERSION}),
+                    parents=landed_sources,
                     env=env,
                 )
         finally:
