@@ -173,3 +173,129 @@ def test_utc_is_converted_to_ist(tmp_path):
 
 def test_no_manifest_yields_no_claims(tmp_path):
     assert publication.bounds(tmp_path / "absent.jsonl") == []
+
+
+# --- landing: closing the break between parse and the warehouse --------------
+
+
+class TestLanding:
+    """An audit on 2026-08-23 found the pipeline severed: parse produced rows and
+    nothing wrote them, 14 tables held 0 rows, and `research_db` was referenced
+    by no module at all. These tests exist so it cannot silently re-open.
+    """
+
+    @staticmethod
+    def _db(tmp_path, monkeypatch):
+        from src.ingest import land as land_mod
+
+        db = tmp_path / "research_test.duckdb"
+        monkeypatch.setattr(land_mod, "research_db", lambda e=None: db)
+        return db
+
+    @staticmethod
+    def _archive(tmp_path, session: str, client: str, name: str = "BULK_NSE_x.csv.gz"):
+        p = tmp_path / "arch" / "BULK" / "NSE" / "year=2026" / "month=08" / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(p, "wb") as fh:
+            fh.write(
+                f"{BULK_HEADER}\n{session},AHIMSA,A Ltd,{client},BUY,81000,28.50,-\n".encode()
+            )
+        return p
+
+    def test_landing_is_idempotent_on_the_hash(self, tmp_path, monkeypatch):
+        from src.ingest import land as land_mod
+
+        self._db(tmp_path, monkeypatch)
+        self._archive(tmp_path, "21-AUG-2026", "ALPHA")
+        monkeypatch.setattr(land_mod, "parse_all",
+                            lambda: parse.parse_all(tmp_path / "arch"))
+        first = land_mod.land()
+        assert first.files_landed == 1 and first.rows_landed == 1
+        second = land_mod.land()
+        assert second.files_landed == 0 and second.files_skipped == 1, (
+            "re-landing identical bytes must skip, or the archive cannot be re-run"
+        )
+
+    def test_a_revision_is_detected_and_BOTH_versions_are_kept(self, tmp_path, monkeypatch):
+        """Plan 1 §5.4: "Both versions are kept. Research uses the version
+        available at the decision date."
+
+        This was IMPOSSIBLE as specified — §5.2's UNIQUE(exchange, report_type,
+        report_date, parser_version) rejected the second version outright.
+        Migration 0002 exists solely for this test to be able to pass.
+        """
+        import duckdb
+
+        from src.ingest import land as land_mod
+
+        db = self._db(tmp_path, monkeypatch)
+        self._archive(tmp_path, "21-AUG-2026", "ALPHA", "BULK_NSE_v1.csv.gz")
+        monkeypatch.setattr(land_mod, "parse_all",
+                            lambda: parse.parse_all(tmp_path / "arch"))
+        land_mod.land()
+
+        # NSE restates the same session with different content.
+        self._archive(tmp_path, "21-AUG-2026", "ALPHA AND BETA", "BULK_NSE_v2.csv.gz")
+        rep = land_mod.land()
+
+        assert rep.revisions, "a new hash for a held session must be flagged as a revision"
+        con = duckdb.connect(str(db))
+        try:
+            files = con.execute(
+                "SELECT revision_number FROM deal_source_files"
+                " WHERE report_date = '2026-08-21' ORDER BY revision_number"
+            ).fetchall()
+            revs = con.execute("SELECT COUNT(*) FROM source_revisions").fetchone()[0]
+        finally:
+            con.close()
+        assert [r[0] for r in files] == [0, 1], "both versions must survive"
+        assert revs == 1, "the revision must be recorded, not merely tolerated"
+
+    def test_fii_dii_lands_as_a_file_but_not_as_deal_rows(self, tmp_path, monkeypatch):
+        """institutional_deals_raw has grain 'one disclosed deal'. An FII/DII
+        record is a market-wide aggregate with no symbol, client or side."""
+        import duckdb
+
+        from src.ingest import land as land_mod
+
+        db = self._db(tmp_path, monkeypatch)
+        p = tmp_path / "arch" / "FII_DII" / "NSE" / "year=2026" / "month=08" / "f.json.gz"
+        p.parent.mkdir(parents=True)
+        with gzip.open(p, "wb") as fh:
+            fh.write(b'[{"date":"21-Aug-2026","category":"DII","buyValue":"1",'
+                     b'"sellValue":"2","netValue":"-1"}]')
+        monkeypatch.setattr(land_mod, "parse_all",
+                            lambda: parse.parse_all(tmp_path / "arch"))
+        rep = land_mod.land()
+        assert rep.files_landed == 1
+        assert rep.rows_landed == 0, "an aggregate must not enter a deal-grain table"
+        con = duckdb.connect(str(db))
+        try:
+            assert con.execute(
+                "SELECT row_count FROM deal_source_files").fetchone()[0] == 1, (
+                "the row count is still recorded on the file"
+            )
+        finally:
+            con.close()
+
+    def test_quantity_and_price_survive_as_TEXT(self, tmp_path, monkeypatch):
+        """Plan 1 §5.3. Landing must not quietly coerce what the parser
+        deliberately kept verbatim."""
+        import duckdb
+
+        from src.ingest import land as land_mod
+
+        db = self._db(tmp_path, monkeypatch)
+        p = tmp_path / "arch" / "BULK" / "NSE" / "year=2026" / "month=08" / "b.csv.gz"
+        p.parent.mkdir(parents=True)
+        with gzip.open(p, "wb") as fh:
+            fh.write(f'{BULK_HEADER}\n21-AUG-2026,X,X Ltd,C,BUY,"1,234,567",28.50,-\n'.encode())
+        monkeypatch.setattr(land_mod, "parse_all",
+                            lambda: parse.parse_all(tmp_path / "arch"))
+        land_mod.land()
+        con = duckdb.connect(str(db))
+        try:
+            assert con.execute(
+                "SELECT quantity_raw FROM institutional_deals_raw").fetchone()[0] == "1,234,567"
+        finally:
+            con.close()

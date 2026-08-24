@@ -358,8 +358,12 @@ class TestDuckDBMigrations:
         assert len(stmts) == 1 and "fine" in stmts[0]
 
     def test_migrations_apply_and_are_idempotent(self, tmp_path):
+        """Applies EVERY duckdb migration, not a fixed count — the list grows and
+        a hard-coded [1] would fail the day a second one lands, which is exactly
+        what happened when 0002 arrived."""
         db = tmp_path / "research_test.duckdb"
-        assert migrate.migrate_duckdb(db) == [1]
+        expected = [m.version for m in migrate.discover("duckdb")]
+        assert migrate.migrate_duckdb(db) == expected
         assert migrate.migrate_duckdb(db) == [], "a second run must apply nothing"
 
     def test_editing_an_applied_migration_is_refused(self, tmp_path, monkeypatch):
