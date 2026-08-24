@@ -311,3 +311,59 @@ class TestLanding:
                 "SELECT quantity_raw FROM institutional_deals_raw").fetchone()[0] == "1,234,567"
         finally:
             con.close()
+
+
+class TestSeedCorpus:
+    """The twenty-year corpus, landed and honestly labelled.
+
+    Until 2026-08-24 the 235,880 seed deals had never passed through the
+    pipeline: eligibility.py read the parquet directly, so every number built on
+    it — including the twelve-month result decision 0034 rests on — bypassed the
+    archive, the identity layer and the provenance DAG.
+    """
+
+    @pytest.mark.data
+    @pytest.mark.skipif(
+        not (__import__("src.common.paths", fromlist=["SEED"]).SEED / "bulk_deals.parquet").is_file(),
+        reason="seed not carried",
+    )
+    def test_seed_rows_are_distinguishable_from_live_rows(self):
+        """The load-bearing property. Live-collected rows have an observed
+        publication time; seed rows have none and never can. Blurring them would
+        let 235,880 rows of unknown provenance inherit the credibility of 611
+        rows of known provenance."""
+        import duckdb
+
+        from src.common.paths import research_db
+        from src.ingest.seed_deals import SEED_PARSER_VERSION
+        from src.ingest.land import PARSER_VERSION
+
+        assert SEED_PARSER_VERSION != PARSER_VERSION, (
+            "seed and live rows must not share a parser_version"
+        )
+        con = duckdb.connect(str(research_db("prod")))
+        try:
+            versions = {
+                r[0]: r[1] for r in con.execute(
+                    "SELECT f.parser_version, COUNT(*) FROM institutional_deals_raw r"
+                    " JOIN deal_source_files f USING(source_file_id)"
+                    " GROUP BY 1"
+                ).fetchall()
+            }
+        finally:
+            con.close()
+        assert SEED_PARSER_VERSION in versions, "the seed corpus is not landed"
+        assert versions[SEED_PARSER_VERSION] == 235_880
+        assert versions.get(PARSER_VERSION, 0) > 0, "live rows are missing"
+
+    @pytest.mark.unit
+    def test_the_seed_declares_that_available_from_is_unrecoverable(self):
+        """available_from is the field Plan 1 §7.1 says the study rests on. For
+        2006-2026 nobody recorded it and nobody can. The module must say so
+        rather than leaving a reader to assume the live measurement covers it."""
+        from src.ingest import seed_deals
+
+        text = seed_deals.__doc__ or ""
+        assert "nobody recorded when any of it became public" in text.lower() \
+            or "available_from" in text
+        assert "LOW confidence" in text or "conservative bound" in text
