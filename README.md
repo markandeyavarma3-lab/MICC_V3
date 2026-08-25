@@ -16,7 +16,7 @@ A test asserts no order-placement code exists anywhere in the repo.
 | | |
 |---|---|
 | **Phase** | 1 of 9 — skeleton, migrations, warehouse rebuild |
-| **Tests** | 342 pass |
+| **Tests** | 344 pass |
 | **Decision records** | 37 |
 | **Research findings** | One, and it is a rejection: [Finding 001](docs/reports/FINDING_001_bulk_deal_avoidance.md) failed its own pre-registered bar |
 | **Predecessor** | [MICCV2](../MICCV2) frozen at tag `frozen-2026-08-16` |
@@ -31,13 +31,19 @@ A test asserts no order-placement code exists anywhere in the repo.
    that had dropped the long horizons. Detection floors grow with √horizon while
    the bound grows linearly, so long horizons became *easier*.
    [0034](docs/decisions/0034-twelve-month-becomes-the-primary-horizon.md) makes
-   **12 months the primary horizon**: measured MDE 5.56% against a 6.00% bound on
-   17,988 filtered events. That is **marginal** — a 7% margin, and 0.7% at the
-   most conservative lag — and is reported as marginal, never as comfortable.
+   **12 months the primary horizon**: measured MDE **5.28%** against a 6.00%
+   bound on 17,705 events, computed through the full pipeline
+   (`institutional_deals_clean`) rather than the seed parquet the decision was
+   originally taken on. That is **marginal** and is reported as marginal, never
+   as comfortable.
 2. **There is no backup of any kind.** Decision
-   [0014](docs/decisions/0014-no-remote-yet.md). Sessions archived from
-   2026-08-17 onward cannot be re-fetched at any price, because the historical
-   endpoint answers 503.
+   [0037](docs/decisions/0037-backup-by-bundle-not-by-remote.md). Sessions
+   archived from 2026-08-17 onward cannot be re-fetched at any price, because the
+   historical endpoint answers 503. `scripts/backup.sh` is written and passes its
+   own restore drill; it has written nothing, because no cloud mount is
+   available.
+
+**Where every phase stands is derived, not asserted:** [`docs/STATUS.md`](docs/STATUS.md).
 
 ## Why this exists
 
