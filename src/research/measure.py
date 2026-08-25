@@ -34,8 +34,7 @@ from dataclasses import dataclass
 
 import duckdb
 
-from src.common.paths import warehouse_dir
-from src.mart import eligibility
+from src.common.paths import research_db, warehouse_dir
 from src.research import power
 
 #: Horizons in trading sessions, with the months they represent. The bound
@@ -115,9 +114,14 @@ def grid(env: str | None = None) -> list[Row]:
     `research_prices: adjusted`; on raw prices a 1:2 split reads as -50%.
     """
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
-    con = duckdb.connect()
+    # READ THE MART, NOT THE SEED PARQUET. Until 2026-08-24 this measurement ran
+    # off bulk_deals.parquet directly, bypassing the archive, the identity layer
+    # and the provenance DAG — so the number decision 0034 rests on had no
+    # lineage. It now reads institutional_deals_clean, where every row has been
+    # resolved point-in-time, dated against the observed calendar, and given an
+    # explicit eligibility reason.
+    con = duckdb.connect(str(research_db(env)))
     con.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false; SET threads=4;")
-    eligibility.classify(con)
 
     out: list[Row] = []
     for label, sessions, months in HORIZONS:
@@ -126,14 +130,18 @@ def grid(env: str | None = None) -> list[Row]:
         # session. Decision 0021 — a pooled average of market-relative returns is
         # identically zero, so the demean is the comparison, not the estimator.
         con.execute("CREATE OR REPLACE VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
+        # The size and round-trip filters already live in the mart's
+        # eligible_for_research, applied once where they can be counted, rather
+        # than re-implemented in every study that needs them.
         df = con.execute(
-            "SELECT e.date AS tdate, e.value_inr, r.adv20, r.ret - m.m AS ab"
-            " FROM eligible_events e"
-            " JOIN rets r ON r.symbol = e.symbol AND r.date = e.date"
-            " JOIN mkt m ON m.date = e.date"
+            "SELECT cl.trade_date AS tdate, r.ret - m.m AS ab"
+            " FROM institutional_deals_clean cl"
+            " JOIN institutional_deals_raw raw USING (raw_deal_id)"
+            " JOIN rets r ON r.symbol = UPPER(TRIM(raw.symbol_raw))"
+            "            AND r.date = cl.trade_date"
+            " JOIN mkt m ON m.date = cl.trade_date"
+            " WHERE cl.eligible_for_research"
         ).df().dropna(subset=["ab"])
-        df = df[(df.value_inr >= MIN_VALUE_INR) & (df.adv20 > 0)
-                & (df.value_inr / df.adv20 >= MIN_VALUE_TO_ADV)]
 
         cohorts = power.cohort_collapse(df["tdate"], df["ab"], freq="M")
         # THE LAG MUST COVER THE LABEL OVERLAP (decision 0033). A 12-month label

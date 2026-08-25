@@ -202,9 +202,12 @@ def steps() -> list[Step]:
              wired=lambda c: c.consumed("from src.common.paths", "src/common/paths.py"),
              verified=lambda c: c.tested(r"test_unset_environment_raises"),
              note="no structured logging and no central config loader; six modules load their own YAML"),
-        Step("1.4", "1 Warehouse", "Trading calendar ported from observed sessions",
+        Step("1.4", "1 Warehouse", "Trading calendar from observed sessions",
              built=lambda c: c.module("src/common/calendar.py"),
-             note="never built; the 5,339 figure is COUNT(DISTINCT date) on the spine"),
+             wired=lambda c: c.consumed("calendar", "src/common/calendar.py")
+                             or "cal AS" in c.src_text.get("src/mart/clean.py", ""),
+             verified=lambda c: c.tested(r"test_the_calendar_is_observed_not_generated"),
+             note="5,339 sessions, gate MATCH; found 3 weekend sessions a generated calendar would miss"),
         Step("1.5", "1 Warehouse", "Migration runner, forward-only and checksummed",
              built=lambda c: c.module("src/common/migrate.py"),
              wired=lambda c: c.consumed("migrate_duckdb", "src/common/migrate.py"),
@@ -310,8 +313,11 @@ def steps() -> list[Step]:
              built=lambda c: c.duck_rows.get("promoter_entities", 0) > 0),
 
         # --- Phase 4+ --------------------------------------------------------
-        Step("4", "4 Clean mart", "institutional_deals_clean with all flags",
-             built=lambda c: c.duck_rows.get("institutional_deals_clean", 0) > 0),
+        Step("4", "4 Clean mart", "institutional_deals_clean, zero silent drops",
+             built=lambda c: c.duck_rows.get("institutional_deals_clean", 0) > 0,
+             wired=lambda c: "institutional_deals_clean" in c.src_text.get("src/research/measure.py", ""),
+             verified=lambda c: c.tested(r"test_zero_silent_drops"),
+             note="five-day round-trip, internal-transfer and promoter flags are still FALSE placeholders"),
         Step("5", "5 Costs & benchmarks", "fee_schedule, spreads, impact, six benchmarks",
              built=lambda c: c.gov_rows.get("fee_schedule", 0) > 0,
              note="costs.yml holds verified rates; nothing loads them"),

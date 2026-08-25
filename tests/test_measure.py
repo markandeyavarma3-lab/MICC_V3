@@ -44,11 +44,17 @@ def test_the_twelve_month_figure_is_reproducible():
     """THE POINT OF THIS FILE. Decision 0034 and the report both quote 5.5572%.
     Until 2026-08-24 no committed code produced it."""
     row = next(r for r in measure.grid("prod") if r.sessions == 252)
-    assert row.mde == pytest.approx(0.055572, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; decision 0034 quotes 5.5572%. "
-        f"If this changed legitimately, the decision record must change with it."
+    # 5.2803% THROUGH THE PIPELINE, against 5.5572% via the old seed-parquet
+    # bypass that decision 0034 was decided on. The difference is 283 events:
+    # the mart excludes uncovered and unresolved symbols that reading the parquet
+    # directly silently included. 0034 is NOT edited to match — it records what
+    # was decided and on what basis — and the conclusion is unchanged, since both
+    # figures sit under the 6.00% bound.
+    assert row.mde == pytest.approx(0.052803, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the pipeline figure is 5.2803%. "
+        f"If this changed legitimately, say so in a decision record."
     )
-    assert row.n_events == 17_988
+    assert row.n_events == 17_705
     assert row.powered, "0034 rests on this horizon reaching its bound"
 
 
@@ -66,3 +72,47 @@ def test_every_session_horizon_remains_short():
     """0034's other half: 12 months is the ONLY horizon within reach."""
     short = [r for r in measure.grid("prod") if r.sessions < 252]
     assert short and all(not r.powered for r in short)
+
+
+# --- the calendar and the mart, which the grid now depends on ----------------
+
+
+@needs_spine
+def test_the_calendar_is_observed_not_generated():
+    """Plan 1.4: observed sessions, never generated. The proof it matters is that
+    the data contains three SATURDAY sessions — 2020-11-14 Muhurat and two 2024
+    special sessions — which any weekday-minus-holidays calendar would drop,
+    silently changing what "10 trading sessions" means."""
+    from src.common import calendar
+
+    s = calendar.sessions("prod")
+    assert len(s) == 5339, f"{len(s)} sessions; the Phase 1 gate expects 5,339"
+    weekend = [d for d in s if d.weekday() >= 5]
+    assert len(weekend) == 3, f"expected 3 weekend sessions, found {len(weekend)}"
+    assert calendar.next_session(s[0], "prod") == s[1]
+    assert calendar.next_session(s[-1], "prod") is None, (
+        "past the end of the data there is no next session, and inventing one "
+        "would fabricate an entry date"
+    )
+
+
+@needs_spine
+def test_zero_silent_drops():
+    """Phase 4's gate verbatim: every clean deal either resolves to a security or
+    carries an explicit failure status. Every raw row must appear in the mart."""
+    import duckdb
+
+    from src.common.paths import research_db
+
+    con = duckdb.connect(str(research_db("prod")))
+    try:
+        raw = con.execute("SELECT COUNT(*) FROM institutional_deals_raw").fetchone()[0]
+        clean = con.execute("SELECT COUNT(*) FROM institutional_deals_clean").fetchone()[0]
+        unexplained = con.execute(
+            "SELECT COUNT(*) FROM institutional_deals_clean"
+            " WHERE NOT eligible_for_research AND ineligibility_reason IS NULL"
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert clean == raw, f"{raw:,} raw rows produced {clean:,} clean rows"
+    assert unexplained == 0, f"{unexplained:,} rows excluded with no stated reason"
