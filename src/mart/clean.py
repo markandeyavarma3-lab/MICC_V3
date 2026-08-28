@@ -48,12 +48,37 @@ from datetime import UTC, datetime
 
 import duckdb
 
-from src.common.paths import research_db, warehouse_dir
+import yaml
+
+from src.common.paths import CONFIGS, research_db, warehouse_dir
 from src.governance import provenance as prov
 from src.identity.master import RESOLVE_SQL
 from src.mart.eligibility import Thresholds, spec
 
-CLEAN_VERSION = "1.0.0"
+
+def participation_ceiling() -> float:
+    """The largest position buildable, as a multiple of ADV20.
+
+    Plan 2 §4.4: participation is capped at a fraction of ADV per session, and an
+    order that cannot be built inside `max_sessions_to_build` is marked TOO_LARGE
+    and excluded with the reason recorded. costs.yml sets 10% per session over at
+    most 5 sessions, so 50% of ADV20 is the ceiling.
+
+    THIS WAS MISSING UNTIL 2026-08-26 and it mattered: the mart had a size FLOOR
+    (0.5% of ADV20, so a threshold-scraper is not an event) and NO CEILING, so
+    14,747 of 20,489 eligible events — 72% — were positions nobody could
+    actually build. One traced row was 204x ADV. An event that cannot be
+    established is not a tradable signal, and including it inflates the sample
+    with the most extreme returns in the corpus.
+
+    Derived from config rather than hard-coded, so the 3x3 sensitivity the cost
+    model already demands can move it.
+    """
+    c = yaml.safe_load((CONFIGS / "costs.yml").read_text())["participation"]
+    return float(c["base_cap_pct_adv"]) * int(c["max_sessions_to_build"])
+
+
+CLEAN_VERSION = "1.1.0"   # 1.1.0 adds the TOO_LARGE participation ceiling
 PRODUCED_BY = "src.mart.clean:build"
 
 
@@ -86,6 +111,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
     e = spec()["eligibility"]
     min_value = float(e["min_deal_value_inr"])
     min_adv = float(e["min_deal_value_to_adv20"])
+    max_adv = participation_ceiling()
 
     db = research_db(env)
     con = duckdb.connect(str(db))
@@ -178,6 +204,11 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                     WHEN side <> 'BUY' THEN 'not a buy (sells not yet studied)'
                     WHEN qty * price < {min_value} THEN 'below the value floor'
                     WHEN v2adv IS NULL OR v2adv < {min_adv} THEN 'below the ADV20 floor'
+                    -- Plan 2 §4.4. A position needing more than
+                    -- max_sessions_to_build at the participation cap cannot be
+                    -- established, so it is not a tradable event however real
+                    -- the disclosure was.
+                    WHEN v2adv > {max_adv} THEN 'TOO_LARGE to build (Plan 2 §4.4)'
                 END AS reason
             FROM base
         )
@@ -226,15 +257,43 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
             "SELECT available_from_confidence, COUNT(*) FROM institutional_deals_clean"
             " GROUP BY 1"
         ).fetchall())
+
+        # Working views are dropped: they are build scaffolding, and leaving
+        # them in a persistent database means a stale `cal` can outlive a spine
+        # rebuild and silently answer with the old calendar.
+        for v in ("cal", "adv", "csd", "hft"):
+            con.execute(f"DROP VIEW IF EXISTS {v}")
     finally:
         con.close()
 
+    import sqlite3
+
+    from src.common.paths import governance_db
+
+    # The inputs this mart was built from, so lineage can be walked. Found
+    # 2026-08-26: institutional_deals_clean and security_master were both
+    # registered with ZERO parent edges — the same dead end fixed for the landed
+    # tables and then reintroduced in the two modules written after it.
+    g = sqlite3.connect(governance_db(env))
+    try:
+        parents = [
+            (r[0], "input")
+            for r in g.execute(
+                "SELECT artefact_hash FROM artefact WHERE logical_name IN"
+                " ('warehouse:institutional_deals_raw','warehouse:security_master')"
+            ).fetchall()
+        ]
+    finally:
+        g.close()
     prov.register(
         prov.Artefact(
-            prov.hash_params({"rows": rows, "eligible": elig, "version": CLEAN_VERSION}),
+            prov.hash_params({"rows": rows, "eligible": elig, "version": CLEAN_VERSION,
+                              "ceiling": participation_ceiling()}),
             "TABLE", "warehouse:institutional_deals_clean", PRODUCED_BY,
             row_count=rows,
-            params={"clean_version": CLEAN_VERSION, "eligible": elig}),
+            params={"clean_version": CLEAN_VERSION, "eligible": elig,
+                    "participation_ceiling": participation_ceiling()}),
+        parents=parents,
         env=env,
     )
     return CleanReport(rows, elig, by_reason, by_identity, by_timing)

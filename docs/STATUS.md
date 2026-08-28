@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 8  IMPOSSIBLE: 2  BLOCKED: 1
+VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 
 ## Phase 0 Audit & specification
 
@@ -58,6 +58,7 @@ VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 8  IMPOSSIBLE: 2  BLOCKED: 1
 | 2.7 | FII/DII cash collector | **VERIFIED** |  |
 | 2.8 | participant_oi ported as the FII/DII proxy | BUILT |  |
 | 2.9 | Scheduled collection running | **VERIFIED** | launchd added 2026-08-22 after cron silently lost the 19 Aug session |
+| 2.12 | Daily PRICE feed, so collected deals are usable | — | NOT BUILT. The collector gathers deals and nothing gathers prices, so all 611 live-collected rows are ineligible: 469 'no next session in the data', 142 uncovered. The spine ends 2026-08-14 and collection began 2026-08-17. The gap grows one session per day. |
 | 2.10 | Measure available_from empirically | **VERIFIED** | brackets are 10.7h at best; nothing consumes the measurement yet |
 | 2.11 | Revision detection | **VERIFIED** |  |
 
@@ -113,4 +114,4 @@ VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 8  IMPOSSIBLE: 2  BLOCKED: 1
 
 ---
 
-Derived at commit `4d9d7d1`.
+Derived at commit `2dfaa41`.

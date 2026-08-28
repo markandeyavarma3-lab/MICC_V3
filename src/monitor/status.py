@@ -271,6 +271,12 @@ def steps() -> list[Step]:
              wired=lambda c: c.archive_sessions() >= 4,
              verified=lambda c: c.tested(r"test_publication_is_bracketed_by_two_observations"),
              note="launchd added 2026-08-22 after cron silently lost the 19 Aug session"),
+        Step("2.12", "2 Collection", "Daily PRICE feed, so collected deals are usable",
+             built=lambda c: "bhavcopy" in c.src_text.get("src/archive/stopgap.py", "").lower(),
+             note="NOT BUILT. The collector gathers deals and nothing gathers prices, so "
+                  "all 611 live-collected rows are ineligible: 469 'no next session in "
+                  "the data', 142 uncovered. The spine ends 2026-08-14 and collection "
+                  "began 2026-08-17. The gap grows one session per day."),
         Step("2.10", "2 Collection", "Measure available_from empirically",
              built=lambda c: c.module("src/ingest/publication.py"),
              wired=lambda c: c.archive_sessions() >= 2,

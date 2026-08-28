@@ -197,12 +197,28 @@ def build(env: str | None = None) -> BuildReport:
     finally:
         con.close()
 
+    # Lineage to the master it was derived from. Without this the security
+    # master is a root node, and "where did this identity come from?" has no
+    # answer in the graph.
+    import sqlite3
+
+    from src.common.hashing import hash_file
+    from src.common.paths import governance_db
+
+    src_hash = hash_file(im)
+    prov.register(
+        prov.Artefact(src_hash, "SOURCE", "v1seed:isin_master", PRODUCED_BY,
+                      params={"note": "two datasets concatenated; date format "
+                                      "predicts source (2,528 ISO / 1,207 DD-MON)"}),
+        env=env,
+    )
     prov.register(
         prov.Artefact(
             prov.hash_params({"securities": rep.securities, "symbols": rep.symbol_rows,
                               "source": "v1seed:isin_master"}),
             "TABLE", "warehouse:security_master", PRODUCED_BY,
             row_count=rep.securities, params={"reused_symbols": rep.reused_symbols}),
+        parents=[(src_hash, "input")],
         env=env,
     )
     return rep
