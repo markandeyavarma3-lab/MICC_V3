@@ -24,4 +24,10 @@ mkdir -p "$REPO/logs"
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   "$REPO/.venv/bin/python" -m src.archive.stopgap
   echo "exit=$?"
+  # ALWAYS run the health check, including after a failed fetch — especially
+  # then. On 2026-08-28 all three slots failed on DNS, the collector said "may
+  # be permanently lost", exited 1, and nobody saw it for two days. Detection
+  # was never the problem; nothing carried it anywhere.
+  "$REPO/.venv/bin/python" -m src.monitor.health
+  echo "health=$?"
 } >> "$LOG" 2>&1

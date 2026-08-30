@@ -250,8 +250,8 @@ and why V3 is designed the way it is.
 | Commits | 31 |
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
-| Tests | 345, all passing |
-| Decision records | 37 |
+| Tests | 354, all passing |
+| Decision records | 38 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -263,7 +263,7 @@ the rest of this report.
 | Duration | 11 days | 34 days | ongoing |
 | Commits | 67 | 107 | 30 |
 | Lines of Python | 23,172 | 35,762 | 6,243 |
-| Tests | — | 375 | 345 |
+| Tests | — | 375 | 354 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -821,7 +821,7 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 345 automated tests, all passing.
+This is the substantial achievement so far. 354 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
@@ -879,7 +879,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Thirty-seven decision records, each recording what was decided, by whom, why, **what
+Thirty-eight decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1337,9 +1337,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 345 tests that enforces honest research
+- A discipline framework with 354 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Thirty-seven decision records with reversal conditions
+- Thirty-eight decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history

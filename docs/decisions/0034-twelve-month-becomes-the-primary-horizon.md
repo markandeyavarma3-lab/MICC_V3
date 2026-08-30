@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-23
 **Decided by:** Owner
-**Status:** ACTIVE — supersedes [0004](0004-horizons-in-sessions-not-months.md)
+**Status:** SUPERSEDED by [0038](0038-no-horizon-survives-a-participation-cap.md) — the twelve-month result held only because no participation ceiling was applied. With Plan 2 §4.4's ceiling, no horizon is registrable.
 
 ## Context
 
