@@ -333,6 +333,12 @@ def steps() -> list[Step]:
              built=lambda c: c.module("src/scan/procedure.py")),
         Step("7", "7 Seasonality", "Validate the atlas on a 100,000-cell sample",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0),
+        Step("2.13", "2 Collection", "Alert when collection goes stale",
+             built=lambda c: c.module("src/monitor/health.py"),
+             wired=lambda c: "monitor.health" in (ROOT/"scripts"/"collect_daily.sh").read_text(),
+             verified=lambda c: c.tested(r"test_a_stale_required_source_alerts"),
+             note="19 Aug lost, 28 Aug recovered two days late by hand — detection always "
+                  "worked, nothing carried it anywhere"),
         Step("8", "8 Monitoring", "Generated status derived from repo and DB state",
              built=lambda c: c.module("src/monitor/status.py"),
              wired=lambda c: STATUS_PATH.exists(),

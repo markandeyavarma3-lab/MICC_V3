@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
+VERIFIED: 20  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 
 ## Phase 0 Audit & specification
 
@@ -61,6 +61,7 @@ VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 | 2.12 | Daily PRICE feed, so collected deals are usable | — | NOT BUILT. The collector gathers deals and nothing gathers prices, so all 611 live-collected rows are ineligible: 469 'no next session in the data', 142 uncovered. The spine ends 2026-08-14 and collection began 2026-08-17. The gap grows one session per day. |
 | 2.10 | Measure available_from empirically | **VERIFIED** | brackets are 10.7h at best; nothing consumes the measurement yet |
 | 2.11 | Revision detection | **VERIFIED** |  |
+| 2.13 | Alert when collection goes stale | **VERIFIED** | 19 Aug lost, 28 Aug recovered two days late by hand — detection always worked, nothing carried it anywhere |
 
 ## Phase 3 Identity
 
@@ -114,4 +115,4 @@ VERIFIED: 19  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 
 ---
 
-Derived at commit `a986a33`.
+Derived at commit `2694137`.

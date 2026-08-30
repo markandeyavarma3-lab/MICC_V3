@@ -98,7 +98,8 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0031](0031-consensus-is-the-critical-path-study.md) | **Consensus is the single critical-path study**; selling leads the extensions | 2026-08-23 | ACTIVE |
 | [0032](0032-uncovered-symbols-leave-the-universe.md) | **Symbols with no price coverage leave the universe** — Plan 1 Finding D falsified | 2026-08-23 | ACTIVE |
 | [0033](0033-serial-lag-must-cover-the-label-overlap.md) | **The serial lag must cover the label overlap** — the NW rule under-corrected fivefold | 2026-08-23 | ACTIVE |
-| [0034](0034-twelve-month-becomes-the-primary-horizon.md) | **12 months becomes the primary horizon**, reversing 0004 | 2026-08-23 | ACTIVE |
+| [0034](0034-twelve-month-becomes-the-primary-horizon.md) | 12 months becomes the primary horizon, reversing 0004 | 2026-08-23 | **SUPERSEDED by 0038** |
 | [0035](0035-power-may-use-the-full-universe-effects-may-not.md) | Power analysis may use the full universe; effect estimates may not | 2026-08-23 | ACTIVE |
 | [0036](0036-private-remote-reversing-no-remote.md) | A private remote, reversing 0014 | 2026-08-23 | **SUPERSEDED by 0037 — never executed** |
 | [0037](0037-backup-by-bundle-not-by-remote.md) | **Backup by bundle to cloud, not by remote** — the irreplaceable material is 23 MB, not 2.5 GB | 2026-08-23 | ACTIVE |
+| [0038](0038-no-horizon-survives-a-participation-cap.md) | **No horizon survives any defensible participation cap** — the POWERED verdict needed no ceiling at all | 2026-08-30 | ACTIVE |
