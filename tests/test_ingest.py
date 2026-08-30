@@ -367,3 +367,47 @@ class TestSeedCorpus:
         assert "nobody recorded when any of it became public" in text.lower() \
             or "available_from" in text
         assert "LOW confidence" in text or "conservative bound" in text
+
+
+def test_an_empty_day_is_recordable(tmp_path, monkeypatch):
+    """Plan 1 §5.1: "an empty day is evidence that we asked and the answer was
+    none, which is a different fact from never having asked."
+
+    Found 2026-08-30: on 25 August there were no block deals, so NSE served
+    "NO RECORDS" — a file declaring no date, archived with an `undated_` prefix.
+    report_date is NOT NULL, so landing aborted the entire run on a constraint
+    error. A day that cannot be recorded is indistinguishable from a day nobody
+    polled, which is exactly the distinction the EMPTY status exists to make.
+    """
+    import duckdb
+
+    from src.ingest import land as land_mod
+    from src.governance import provenance as prov_mod
+
+    db = tmp_path / "research_test.duckdb"
+    monkeypatch.setattr(land_mod, "research_db", lambda e=None: db)
+    monkeypatch.setattr(prov_mod, "governance_db", lambda e=None: tmp_path / "g.sqlite")
+
+    p = (tmp_path / "arch" / "BLOCK" / "NSE" / "year=2026" / "month=08"
+         / "undated_BLOCK_NSE_20260825_abcd1234.csv.gz")
+    p.parent.mkdir(parents=True)
+    with gzip.open(p, "wb") as fh:
+        fh.write(b"NO RECORDS")
+    monkeypatch.setattr(land_mod, "parse_all", lambda: parse.parse_all(tmp_path / "arch"))
+
+    rep = land_mod.land()
+    assert rep.ok, rep.problems
+    assert rep.files_landed == 1, "an empty day must land, not abort the run"
+
+    con = duckdb.connect(str(db))
+    try:
+        date, status = con.execute(
+            "SELECT report_date, ingestion_status FROM deal_source_files"
+        ).fetchone()
+    finally:
+        con.close()
+    assert str(date) == "2026-08-25", "the date comes from the fetch stamp in the name"
+    assert status == "EMPTY", (
+        "status must stay EMPTY so the row says the date was inferred from when "
+        "we asked, not declared by the file"
+    )

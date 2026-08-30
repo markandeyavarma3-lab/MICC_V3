@@ -80,6 +80,20 @@ def _next_id(con: duckdb.DuckDBPyConnection, table: str, col: str) -> int:
     return int(con.execute(f"SELECT COALESCE(MAX({col}), 0) + 1 FROM {table}").fetchone()[0])
 
 
+def _fetch_date_from_name(name: str) -> str | None:
+    """The stopgap stamps the fetch date into an undated file's name.
+
+    `undated_BLOCK_NSE_20260825_ec820a0b.csv.gz` -> 2026-08-25.
+    """
+    import re
+
+    m = re.search(r"_(\d{8})_", name)
+    if not m:
+        return None
+    s = m.group(1)
+    return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+
+
 def land_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile, report: LandReport) -> None:
     """Land one parsed file. Skips silently if its hash is already held."""
     if pf.session_date is None and pf.status != "EMPTY":
@@ -93,7 +107,28 @@ def land_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile, report: LandReport
         report.files_skipped += 1
         return
 
+    # AN EMPTY DAY MUST STILL BE RECORDABLE. Found 2026-08-30: on 25 August there
+    # were no block deals, so NSE served "NO RECORDS" — a file that declares no
+    # date, which the stopgap correctly archives with an `undated_` prefix. This
+    # then could not be landed at all: report_date is NOT NULL and there was no
+    # date to give it, so the whole landing run aborted on a constraint error.
+    #
+    # That defeats the distinction Plan 1 §5.1 exists to draw: "an empty day is
+    # evidence that we asked and the answer was none, which is a different fact
+    # from never having asked." A day we cannot record is indistinguishable from
+    # a day we never polled.
+    #
+    # The date comes from the FETCH stamp in the filename, and ingestion_status
+    # stays EMPTY so the row says plainly that the date was inferred from when we
+    # asked rather than declared by the file.
     session = pf.session_date
+    if session is None and pf.status == "EMPTY":
+        session = _fetch_date_from_name(pf.path.name)
+        if session is None:
+            report.problems.append(
+                f"{pf.path.name}: empty file with no date in its name either")
+            return
+
     # A revision: same session already held under a different hash. Detected from
     # the lookup this function already needs, so the two cannot disagree.
     prior = con.execute(
