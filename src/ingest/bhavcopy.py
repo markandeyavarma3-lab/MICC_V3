@@ -57,6 +57,22 @@ from src.governance import provenance as prov  # noqa: E402
 #: constant rather than an argument with a default.
 SERIES = ("EQ", "BE", "BZ")
 
+#: Indian ISINs encode the instrument class in the first three characters: INE
+#: is an equity share, INF is a mutual-fund or ETF unit. That is a registry
+#: rule, not a naming convention, so it holds where a symbol-suffix heuristic
+#: would not — nothing about "PSUBANK" or "NV20" says fund.
+#:
+#: ETF UNITS LEAVE THE UNIVERSE (decision 0040). Seven of the unexplained price
+#: discontinuities in the tail were clean 1:10 ETF splits with NO record in the
+#: corporate-actions API, because its `index=equities` does not cover fund
+#: units. So they are exactly the rows that cannot be adjusted and cannot be
+#: verified — and they buy nothing: of 237,340 deals, 174 are in INF instruments
+#: and ZERO of those are eligible for research.
+#:
+#: Collecting prices for instruments the universe excludes and the adjustment
+#: cannot fix is what put the discontinuities there in the first place.
+EQUITY_ISIN_PREFIX = "INE"
+
 PRICE_ARCHIVE = ARCHIVE / "PRICE" / "NSE"
 OUT_DIR = COLLECTED / "prices"
 
@@ -105,6 +121,9 @@ def to_increment(rows: list[dict[str, str]]) -> tuple[list[tuple], date, int]:
     out, skipped = [], 0
     for r in rows:
         if r.get("SctySrs") not in SERIES:
+            skipped += 1
+            continue
+        if not (r.get("ISIN") or "").startswith(EQUITY_ISIN_PREFIX):
             skipped += 1
             continue
         try:
@@ -208,6 +227,7 @@ def register(env: str | None = None) -> str:
         params={
             "source": "NSE bhavcopy (UDiFF), archived by src/archive/prices.py",
             "series": list(SERIES),
+            "isin_prefix": EQUITY_ISIN_PREFIX,
             "sessions": len(sessions),
             "first_session": sessions[0] if sessions else None,
             "last_session": sessions[-1] if sessions else None,

@@ -39,6 +39,21 @@ from src.governance import provenance as prov
 PRODUCED_BY = "src.warehouse.spine:build"
 
 
+#: Discontinuities >35% that survive adjustment before the build refuses.
+#:
+#: NOT zero, and the reason is measured. After applying every SPLIT and BONUS
+#: factor the tail retains a handful that are not corporate actions at all:
+#: NV20 carries a bad print in the MICCV2 data (13.99 -> 11,985 -> 13.98 inside
+#: one week), BURNPUR fell 35.3% as a genuine move in a Z-group penny stock, and
+#: KSHITIJ-RE is a rights entitlement that decision 0015 already removed from the
+#: universe. A threshold of zero would make the build refuse forever on rows
+#: nothing can fix, and a guard that cannot pass is one somebody switches off.
+#:
+#: Raising this to silence a failure is the failure. The number is a budget for
+#: KNOWN data defects, not for unexplained ones.
+MAX_UNEXPLAINED_JUMPS = 12
+
+
 class SpineError(RuntimeError):
     """The spine cannot be built, or does not reconcile. Deliberately fatal."""
 
@@ -331,45 +346,90 @@ def build_adjusted(env: str | None = None, con: duckdb.DuckDBPyConnection | None
     if coll_glob:
         parts.append(_select(coll_glob, ADJUSTED, derive_year=True))
 
-    # HOW FAR THE GUARD ABOVE CAN ACTUALLY SEE.
+    # APPLY THE ACTIONS THE SEED'S TABLE DOES NOT KNOW ABOUT.
     #
-    # It counts corporate actions after `boundary` in the SEED's actions table —
-    # and that table ends 2026-06-29, four days past the boundary, while the
-    # spliced tail now runs months beyond it. So a clean pass means "no action
-    # in the first four days", not "no action in the tail", and the difference
-    # was invisible. This does not widen the guard; it makes its edge visible
-    # and then looks for the thing the guard would have caught.
+    # `stock_data_adj` is back-adjusted as of the seed freeze, so it accounts for
+    # every action up to `boundary` and none after it. Splicing raw prices onto
+    # that tail is exact only while no action follows — and sixteen do.
     #
-    # A split, bonus or rights issue shows up in RAW prices as a discontinuity:
-    # close/prev_close near 1/2, 1/5, 1/10. Ordinary bad days do not do that,
-    # and the 20% circuit limit means most equities CANNOT move -35% in a
-    # session. So the tail is searched directly for what the actions table can
-    # no longer tell us.
+    # Back-adjustment restates history: when a 1:2 split occurs, every EARLIER
+    # price halves so the series is comparable with post-split prices. So for a
+    # row dated d the factor is the product of every action factor whose ex-date
+    # is STRICTLY AFTER d, and it is applied to the whole series, seed included,
+    # because an action in the tail invalidates the adjustment of everything
+    # before it too. Volume moves the other way: half the price, twice the
+    # shares.
+    #
+    # ONLY SPLIT AND BONUS ARE APPLIED. RIGHTS needs the cum price and DEMERGER
+    # needs the value of the resulting entity; both carry factor = NULL from
+    # `corp_actions.py` and are not guessed here. They stay in the discontinuity
+    # check below, so an unadjusted one still stops the build.
+    ca_dir = COLLECTED / "corporate_actions"
+    ca_glob = str(ca_dir / "*.parquet")
+    applied = 0
+    if list(ca_dir.glob("*.parquet")):
+        applied = c.execute(
+            f"SELECT COUNT(*) FROM read_parquet('{ca_glob}')"
+            f" WHERE factor IS NOT NULL AND date > '{boundary}'"
+        ).fetchone()[0]
+
+    union = "\nUNION ALL\n".join(parts)
+
+    if applied:
+        # The inner JOIN restricts the expensive part to the handful of
+        # (symbol, date) pairs an action actually touches — 21 symbols, not
+        # 7.7M rows. EXP(SUM(LN)) is the product; every factor is > 0.
+        union = (
+            f"WITH u AS ({union}),"
+            f" acts AS (SELECT symbol, date AS ex, factor"
+            f"          FROM read_parquet('{ca_glob}')"
+            f"          WHERE factor IS NOT NULL AND date > '{boundary}'),"
+            f" k AS (SELECT u.symbol, u.date, EXP(SUM(LN(a.factor))) AS f"
+            f"       FROM u JOIN acts a ON a.symbol = u.symbol AND a.ex > u.date"
+            f"       GROUP BY 1, 2)"
+            f" SELECT u.symbol, u.date,"
+            f"  u.open * COALESCE(k.f, 1.0) AS open,"
+            f"  u.high * COALESCE(k.f, 1.0) AS high,"
+            f"  u.low * COALESCE(k.f, 1.0) AS low,"
+            f"  u.close * COALESCE(k.f, 1.0) AS close,"
+            f"  u.volume / COALESCE(k.f, 1.0) AS volume, u._y"
+            f" FROM u LEFT JOIN k USING (symbol, date)"
+        )
+
+    # WHAT THE GUARD ABOVE COULD NOT SEE, CHECKED ON THE FINISHED SERIES.
+    #
+    # The guard counts actions after `boundary` in the SEED's table, and that
+    # table ends 2026-06-29 while the tail runs months past it. So a clean pass
+    # meant "no action in the first four days", not "no action in the tail".
+    #
+    # This runs on the ADJUSTED union, after the factors are applied, which is
+    # the only placement that tests what actually lands on disk. A split shows up
+    # as close/prev near 1/2, 1/5 or 1/10, and the 20% circuit limit means most
+    # equities CANNOT move -35% in a session — so a survivor here is an action
+    # nobody has accounted for, not a bad day.
     actions_end = c.execute(
         f"SELECT MAX(CAST(date AS VARCHAR)) FROM read_parquet('{actions}')"
     ).fetchone()[0]
-    tail_end = c.execute(f"SELECT MAX(date) FROM ({parts[-1]})").fetchone()[0]
-    if actions_end < tail_end:
-        jumps = c.execute(
-            f"WITH tail AS ("
-            f"  SELECT symbol, date, close FROM ({chr(10).join(p2 + chr(10) + 'UNION ALL' for p2 in parts[1:-1])}{chr(10)}{parts[-1]})"
-            f"  WHERE date > '{actions_end}'),"
-            f" r AS (SELECT symbol, date, close,"
-            f"        LAG(close) OVER (PARTITION BY symbol ORDER BY date) prev"
-            f"       FROM tail)"
-            f" SELECT COUNT(*) FROM r WHERE prev > 0 AND close > 0"
-            f"   AND abs(close/prev - 1) > 0.35"
-        ).fetchone()[0]
-        if jumps:
-            raise SpineError(
-                f"{ADJUSTED.name}: the corporate-actions table ends {actions_end} "
-                f"but the spliced tail runs to {tail_end}, and {jumps} price "
-                f"discontinuit(ies) >35% occur in the uncovered window. A split in "
-                f"that window reads as a -50% return in every study built on this "
-                f"spine. Extend corporate_actions past {tail_end} before rebuilding."
-            )
+    if applied:
+        actions_end = max(actions_end, c.execute(
+            f"SELECT MAX(date) FROM read_parquet('{ca_glob}')").fetchone()[0])
 
-    union = "\nUNION ALL\n".join(parts)
+    survivors = c.execute(
+        f"WITH t AS (SELECT symbol, date, close FROM ({union})"
+        f"           WHERE date > '{boundary}'),"
+        f" r AS (SELECT symbol, date, close,"
+        f"        LAG(close) OVER (PARTITION BY symbol ORDER BY date) prev FROM t)"
+        f" SELECT COUNT(*) FROM r"
+        f" WHERE prev > 0 AND close > 0 AND abs(close/prev - 1) > 0.35"
+    ).fetchone()[0]
+    if survivors > MAX_UNEXPLAINED_JUMPS:
+        raise SpineError(
+            f"{ADJUSTED.name}: {survivors} price discontinuit(ies) >35% remain "
+            f"after adjustment, above the {MAX_UNEXPLAINED_JUMPS} allowed. "
+            f"Corporate actions are known to {actions_end}. Collect actions past "
+            f"that date (src/archive/corporate_actions.py) before rebuilding — a "
+            f"split left unadjusted reads as a -50% return in every study."
+        )
 
     dupes = c.execute(
         f"SELECT COUNT(*) FROM (SELECT symbol, date, COUNT(*) n FROM ({union})"

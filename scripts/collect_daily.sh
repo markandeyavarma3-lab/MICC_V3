@@ -46,6 +46,25 @@ mkdir -p "$REPO/logs"
   # then. On 2026-08-28 all three slots failed on DNS, the collector said "may
   # be permanently lost", exited 1, and nobody saw it for two days. Detection
   # was never the problem; nothing carried it anywhere.
+  # PRICES AND CORPORATE ACTIONS, BEFORE THE HEALTH CHECK READS ANYTHING.
+  #
+  # Both are DATED archives, unlike bulk.csv, so a missed run costs a retry
+  # rather than a session — which is why they run after the deal fetch rather
+  # than racing it. They are what make a collected deal usable: without prices
+  # every one is "no next session in the data", and without corporate actions
+  # the adjusted spine refuses to extend past a split.
+  "$REPO/.venv/bin/python" -m src.archive.prices
+  echo "prices=$?"
+  "$REPO/.venv/bin/python" -m src.ingest.bhavcopy
+  echo "bhavcopy=$?"
+  # A 90-day window ending today: actions are announced ahead of their ex-date,
+  # so re-reading the recent past is how a revision is picked up at all. sha256
+  # dedupe makes an unchanged window a no-op.
+  "$REPO/.venv/bin/python" -m src.archive.corporate_actions \
+      --start "$(date -v-90d +%Y-%m-%d)"
+  echo "corpact=$?"
+  "$REPO/.venv/bin/python" -m src.ingest.corp_actions
+  echo "corpact_parse=$?"
   "$REPO/.venv/bin/python" -m src.monitor.health
   echo "health=$?"
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
