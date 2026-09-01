@@ -278,8 +278,13 @@ def steps() -> list[Step]:
              note="verified manually 2026-08-22: no micc agents loaded, tag frozen-2026-08-16 exists"),
         Step("1.2", "1 Warehouse", "Repo scaffold, pyproject, CI",
              built=lambda c: (ROOT / "pyproject.toml").exists(),
-             wired=lambda c: (ROOT / ".github" / "workflows").exists(),
-             note="CI has never run; .github/workflows absent"),
+             wired=lambda c: any((ROOT / ".github" / "workflows").glob("*.yml")),
+             # VERIFIED would mean CI proves the suite green, and it cannot:
+             # data/ and db/ are gitignored, so a runner has no warehouse. It
+             # runs the UNIT tier only. Grading this VERIFIED would be a green
+             # badge over an untested half.
+             note=lambda c: ("unit tier only — a runner has no data/ or db/, so "
+                             "the data and research tiers stay a local gate")),
         Step("1.3", "1 Warehouse", "src/common — paths, hashing, migrations, config, logging",
              built=lambda c: c.module("src/common/paths.py") and c.module("src/common/hashing.py"),
              wired=lambda c: c.consumed("from src.common.paths", "src/common/paths.py"),

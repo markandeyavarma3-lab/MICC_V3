@@ -110,3 +110,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0043](0043-consensus-is-not-registrable-either.md) | **Consensus is not registrable either** — best case 1.94x short; this is NOT the kill criterion | 2026-09-01 | ACTIVE |
 | [0044](0044-selling-is-underpowered-but-the-bound-is-now-the-question.md) | **Selling is underpowered too — but the observed effect is 4x the bound, so the bound is now the question** | 2026-09-01 | ACTIVE |
 | [0045](0045-the-spine-is-eq-only-and-nothing-said-so.md) | **The spine is EQ-only and nothing said so** — found by validating against the exchange's own files; the collector disagreed with the seed | 2026-09-01 | ACTIVE |
+| [0046](0046-the-data-we-already-have-is-better-powered.md) | **The best-powered event class was already on disk** — 109 of 119 seed tables unread; promoter sells is 1.25x short, and the source is live | 2026-09-01 | ACTIVE |

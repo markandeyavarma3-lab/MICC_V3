@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 27  WIRED: 10  BUILT: 18  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 27  WIRED: 11  BUILT: 17  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -35,7 +35,7 @@ VERIFIED: 27  WIRED: 10  BUILT: 18  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
 | step | what | status | note |
 |---|---|---|---|
 | 1.1 | Freeze MICCV2 — agents unloaded, plists moved, tag | WIRED | verified manually 2026-08-22: no micc agents loaded, tag frozen-2026-08-16 exists |
-| 1.2 | Repo scaffold, pyproject, CI | BUILT | CI has never run; .github/workflows absent |
+| 1.2 | Repo scaffold, pyproject, CI | WIRED | unit tier only — a runner has no data/ or db/, so the data and research tiers stay a local gate |
 | 1.3 | src/common — paths, hashing, migrations, config, logging | **VERIFIED** | no structured logging and no central config loader; six modules load their own YAML |
 | 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5350 observed sessions; 3 of them are Saturdays a generated calendar would drop |
 | 1.5 | Migration runner, forward-only and checksummed | **VERIFIED** |  |
@@ -43,7 +43,7 @@ VERIFIED: 27  WIRED: 10  BUILT: 18  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-08-31; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-01 08:49 UTC, 1 generation(s), 1 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-01 12:55 UTC, 1 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -148,4 +148,4 @@ VERIFIED: 27  WIRED: 10  BUILT: 18  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `2fadea7`.
+Derived at commit `9b55a57`.
