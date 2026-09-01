@@ -34,7 +34,10 @@ set -eu
 REPO="${0:A:h:h}"
 cd "$REPO"
 
-DEST="${BACKUP_DEST:-$HOME/Library/CloudStorage/GoogleDrive-markandeya0397@gmail.com/My Drive/institutional-research-backup}"
+# Default: the iCloud Drive folder the owner created for this. Overridable —
+# an external SSD is the intended second destination:
+#   BACKUP_DEST=/Volumes/<ssd>/institutional-research-backup ./scripts/backup.sh
+DEST="${BACKUP_DEST:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/institutional research/backup}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
