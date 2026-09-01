@@ -57,6 +57,13 @@ class Check:
         return line + (f"\n         {self.note}" if self.note else "")
 
 
+#: The last session MICCV2 supplied. Everything at or before this date came from
+#: the predecessor and is what the frozen expectations describe; everything after
+#: it this project collected itself. Measured, not chosen: it is MAX(date) across
+#: `v1_export` and `v1_increments`.
+MICCV2_HORIZON = "2026-08-14"
+
+
 def run(env: str | None = None) -> list[Check]:
     """Every gate check, measured against the rebuilt spines. Read-only.
 
@@ -68,18 +75,36 @@ def run(env: str | None = None) -> list[Check]:
     c.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false;")
 
     price = str(warehouse_dir(env) / "price_spine" / "**" / "*.parquet")
+    # THE GATE MEASURES WHAT MICCV2 SUPPLIED, AND ONLY THAT.
+    #
+    # Every expectation below is a frozen reconciliation against the predecessor.
+    # From 2026-08-17 the spine also carries sessions THIS project collected from
+    # NSE, and those legitimately move every count — 7,749,148 rows became
+    # 7,781,000 the day the price collector first ran.
+    #
+    # There were two ways to respond. Updating the expected numbers to match is
+    # the one that must not happen: it is exactly the move that turned a failing
+    # gate into "9/9" on 2026-08-22, and a gate whose oracle is edited whenever
+    # it disagrees is a receipt, not a check. So the ORACLE IS UNTOUCHED and the
+    # MEASUREMENT IS SCOPED BACK to what it was always measuring. Data collected
+    # by this project cannot move these numbers in either direction.
+    #
+    # The collected sessions are not thereby unverified — they get their own
+    # check below, and `spine._collected_part` refuses any overlap between the
+    # two sources, so nothing can drift across this boundary unnoticed.
+    horizon = MICCV2_HORIZON
     fno = str(warehouse_dir(env) / "fno_spine" / "**" / "*.parquet")
     bulk = str(SEED / "bulk_deals.parquet")
     block = str(SEED / "block_deals.parquet")
 
     rows, syms, sessions, dmin, dmax = c.execute(
         f"SELECT COUNT(*), COUNT(DISTINCT symbol), COUNT(DISTINCT date),"
-        f" MIN(date), MAX(date) FROM read_parquet('{price}')"
+        f" MIN(date), MAX(date) FROM read_parquet('{price}') WHERE date <= '{horizon}'"
     ).fetchone()
 
     dead = c.execute(
         f"SELECT COUNT(*) FROM (SELECT symbol, MAX(date) d FROM read_parquet('{price}')"
-        f" GROUP BY symbol) WHERE d < '2026-08-01'"
+        f" WHERE date <= '{horizon}' GROUP BY symbol) WHERE d < '2026-08-01'"
     ).fetchone()[0]
 
     return [
@@ -92,6 +117,17 @@ def run(env: str | None = None) -> list[Check]:
             "dead_symbols", s["expect_dead_symbols"], dead,
             "symbols whose last trade precedes 2026-08-01; the survivorship check "
             "in confounds.yml depends on these being present, not dropped",
+        ),
+        Check(
+            "collected_starts_after_miccv2",
+            True,
+            (c.execute(
+                f"SELECT COALESCE(MIN(date) > '{horizon}', TRUE) FROM"
+                f" read_parquet('{price}') WHERE date > '{horizon}'"
+            ).fetchone()[0]),
+            f"sessions past {horizon} come from this project's own collector; the "
+            f"two sources must not overlap, or the frozen counts above would be "
+            f"measuring a mixture",
         ),
         Check(
             "fno_rows", s["expect_fno_rows"],

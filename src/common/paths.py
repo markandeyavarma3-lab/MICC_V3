@@ -82,6 +82,17 @@ def predecessor_root() -> Path:
     override = os.environ.get("PREDECESSOR_ROOT")
     return Path(override).expanduser().resolve() if override else ROOT.parent / "MICCV2"
 
+#: Warehouse partitions THIS project collected itself, from NSE directly.
+#:
+#: Deliberately NOT written into `v1_increments`. Both directories hold parquet
+#: in the same schema, and merging them would be one command shorter and one
+#: question poorer: the DAG's job is to answer "which source produced this row?",
+#: and a `seed:prices` artefact containing rows NSE served us in 2026 answers it
+#: with a falsehood. The increments came from MICCV2's collector against
+#: endpoints that no longer serve history; these came from bhavcopy, through a
+#: parser in this repo, with a different failure mode and a different fix.
+COLLECTED: Final[Path] = ROOT / "data" / "raw" / "collected"
+
 #: Permanent raw archive. Plan 1 §5. Append-only; files are never rewritten.
 ARCHIVE: Final[Path] = ROOT / "data" / "raw" / "archive"
 
