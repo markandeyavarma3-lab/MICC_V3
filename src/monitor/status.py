@@ -131,6 +131,12 @@ class Ctx:
     def tested(self, pattern: str) -> bool:
         return bool(re.search(pattern, self.test_text))
 
+    @cached_property
+    def backup(self):
+        """Off-machine backup state. See src/monitor/backup_state.py."""
+        from src.monitor import backup_state
+        return backup_state.read()
+
     def archive_sessions(self) -> int:
         m = ARCHIVE / "manifest.jsonl"
         if not m.exists():
@@ -154,7 +160,13 @@ class Step:
     impossible: str = ""
     #: Waiting on something outside the project's control.
     blocked: str = ""
-    note: str = ""
+    #: A callable note is READ FROM THE REPO at render time. A fixed string is
+    #: a claim that can go stale silently — which is how 1.10 spent eight days
+    #: announcing an obstacle that had already been removed.
+    note: str | Callable[[Ctx], str] = ""
+
+    def note_for(self, c: Ctx) -> str:
+        return self.note(c) if callable(self.note) else self.note
 
     def level(self, c: Ctx) -> Level:
         if self.impossible:
@@ -233,8 +245,15 @@ def steps() -> list[Step]:
              note="23 artefacts are test pollution and cannot be removed (append-only)"),
         Step("1.10", "1 Warehouse", "Close Risk 8 — off-machine backup with a watched restore",
              built=lambda c: (ROOT / "scripts" / "backup.sh").exists(),
-             blocked="Google Drive app not running; iCloud Drive not writable. The script "
-                     "is committed and passes its own restore drill but has written nothing."),
+             # This read BLOCKED for eight days on a hand-written string, while
+             # the actual obstacle — a destination nobody had launched — went
+             # unexamined. It is derived now: WIRED means a generation exists in
+             # the destination backup.sh writes to, VERIFIED means nothing
+             # irreplaceable is sitting outside it.
+             wired=lambda c: c.backup.bundle is not None,
+             verified=lambda c: not c.backup.alerting
+                                and c.tested(r"test_backup_state_notices_a_session_outside_the_backup"),
+             note=lambda c: c.backup.summary),
 
         # --- Phase 2 ---------------------------------------------------------
         Step("2.1", "2 Collection", "Archive: fetch, hash, dedupe, store, parse, land",
@@ -349,6 +368,9 @@ def steps() -> list[Step]:
 @dataclass
 class Report:
     rows: list[tuple[Step, Level]] = field(default_factory=list)
+    #: The same ground truth the levels were graded against. Carried so a
+    #: derived note cannot be resolved from a second, differing read.
+    ctx: "Ctx | None" = None
 
     def by_phase(self) -> dict[str, list[tuple[Step, Level]]]:
         out: dict[str, list[tuple[Step, Level]]] = {}
@@ -365,7 +387,7 @@ class Report:
 
 def evaluate() -> Report:
     c = Ctx()
-    return Report([(s, s.level(c)) for s in steps()])
+    return Report([(s, s.level(c)) for s in steps()], ctx=c)
 
 
 def _commit() -> str:
@@ -411,7 +433,7 @@ def render(rep: Report) -> str:
     for phase, rows in rep.by_phase().items():
         lines += [f"## Phase {phase}", "", "| step | what | status | note |", "|---|---|---|---|"]
         for step, lvl in rows:
-            note = step.impossible or step.blocked or step.note
+            note = step.impossible or step.blocked or step.note_for(rep.ctx or Ctx())
             lines.append(f"| {step.id} | {step.what} | {BADGE[lvl]} | {note} |")
         lines.append("")
     lines += ["---", "", f"Derived at commit `{_commit()}`."]

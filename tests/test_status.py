@@ -60,12 +60,30 @@ def test_impossible_outranks_everything_and_carries_evidence():
 
 @pytest.mark.unit
 def test_blocked_is_distinguished_from_unbuilt():
-    """Risk 8's script exists and passes its own restore drill. Reporting it as
-    unbuilt would misdescribe what is actually missing, which is a mounted
-    destination."""
+    """BLOCKED must stay a real grade even when nothing currently holds it.
+
+    1.10 held it for eight days from a hand-written string naming an obstacle
+    that had already been removed, so it is no longer the example. The machinery
+    is what is tested; the claim is what was wrong.
+    """
+    s = status.Step("X.0", "test", "a step waiting on the outside world",
+                    built=lambda c: True, blocked="a measured external obstacle")
+    assert s.level(status.Ctx()) == "BLOCKED", "blocked must outrank a passing built()"
+
+
+@pytest.mark.unit
+def test_risk_8_is_derived_from_the_destination_not_asserted(tmp_path, monkeypatch):
+    """The defect: 1.10's status was a string, so it survived the thing it
+    described being fixed. It now reads the folder backup.sh writes to."""
     s = next(x for x in status.steps() if x.id == "1.10")
-    assert s.level(status.Ctx()) == "BLOCKED"
-    assert s.blocked
+    assert not s.blocked, "1.10 must not carry a hand-written status again"
+
+    monkeypatch.setenv("BACKUP_DEST", str(tmp_path))  # exists, holds no backup
+    assert s.level(status.Ctx()) == "BUILT", (
+        "an empty destination must grade below WIRED — that was the real state "
+        "for eight days while the page said BLOCKED for the wrong reason"
+    )
+    assert "NO BACKUP" in s.note_for(status.Ctx())
 
 
 @pytest.mark.unit

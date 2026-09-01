@@ -11,37 +11,41 @@ A test asserts no order-placement code exists anywhere in the repo.
 > are mostly expected to be negative, and a platform whose negative results
 > appear only after they're safe is not one you should trust.
 
-## Status — 2026-08-23
+## Status — 2026-09-01
 
 | | |
 |---|---|
 | **Phase** | 1 of 9 — skeleton, migrations, warehouse rebuild |
-| **Tests** | 354 pass |
-| **Decision records** | 38 |
+| **Tests** | 362 pass |
+| **Decision records** | 39 |
 | **Research findings** | One, and it is a rejection: [Finding 001](docs/reports/FINDING_001_bulk_deal_avoidance.md) failed its own pre-registered bar |
 | **Predecessor** | [MICCV2](../MICCV2) frozen at tag `frozen-2026-08-16` |
 
 **Two things a reader should know before the numbers below.**
 
-1. **Every SESSION horizon is underpowered; twelve months is not.** Decision
-   [0028](docs/decisions/0028-plausible-bound-scales-with-horizon.md) made the
-   plausible bound scale with horizon, which put every session horizon 1.7–3.9x
-   beyond its detection floor — and, unnoticed for two days, inverted the
-   reasoning behind [0004](docs/decisions/0004-horizons-in-sessions-not-months.md)
-   that had dropped the long horizons. Detection floors grow with √horizon while
-   the bound grows linearly, so long horizons became *easier*.
-   [0034](docs/decisions/0034-twelve-month-becomes-the-primary-horizon.md) makes
-   **12 months the primary horizon**: measured MDE **5.28%** against a 6.00%
-   bound on 17,705 events, computed through the full pipeline
-   (`institutional_deals_clean`) rather than the seed parquet the decision was
-   originally taken on. That is **marginal** and is reported as marginal, never
-   as comfortable.
-2. **There is no backup of any kind.** Decision
-   [0037](docs/decisions/0037-backup-by-bundle-not-by-remote.md). Sessions
-   archived from 2026-08-17 onward cannot be re-fetched at any price, because the
-   historical endpoint answers 503. `scripts/backup.sh` is written and passes its
-   own restore drill; it has written nothing, because no cloud mount is
-   available.
+1. **No horizon is registrable, and the one that looked registrable was
+   borrowing its power from untradeable events.** For a week the twelve-month
+   horizon was the headline: MDE **5.28%** against a 6.00% bound on 17,705
+   events, the only horizon in the grid to reach its own bound
+   ([0034](docs/decisions/0034-twelve-month-becomes-the-primary-horizon.md)).
+   That measurement applied no participation ceiling, while Plan 2 §4.4 requires
+   one — positions that cannot be built inside 5 sessions at 10% of ADV are
+   `TOO_LARGE` and excluded. **72% of eligible events failed it**; one was 204x
+   ADV. Applying it moves the twelve-month MDE to **13.30%, 2.22x short**, and
+   [0038](docs/decisions/0038-no-horizon-survives-a-participation-cap.md) shows
+   the POWERED verdict needed *no ceiling at all* — even a five-times-ADV
+   position sustained over ten sessions is still 1.19x short. The excluded deals
+   were not bigger, they were **in thinner stocks** (median 436.8% of ADV vs
+   14.6%, at similar rupee value). Track D has no powered horizon.
+2. **The backup exists now, and it took eight days to notice it did not.**
+   Decision [0037](docs/decisions/0037-backup-by-bundle-not-by-remote.md) shipped
+   `scripts/backup.sh` on 2026-08-23 with a passing restore drill and a default
+   destination nobody had ever launched, so it wrote nothing until 2026-09-01
+   while `STATUS.md` reported the obstacle as something else entirely
+   ([0039](docs/decisions/0039-the-backup-check-is-the-backup.md)). It now runs
+   after every collection, and the check that grades it counts **archived
+   sessions sitting outside a backup** — sessions from 2026-08-17 onward cannot
+   be re-fetched at any price, because the historical endpoint answers 503.
 
 **Where every phase stands is derived, not asserted:** [`docs/STATUS.md`](docs/STATUS.md).
 

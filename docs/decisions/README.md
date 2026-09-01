@@ -103,3 +103,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0036](0036-private-remote-reversing-no-remote.md) | A private remote, reversing 0014 | 2026-08-23 | **SUPERSEDED by 0037 — never executed** |
 | [0037](0037-backup-by-bundle-not-by-remote.md) | **Backup by bundle to cloud, not by remote** — the irreplaceable material is 23 MB, not 2.5 GB | 2026-08-23 | ACTIVE |
 | [0038](0038-no-horizon-survives-a-participation-cap.md) | **No horizon survives any defensible participation cap** — the POWERED verdict needed no ceiling at all | 2026-08-30 | ACTIVE |
+| [0039](0039-the-backup-check-is-the-backup.md) | **A backup nobody checks is a backup nobody has** — 0037 shipped a script that wrote nothing for eight days | 2026-09-01 | ACTIVE |
