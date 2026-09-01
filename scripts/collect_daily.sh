@@ -17,6 +17,24 @@ REPO="$HOME/Workspace/institutional-research"
 cd "$REPO" || exit 1
 
 export RESEARCH_ENV=prod
+
+# ALERT CONFIG, AND WHY IT IS SOURCED HERE RATHER THAN SET IN THE PLIST.
+#
+# Neither scheduler inherits a login shell's environment. launchd starts jobs
+# with a near-empty one and cron reads no plist at all, so a password exported
+# in ~/.zshrc works perfectly by hand and never once fires from the scheduler —
+# which is exactly when nobody is at the machine to see the desktop
+# notification. health.py's email leg returns "email not configured" without
+# raising when the variables are absent, so the failure is silent by design.
+#
+# This is the ONE place both schedulers pass through, so it is the only place
+# the config belongs. Putting it in the plist as well would leave two copies to
+# keep in sync, which is the drift this project keeps finding in its own README.
+#
+# NO CREDENTIAL IS IN THIS REPO, WHICH IS PUBLIC. The file lives in $HOME at
+# mode 600 and names a password file; absent, alerting stays desktop-only and
+# everything else runs unchanged.
+[ -f "$HOME/.micc_alert_env" ] && . "$HOME/.micc_alert_env"
 LOG="$REPO/logs/collect_$(date +%Y-%m).log"
 mkdir -p "$REPO/logs"
 
