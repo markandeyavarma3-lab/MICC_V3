@@ -439,3 +439,49 @@ def test_the_two_price_spines_cover_the_same_universe():
         f"price_spine has {a:,} symbols and price_spine_adj has {b:,}; one was "
         f"built from different inputs than the other"
     )
+
+
+@pytest.mark.unit
+def test_the_collector_takes_the_same_series_as_the_seed():
+    """0045. The seed is EQ-only across twenty-one years — measured against the
+    exchange's own files, not read from a config, because no config said so.
+
+    bhavcopy.py declared ("EQ","BE","BZ") until 2026-09-01, which would have
+    made the universe change definition at 2026-08-17. BE is the trade-to-trade
+    surveillance segment, entered precisely when a price behaves unusually,
+    which is the population a deal study is about.
+    """
+    from src.ingest import bhavcopy
+
+    assert bhavcopy.SERIES == ("EQ",), (
+        f"the collector takes {bhavcopy.SERIES} but the seed is EQ-only; a "
+        f"universe that changes definition mid-series is decision 0045's defect"
+    )
+
+
+@needs_spine
+def test_the_forward_horizon_is_not_silently_stretched_beyond_tolerance():
+    """0045. Forward returns use LEAD(close, N) over the symbol's own row
+    number, so a gap in the series stretches the horizon in calendar time.
+    Measured: median 372 days for a '12-month' window, 4.86% past 450 days,
+    worst 1,553 days.
+
+    This pins the MEDIAN, which is the part that would signal a systemic change
+    — a jump here means the spine has started dropping sessions wholesale.
+    """
+    con = duckdb.connect()
+    con.execute("SET memory_limit='6GB'")
+    glob = f"{warehouse_dir('prod') / 'price_spine_adj'}/**/*.parquet"
+    med = con.execute(
+        f"WITH px AS (SELECT symbol, date,"
+        f"   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) i"
+        f"   FROM read_parquet('{glob}')),"
+        f" fw AS (SELECT date, LEAD(date, 252) OVER"
+        f"   (PARTITION BY symbol ORDER BY i) x FROM px)"
+        f" SELECT median(DATEDIFF('day', CAST(date AS DATE), CAST(x AS DATE)))"
+        f" FROM fw WHERE x IS NOT NULL"
+    ).fetchone()[0]
+    assert 360 <= med <= 400, (
+        f"the median '252-session' window spans {med:.0f} calendar days; "
+        f"outside 360-400 means the spine's session coverage has changed"
+    )
