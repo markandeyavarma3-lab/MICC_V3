@@ -10,6 +10,8 @@ correction and these tests are what stop it drifting back.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from src.common.paths import warehouse_dir
@@ -63,11 +65,17 @@ def test_the_twelve_month_figure_is_reproducible():
     # directly silently included. 0034 is NOT edited to match — it records what
     # was decided and on what basis — and the conclusion is unchanged, since both
     # figures sit under the 6.00% bound.
-    assert row.mde == pytest.approx(0.133038, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; the post-ceiling figure is 13.3038%. "
-        f"If this changed legitimately, say so in a decision record."
+    # RE-MEASURED 2026-09-01 after decision 0041 applied the corporate actions
+    # the splice guard could not see, and 0040 removed fund units from the
+    # universe. 13.3038% -> 13.2771% on 4,750 -> 4,772 events: 22 more events
+    # from eleven newly collected sessions, on a series where sixteen splits no
+    # longer read as -50% days. The move is 0.03pp and the VERDICT IS UNCHANGED —
+    # still 2.21x short of the 6.00% bound, still not registrable.
+    assert row.mde == pytest.approx(0.13277087, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0041 is "
+        f"13.2771%. If this changed legitimately, say so in a decision record."
     )
-    assert row.n_events == 4_750
+    assert row.n_events == 4_772
     assert not row.powered, (
         "12 months is 2.22x short of its bound once untradeable events are "
         "excluded. If this ever passes again, the reason must be explained."
@@ -120,7 +128,17 @@ def test_the_calendar_is_observed_not_generated():
     from src.common import calendar
 
     s = calendar.sessions("prod")
-    assert len(s) == 5339, f"{len(s)} sessions; the Phase 1 gate expects 5,339"
+
+    # The FROZEN part is pinned exactly; the calendar itself grows by one every
+    # session the price collector archives, so an equality on the total would
+    # fail daily and the fix would look like "update the number" — which is how
+    # a check becomes a receipt.
+    from src.warehouse.reconcile import MICCV2_HORIZON
+    horizon = date.fromisoformat(MICCV2_HORIZON)
+    assert len([d for d in s if d <= horizon]) == 5339, (
+        "the sessions MICCV2 supplied must still number 5,339"
+    )
+    assert len(s) >= 5339, f"{len(s)} sessions; the calendar cannot shrink"
     weekend = [d for d in s if d.weekday() >= 5]
     assert len(weekend) == 3, f"expected 3 weekend sessions, found {len(weekend)}"
     assert calendar.next_session(s[0], "prod") == s[1]

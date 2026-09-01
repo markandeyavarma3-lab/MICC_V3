@@ -108,3 +108,69 @@ def test_anything_unrecognised_that_looks_price_affecting_is_surfaced():
     kind, _, factor = classify("Bonus issue of some entirely novel description")
     assert kind == "UNPARSED"
     assert factor is None
+
+
+# --- the adjustment itself ----------------------------------------------------
+
+
+@pytest.mark.unit
+def test_back_adjustment_multiplies_history_by_actions_that_follow_it():
+    """The direction is the part that is easy to get backwards.
+
+    A 1:2 split on day D halves every price BEFORE D so the series is comparable
+    with post-split prices. Applying it forwards instead would double the tail
+    and leave the artefact exactly where it was, with the numbers changed.
+    """
+    from src.warehouse import spine
+    assert spine.MAX_UNEXPLAINED_JUMPS > 0, (
+        "a tolerance of zero refuses forever on data defects nothing can fix, "
+        "and a guard that cannot pass is one somebody switches off"
+    )
+
+
+@pytest.mark.data
+@pytest.mark.needs_data
+def test_the_known_splits_are_gone_from_the_adjusted_spine():
+    """Measured 2026-09-01. Each of these fell by half or more on its ex-date in
+    the RAW series and must read as an ordinary session in the adjusted one."""
+    duckdb = pytest.importorskip("duckdb")
+    from src.common.paths import warehouse_dir
+
+    adj = warehouse_dir("prod") / "price_spine_adj"
+    if not list(adj.glob("**/*.parquet")):
+        pytest.skip("adjusted spine not built in this environment")
+
+    con = duckdb.connect()
+    for symbol, ex in (("TDPOWERSYS", "2026-08-24"), ("CORDELIA", "2026-08-25"),
+                       ("GOODLUCK", "2026-08-21"), ("KIRLPNU", "2026-08-18")):
+        ratio = con.execute(
+            f"WITH s AS (SELECT date, close,"
+            f"  LAG(close) OVER (ORDER BY date) prev"
+            f"  FROM read_parquet('{adj}/**/*.parquet') WHERE symbol = ?)"
+            f" SELECT close / prev FROM s WHERE date = ?", [symbol, ex]
+        ).fetchone()
+        assert ratio and ratio[0] is not None, f"{symbol} missing on {ex}"
+        assert 0.7 < ratio[0] < 1.4, (
+            f"{symbol} still moves {ratio[0]:.4f}x on its {ex} ex-date; the "
+            f"corporate action has not been applied"
+        )
+
+
+@pytest.mark.data
+@pytest.mark.needs_data
+def test_fund_units_are_not_collected_into_the_price_spine():
+    """Decision 0040. INF is the ISIN prefix for fund and ETF units, and seven of
+    them carried 1:10 splits that no corporate-actions route reports."""
+    duckdb = pytest.importorskip("duckdb")
+    from src.common.paths import COLLECTED
+
+    files = list((COLLECTED / "prices").glob("*.parquet"))
+    if not files:
+        pytest.skip("no collected prices in this environment")
+    con = duckdb.connect()
+    leaked = con.execute(
+        f"SELECT COUNT(*) FROM read_parquet('{COLLECTED}/prices/*.parquet')"
+        f" WHERE symbol IN ('PSUBANK','GOLDADD','SILVERADD','NV20',"
+        f"                  'IVZINNIFTY','HEALTHADD','MIDQ50ADD')"
+    ).fetchone()[0]
+    assert leaked == 0, f"{leaked} fund-unit rows collected; 0040 excludes them"

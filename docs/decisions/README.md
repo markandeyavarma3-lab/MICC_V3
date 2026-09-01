@@ -104,3 +104,5 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0037](0037-backup-by-bundle-not-by-remote.md) | **Backup by bundle to cloud, not by remote** — the irreplaceable material is 23 MB, not 2.5 GB | 2026-08-23 | ACTIVE |
 | [0038](0038-no-horizon-survives-a-participation-cap.md) | **No horizon survives any defensible participation cap** — the POWERED verdict needed no ceiling at all | 2026-08-30 | ACTIVE |
 | [0039](0039-the-backup-check-is-the-backup.md) | **A backup nobody checks is a backup nobody has** — 0037 shipped a script that wrote nothing for eight days | 2026-09-01 | ACTIVE |
+| [0040](0040-etf-units-leave-the-universe.md) | **ETF and fund units leave the universe** — seven unadjustable splits, zero eligible events | 2026-09-01 | ACTIVE |
+| [0041](0041-the-adjusted-spine-was-carrying-unadjusted-splits.md) | **The adjusted spine was carrying unadjusted splits** — its guard read a table that ended four days past the boundary | 2026-09-01 | ACTIVE |
