@@ -182,6 +182,29 @@ def quality(env: str | None = None) -> list[Check]:
             SELECT SUM(CASE WHEN close/p < 0.1 THEN 1 ELSE 0 END) FROM x WHERE p>0"""
     ).fetchone()[0]
 
+    # THE RAW SPINE WAS NEVER CHECKED, AND IT IS NOT CLEAN.
+    #
+    # Every quality check above reads price_spine_adj, because that is what
+    # `universe.yml` makes research read. But `measure.py` is not the only
+    # consumer: `spine.build_adjusted` splices the raw tail, `clean.py` derives
+    # adv20 from it, and a defect there reaches the mart without ever touching
+    # the adjusted series.
+    #
+    # Found 2026-09-01 by auditing the warehouse outside the gate: SMALLIETF on
+    # 2026-06-23 carries open=high=low=0.0 with close=17.745. It arrived in the
+    # seed, so it has been there since 0027 carried it, and the adjusted spine
+    # simply does not hold that row — which is exactly why seventeen passing
+    # checks could not see it.
+    raw = str(warehouse_dir(env) / "price_spine" / "**" / "*.parquet")
+    raw_bad, raw_hl, raw_dupes = c.execute(
+        f"""SELECT
+              SUM(CASE WHEN close<=0 OR open<=0 OR high<=0 OR low<=0 THEN 1 ELSE 0 END),
+              SUM(CASE WHEN high<low THEN 1 ELSE 0 END),
+              (SELECT COUNT(*) FROM (SELECT symbol,date,COUNT(*) n
+                 FROM read_parquet('{raw}') GROUP BY 1,2 HAVING n>1))
+            FROM read_parquet('{raw}')"""
+    ).fetchone()
+
     return [
         Check("adj_nonpositive_close", 0, nonpos_c),
         Check("adj_nonpositive_open", 0, nonpos_o),
@@ -195,6 +218,15 @@ def quality(env: str | None = None) -> list[Check]:
             "halves them because most are unadjusted splits. A rise here means "
             "corporate actions stopped being applied",
         ),
+        Check(
+            "raw_nonpositive_price", 1, raw_bad,
+            "SMALLIETF 2026-06-23 has open=high=low=0 and close=17.745, carried "
+            "in the seed. The expectation is 1 and not 0 because the row is a "
+            "known seed defect, not a build defect — but it is now COUNTED, so "
+            "a second one cannot arrive unnoticed the way this one did",
+        ),
+        Check("raw_high_below_low", 0, raw_hl),
+        Check("raw_duplicate_symbol_date", 0, raw_dupes),
     ]
 
 
