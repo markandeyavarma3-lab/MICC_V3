@@ -30,4 +30,10 @@ mkdir -p "$REPO/logs"
   # was never the problem; nothing carried it anywhere.
   "$REPO/.venv/bin/python" -m src.monitor.health
   echo "health=$?"
+  # Back up AFTER collecting, every day. 0037 left this manual and it went eight
+  # days without running once; a session archived but not backed up sits on one
+  # disk, and the endpoint that could re-serve it answers 503. The script is a
+  # no-op-ish 11 MB write and prunes itself to three generations.
+  "$REPO/scripts/backup.sh"
+  echo "backup=$?"
 } >> "$LOG" 2>&1

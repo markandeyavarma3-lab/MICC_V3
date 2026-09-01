@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-23
 **Decided by:** Owner
-**Status:** ACTIVE — supersedes [0036](0036-private-remote-reversing-no-remote.md)
+**Status:** ACTIVE — extended by [0039](0039-the-backup-check-is-the-backup.md), which found this shipped and then wrote nothing for eight days — supersedes [0036](0036-private-remote-reversing-no-remote.md)
 
 ## Context
 

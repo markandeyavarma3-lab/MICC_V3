@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 20  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
+VERIFIED: 21  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 20  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **BLOCKED** | Google Drive app not running; iCloud Drive not writable. The script is committed and passes its own restore drill but has written nothing. |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-01 02:04 UTC, 1 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -115,4 +115,4 @@ VERIFIED: 20  WIRED: 4  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 1
 
 ---
 
-Derived at commit `2694137`.
+Derived at commit `7eb449d`.

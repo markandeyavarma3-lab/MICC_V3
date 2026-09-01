@@ -46,14 +46,18 @@ echo "BACKUP  $(date '+%Y-%m-%d %H:%M:%S %Z')"
 echo "  from: $REPO"
 echo "  to  : $DEST"
 
-# Refuse to back up a repo with uncommitted work: the bundle carries COMMITS, so
-# anything uncommitted is silently not in it. Better to stop than to write a
-# backup that quietly omits today's work.
+# The bundle carries COMMITS, so uncommitted work is silently absent from it.
+# This used to REFUSE on a dirty tree. That was wrong once the collector started
+# running daily: it regenerates docs/HEALTH.md every morning, so the tree is
+# almost always dirty, and a backup that refuses on the common case is a backup
+# that never runs. Capture the diff instead — a patch beside the bundle restores
+# to the exact working state, and a backup that runs beats one that is correct
+# in principle and empty in practice.
+DIRTY=""
 if [ -n "$(git status --porcelain)" ]; then
-  echo "  REFUSING: uncommitted changes. The bundle carries commits only, so this"
-  echo "  backup would silently omit them. Commit or stash first:"
+  DIRTY="yes"
+  echo "  uncommitted changes present — captured as a patch, not refused:"
   git status --short | sed 's/^/    /'
-  exit 1
 fi
 
 mkdir -p "$DEST"
@@ -63,8 +67,15 @@ git bundle create "$WORK/repo-$STAMP.bundle" --all >/dev/null 2>&1
 git bundle verify "$WORK/repo-$STAMP.bundle" >/dev/null 2>&1 || {
   echo "  FAILED: the bundle does not verify"; exit 1; }
 
-# 2. the things git deliberately does not track
-tar -czf "$WORK/state-$STAMP.tar.gz" db data/raw/archive logs 2>/dev/null
+# 2. the things git deliberately does not track, plus any uncommitted work
+if [ -n "$DIRTY" ]; then
+  git diff HEAD > "$WORK/uncommitted.patch"
+  git status --porcelain > "$WORK/uncommitted.status"
+  tar -czf "$WORK/state-$STAMP.tar.gz" db data/raw/archive logs \
+      -C "$WORK" uncommitted.patch uncommitted.status 2>/dev/null
+else
+  tar -czf "$WORK/state-$STAMP.tar.gz" db data/raw/archive logs 2>/dev/null
+fi
 
 # 3. a manifest, so a future reader knows what this is without guessing
 {
@@ -75,9 +86,14 @@ tar -czf "$WORK/state-$STAMP.tar.gz" db data/raw/archive logs 2>/dev/null
   echo "decisions    : $(ls docs/decisions/[0-9][0-9][0-9][0-9]-*.md | wc -l | tr -d ' ')"
   echo "archived     : $(find data/raw/archive -name '*.gz' | wc -l | tr -d ' ') session files"
   echo
+  echo "uncommitted  : ${DIRTY:-no}"
+  echo
   echo "RESTORE:"
   echo "  git clone repo-$STAMP.bundle institutional-research"
   echo "  cd institutional-research && tar -xzf ../state-$STAMP.tar.gz"
+  if [ -n "$DIRTY" ]; then
+  echo "  git apply uncommitted.patch     # the working tree at backup time"
+  fi
   echo
   echo "NOT INCLUDED, and deliberately: data/raw/v1_export, data/raw/v1_increments,"
   echo "data/{dev,prod}/warehouse. ~4.6 GB, all of it either still in MICCV2 or"
@@ -106,12 +122,25 @@ fi
 
 mv "$WORK"/repo-$STAMP.bundle "$WORK"/state-$STAMP.tar.gz "$WORK"/MANIFEST-$STAMP.txt "$DEST/"
 
-# Keep the three most recent generations; a backup directory that grows forever
-# is one nobody prunes and eventually one nobody trusts.
-ls -1t "$DEST"/repo-*.bundle 2>/dev/null | tail -n +4 | while read -r old; do
-  s="${old:t:r}"; s="${s#repo-}"
-  rm -f "$DEST/repo-$s.bundle" "$DEST/state-$s.tar.gz" "$DEST/MANIFEST-$s.txt"
-  echo "  pruned generation $s"
+# Keep the newest generation from each of the three most recent DAYS.
+#
+# Retention is per-day, not per-run, because collect_daily.sh calls this three
+# times a session. A flat "keep 3" would leave all three copies made within
+# fourteen hours of each other, so a corruption noticed the next morning would
+# already be in every one of them. Three days is three independent chances.
+KEEP_DAYS="$(ls -1 "$DEST"/repo-*.bundle 2>/dev/null | sed -E 's/.*repo-([0-9]{8})-.*/\1/' \
+             | sort -u | tail -3)"
+for f in "$DEST"/repo-*.bundle(N); do
+  st="${f:t:r}"; st="${st#repo-}"; day="${st%%-*}"
+  keep=""
+  for k in ${(f)KEEP_DAYS}; do [ "$k" = "$day" ] && keep=1; done
+  # Within a kept day, only the newest run survives.
+  if [ -n "$keep" ]; then
+    newest_of_day="$(ls -1 "$DEST"/repo-$day-*.bundle | tail -1)"
+    [ "$f" = "$newest_of_day" ] && continue
+  fi
+  rm -f "$DEST/repo-$st.bundle" "$DEST/state-$st.tar.gz" "$DEST/MANIFEST-$st.txt"
+  echo "  pruned generation $st"
 done
 
 echo "  wrote: $(du -ch "$DEST"/repo-$STAMP.bundle "$DEST"/state-$STAMP.tar.gz | tail -1 | cut -f1)"

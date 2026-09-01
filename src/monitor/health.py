@@ -22,11 +22,15 @@ best-effort second channel for when nobody is at the machine.
 NO CREDENTIAL LIVES IN THIS REPO. The email leg reads its password from
 `ALERT_EMAIL_PASSWORD` in the environment, or from a file named by
 `ALERT_EMAIL_PASSWORD_FILE`, and does nothing at all if neither is set. The
-repository has no backup and may become a public remote; a stored app password
-would be a credential in both.
+repository is public and is bundled to cloud storage nightly; a stored app
+password would be a credential in both.
 
 STALENESS IS MEASURED IN SESSIONS, NOT DAYS. A weekend is not a missed session,
 and reporting Saturday as two days stale would train the reader to ignore it.
+
+THE BACKUP IS CHECKED HERE TOO, and for the same reason the collector is: it
+is a daily job whose failure is silent and whose loss is permanent. See
+`backup_state.py` for why the measure is sessions-at-risk rather than age.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from src.common.paths import ARCHIVE, DOCS, ROOT
+from src.monitor import backup_state
 
 MANIFEST = ARCHIVE / "manifest.jsonl"
 HEALTH_PATH = DOCS / "HEALTH.md"
@@ -125,8 +130,10 @@ def read() -> list[SourceHealth]:
     return out
 
 
-def render(rows: list[SourceHealth]) -> str:
+def render(rows: list[SourceHealth], backup: backup_state.BackupState | None = None) -> str:
     alerting = [r for r in rows if r.alerting]
+    if backup is not None and backup.alerting:
+        alerting = [*alerting, backup]
     lines = [
         "# Collection health",
         "",
@@ -145,6 +152,17 @@ def render(rows: list[SourceHealth]) -> str:
         "",
         f"Alert threshold: {STALE_SESSIONS} missed trading sessions.",
     ]
+    if backup is not None:
+        lines += [
+            "",
+            "## Off-machine backup",
+            "",
+            f"{'**AT RISK**' if backup.alerting else 'current'} — {backup.summary}",
+            "",
+            "Sessions archived after the last backup exist on one disk only: the",
+            "historical endpoint answers 503, so they cannot be re-fetched at any",
+            "price. Run `./scripts/backup.sh` to bring this to zero.",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -203,9 +221,21 @@ def notify_email(subject: str, body: str) -> str:
 
 def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
     rows = read()
+    backup = backup_state.read()
     if write_file:
         HEALTH_PATH.parent.mkdir(parents=True, exist_ok=True)
-        HEALTH_PATH.write_text(render(rows))
+        HEALTH_PATH.write_text(render(rows, backup))
+    if backup.alerting and send:
+        # Separate from the collection alert on purpose. They fail for unrelated
+        # reasons and need unrelated fixes, and a combined message trains the
+        # reader to skim the one that is actually novel.
+        notify_desktop("institutional-research: BACKUP AT RISK", backup.summary)
+        notify_email(
+            "institutional-research: backup is stale",
+            f"{backup.summary}\n\nArchived sessions outside a backup cannot be "
+            f"re-fetched — the historical endpoint answers 503.\n\nFix with:\n"
+            f"  cd {ROOT} && ./scripts/backup.sh\n",
+        )
     alerting = [r for r in rows if r.alerting]
     if alerting and send:
         detail = ", ".join(
@@ -231,13 +261,16 @@ def main() -> int:
         flag = "STALE" if r.alerting else "ok   "
         last = r.last_session.isoformat() if r.last_session else "never"
         print(f"  {flag}  {r.source_id:<18} last {last}  {r.sessions_stale} session(s) stale")
+    b = backup_state.read()
+    print(f"  {'AT RISK' if b.alerting else 'ok   '}  {'off-machine backup':<18} {b.summary}")
     alerting = [r for r in rows if r.alerting]
     print(f"\n  {HEALTH_PATH.relative_to(ROOT)} written")
+    if b.alerting:
+        print("  ALERTED on backup")
     if alerting:
         print(f"  ALERTED on {len(alerting)} source(s)")
         print(f"  email: {notify_email.__doc__.splitlines()[0]}")
-        return 1
-    return 0
+    return 1 if (alerting or b.alerting) else 0
 
 
 if __name__ == "__main__":
