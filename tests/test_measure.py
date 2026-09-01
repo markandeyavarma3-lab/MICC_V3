@@ -71,11 +71,14 @@ def test_the_twelve_month_figure_is_reproducible():
     # from eleven newly collected sessions, on a series where sixteen splits no
     # longer read as -50% days. The move is 0.03pp and the VERDICT IS UNCHANGED —
     # still 2.21x short of the 6.00% bound, still not registrable.
-    assert row.mde == pytest.approx(0.13277087, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0041 is "
-        f"13.2771%. If this changed legitimately, say so in a decision record."
+    # 13.2771% -> 13.2701% on 2026-09-01 when decision 0045 made the collector
+    # EQ-only to match the seed, dropping six BE/BZ events from the tail.
+    # Six events out of 4,772 and 0.007pp of MDE; the verdict is unchanged.
+    assert row.mde == pytest.approx(0.13270067, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0045 is "
+        f"13.2701%. If this changed legitimately, say so in a decision record."
     )
-    assert row.n_events == 4_772
+    assert row.n_events == 4_766
     assert not row.powered, (
         "12 months is 2.22x short of its bound once untradeable events are "
         "excluded. If this ever passes again, the reason must be explained."

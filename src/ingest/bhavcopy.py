@@ -55,7 +55,21 @@ from src.governance import provenance as prov  # noqa: E402
 
 #: Measured above. Changing this changes the universe, so it is a declared
 #: constant rather than an argument with a default.
-SERIES = ("EQ", "BE", "BZ")
+#
+#: EQ ONLY, AND THAT IS A CORRECTION MADE 2026-09-01. This read
+#: ("EQ", "BE", "BZ") until an external validation against MICC's raw bhavcopy
+#: archive established what the seed actually contains: on 2018-04-23 the spine
+#: holds 1,503 of 1,503 EQ symbols and 0 of 134 BE, 0 of 83 SM, 0 of 21 BZ.
+#: Twenty-one years of seed are EQ-only and nothing said so anywhere.
+#:
+#: Collecting BE and BZ would have made the universe change character at
+#: 2026-08-17 — the same class of boundary inconsistency decision 0040 created
+#: for fund units, and a worse one, because BE is the trade-to-trade surveillance
+#: segment that stocks enter precisely when their price is behaving unusually.
+#:
+#: The seed cannot be extended backwards; it is the only copy. So the collector
+#: matches the seed rather than the reverse. See decision 0045.
+SERIES = ("EQ",)
 
 #: Indian ISINs encode the instrument class in the first three characters: INE
 #: is an equity share, INF is a mutual-fund or ETF unit. That is a registry
