@@ -251,7 +251,7 @@ and why V3 is designed the way it is.
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
 | Tests | 398, all passing |
-| Decision records | 45 |
+| Decision records | 46 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -879,7 +879,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Forty-five decision records, each recording what was decided, by whom, why, **what
+Forty-six decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1339,7 +1339,7 @@ audited two of them to destruction, and produced:
 - A working data warehouse and collection system (V2), now frozen
 - A discipline framework with 398 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Forty-five decision records with reversal conditions
+- Forty-six decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history
