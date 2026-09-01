@@ -108,3 +108,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0041](0041-the-adjusted-spine-was-carrying-unadjusted-splits.md) | **The adjusted spine was carrying unadjusted splits** — its guard read a table that ended four days past the boundary | 2026-09-01 | ACTIVE |
 | [0042](0042-salvage-before-deleting-the-predecessors.md) | **What was salvaged before deleting MICC and MICCV2** — the atlas was carried by nothing; market.db was a verified duplicate | 2026-09-01 | ACTIVE |
 | [0043](0043-consensus-is-not-registrable-either.md) | **Consensus is not registrable either** — best case 1.94x short; this is NOT the kill criterion | 2026-09-01 | ACTIVE |
+| [0044](0044-selling-is-underpowered-but-the-bound-is-now-the-question.md) | **Selling is underpowered too — but the observed effect is 4x the bound, so the bound is now the question** | 2026-09-01 | ACTIVE |
