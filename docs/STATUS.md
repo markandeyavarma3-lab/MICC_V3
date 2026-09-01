@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 27  WIRED: 10  BUILT: 18  SPECIFIED: 16  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -37,13 +37,13 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.1 | Freeze MICCV2 — agents unloaded, plists moved, tag | WIRED | verified manually 2026-08-22: no micc agents loaded, tag frozen-2026-08-16 exists |
 | 1.2 | Repo scaffold, pyproject, CI | BUILT | CI has never run; .github/workflows absent |
 | 1.3 | src/common — paths, hashing, migrations, config, logging | **VERIFIED** | no structured logging and no central config loader; six modules load their own YAML |
-| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5,339 sessions, gate MATCH; found 3 weekend sessions a generated calendar would miss |
+| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5350 observed sessions; 3 of them are Saturdays a generated calendar would drop |
 | 1.5 | Migration runner, forward-only and checksummed | **VERIFIED** |  |
 | 1.6 | Schema — every table in Plan 1 §5-§7 | **VERIFIED** |  |
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
-| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | PIT universe still missing |
+| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-08-31; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-01 02:48 UTC, 1 generation(s), 3 commit(s) and 12 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-01 04:40 UTC, 1 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -58,7 +58,8 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 | 2.7 | FII/DII cash collector | **VERIFIED** |  |
 | 2.8 | participant_oi ported as the FII/DII proxy | BUILT |  |
 | 2.9 | Scheduled collection running | **VERIFIED** | launchd added 2026-08-22 after cron silently lost the 19 Aug session |
-| 2.12 | Daily PRICE feed, so collected deals are usable | — | NOT BUILT. The collector gathers deals and nothing gathers prices, so all 611 live-collected rows are ineligible: 469 'no next session in the data', 142 uncovered. The spine ends 2026-08-14 and collection began 2026-08-17. The gap grows one session per day. |
+| 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-08-31; MICCV2 stopped at 2026-08-14 |
+| 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 37 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
 | 2.10 | Measure available_from empirically | **VERIFIED** | brackets are 10.7h at best; nothing consumes the measurement yet |
 | 2.11 | Revision detection | **VERIFIED** |  |
 | 2.13 | Alert when collection goes stale | **VERIFIED** | 19 Aug lost, 28 Aug recovered two days late by hand — detection always worked, nothing carried it anywhere |
@@ -74,6 +75,9 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 | 3.5 | sector_history — point-in-time sectors | — | blocks the industry dimension of CHAR_MATCHED |
 | 3.6 | Participant normalisation | — | the behavioural classifier exists in src/mart/eligibility.py but does not persist |
 | 3.7 | Behavioural PROP_HFT classifier | WIRED |  |
+| 3.8 | Name-pattern classifier for the residual | WIRED | behavioural only; no name-pattern classifier exists |
+| 3.9 | Merge suggestions recorded, never applied | — | participant_aliases exists and holds 0 rows |
+| 3.12 | Manual fund-house mapping file | — |  |
 | 3.10 | Review queue for the 1,515 names | — |  |
 | 3.11 | SHP collector and promoter_entities | — |  |
 
@@ -81,19 +85,41 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 4 | institutional_deals_clean, zero silent drops | **VERIFIED** | five-day round-trip, internal-transfer and promoter flags are still FALSE placeholders |
+| 4.1 | institutional_deals_clean with all flags | **VERIFIED** |  |
+| 4.2 | Duplicate grouping — NSE/BSE cross-listing, both kept | — | duplicate_group_id is NULL on every row |
+| 4.3 | Same-day and 5-day round-trip flags | BUILT | same-day is real; five-day is FALSE on every row |
+| 4.4 | Internal-transfer and promoter-related flags | — | both FALSE on every row; promoter_entities holds 0 rows |
+| 4.5 | Size eligibility: >= 0.5% ADV20 and >= Rs 1cr | WIRED |  |
+| 4.6 | eligible_for_research excluding PROP_HFT | **VERIFIED** |  |
+| 4.7 | Three interpretations — individual / accumulated / confirmation | — | deal_interpretation exists and holds 0 rows |
 
 ## Phase 5 Costs & benchmarks
 
 | step | what | status | note |
 |---|---|---|---|
-| 5 | fee_schedule, spreads, impact, six benchmarks | — | costs.yml holds verified rates; nothing loads them |
+| 5.1 | fee_schedule, rebuilt not ported, every row sourced | — | costs.yml holds verified rates; only the participation cap is read, by clean.py |
+| 5.2 | Corwin-Schultz and Abdi-Ranaldo spread estimators | BUILT |  |
+| 5.3 | Square-root market impact with sensitivity | — |  |
+| 5.4 | Participation cap and delay cost | WIRED | the cap is applied; DELAY cost is not modelled |
+| 5.5 | Volatility-regime multiplier from India VIX | BUILT |  |
+| 5.6 | Six benchmarks incl. constructed smallcap and CHAR_MATCHED | WIRED | charmatch.py is 251 lines that nothing imports; the only test reads its source as text, never runs it |
+| 5.7 | Gross / base / pessimistic reporting | BUILT |  |
 
 ## Phase 6 Outcome study
 
 | step | what | status | note |
 |---|---|---|---|
-| 6 | deal_forward_outcomes and study_result | — |  |
+| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 1 of 4 registered |
+| 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
+| 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | — | the table exists and holds 0 rows |
+| 6.4 | Delisting/merger handling at 3 recovery factors | BUILT |  |
+| 6.5 | Monthly-cohort collapse, block bootstrap, NW-HAC | WIRED |  |
+| 6.6 | Three-scheme walk-forward: anchored + rolling + CPCV | BUILT |  |
+| 6.7 | PBO from the CPCV distribution | BUILT |  |
+| 6.8 | Romano-Wolf stepdown for ranking | **VERIFIED** |  |
+| 6.9 | Null-calibration on shuffled participant labels | BUILT |  |
+| 6.10 | Write study_result with corrected p and input hashes | BUILT | 2 row(s), from exp_001 |
+| 6R | Re-run exp_001 reproducibly under the DAG (0013) | **VERIFIED** |  |
 
 ## Phase 6S Track S
 
@@ -105,7 +131,14 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 7 | Validate the atlas on a 100,000-cell sample | — |  |
+| 7.1 | Recompute a 100,000-cell sample, exact match required | — | seasonality_cell exists and holds 0 rows |
+| 7.2 | Observation minimums >=10 yearly / >=30 monthly | BUILT |  |
+| 7.3 | Index expansion 46 -> ~202 with dedup | — |  |
+| 7.4 | Near-duplicate grouping incl. return correlation > 0.9 | BUILT |  |
+| 7.8 | Three-scheme OOS + full cost model | — |  |
+| 7.5 | BY + BH + Storey q over the actual run test count | WIRED |  |
+| 7.6 | Permutation, 1,000 rotations | BUILT |  |
+| 7.7 | Hansen SPA for best-of-family | BUILT |  |
 
 ## Phase 8 Monitoring
 
@@ -115,4 +148,4 @@ VERIFIED: 20  WIRED: 5  BUILT: 4  SPECIFIED: 9  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `7ed87ab`.
+Derived at commit `ecb8261`.
