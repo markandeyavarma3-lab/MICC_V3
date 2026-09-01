@@ -33,7 +33,7 @@ from pathlib import Path
 
 import duckdb
 
-from src.common.paths import SEED, SEED_INCREMENTS, warehouse_dir
+from src.common.paths import COLLECTED, SEED, SEED_INCREMENTS, warehouse_dir
 from src.governance import provenance as prov
 
 PRODUCED_BY = "src.warehouse.spine:build"
@@ -61,6 +61,9 @@ class SpineSpec:
     #: ordinary rows. A uniqueness guard with a guessed key does not check
     #: uniqueness, it checks the guess.
     unique_key: tuple[str, ...]
+    #: Data THIS project collected from the exchange, kept apart from the
+    #: MICCV2 increments so the DAG can still say which source a row came from.
+    collected_glob: str | None = None
     partition_by: str = "_y"
 
 
@@ -70,6 +73,7 @@ PRICE = SpineSpec(
     increment_glob="prices/**/*.parquet",
     columns=("symbol", "date", "open", "high", "low", "close", "volume"),
     unique_key=("symbol", "date"),
+    collected_glob="prices/**/*.parquet",
 )
 
 FNO = SpineSpec(
@@ -122,6 +126,41 @@ def _select(glob: str, spec: SpineSpec, derive_year: bool) -> str:
     return f"SELECT {', '.join(cols)}, {year} FROM read_parquet('{glob}')"
 
 
+def _collected_part(spec: SpineSpec, c: duckdb.DuckDBPyConnection,
+                    prior_globs: list[str]) -> tuple[str | None, int]:
+    """The self-collected source, with contiguity ASSERTED rather than assumed.
+
+    Decision 0027 assumed the seed and increment were contiguous. They were for
+    prices and were not for F&O — ten shared dates, 343,595 rows — and the
+    assumption cost a rebuild. `build` resolves that overlap by letting the
+    increment win, which is right when one source is known better than the
+    other.
+
+    Here neither is. The collected sessions run FORWARD from where the increment
+    stops, so an overlap would not mean "two versions of a day", it would mean a
+    bug in what this module thinks it holds. Refusing is the honest response;
+    silently preferring one source would hide it.
+    """
+    if not spec.collected_glob or not list(COLLECTED.glob(spec.collected_glob)):
+        return None, 0
+    glob = str(COLLECTED / spec.collected_glob)
+    rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{glob}')").fetchone()[0]
+    for prior in prior_globs:
+        clash = c.execute(
+            f"SELECT COUNT(*) FROM ("
+            f"  SELECT DISTINCT date FROM read_parquet('{prior}')"
+            f"  INTERSECT SELECT DISTINCT date FROM read_parquet('{glob}'))"
+        ).fetchone()[0]
+        if clash:
+            raise SpineError(
+                f"{spec.name}: {clash} date(s) appear in BOTH {prior} and the "
+                f"collected source. These are meant to be contiguous — collection "
+                f"starts where the increment stops — so an overlap is a defect in "
+                f"the collector or the parser, not a version conflict to resolve."
+            )
+    return glob, rows
+
+
 def build(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
     """Union the sources into one partitioned parquet dataset, verified."""
     seed_glob = str(SEED / spec.seed_glob)
@@ -141,6 +180,12 @@ def build(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyConnectio
     if inc_glob and list(SEED_INCREMENTS.glob(spec.increment_glob)):
         inc_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{inc_glob}')").fetchone()[0]
         parts.append(_select(inc_glob, spec, derive_year=True))
+
+    coll_glob, coll_rows = _collected_part(
+        spec, c, [g for g in (seed_glob, inc_glob) if g])
+    if coll_glob:
+        inc_rows += coll_rows
+        parts.append(_select(coll_glob, spec, derive_year=True))
 
     union = "\nUNION ALL\n".join(parts)
 
@@ -216,6 +261,7 @@ ADJUSTED = SpineSpec(
     increment_glob="prices/**/*.parquet",
     columns=("symbol", "date", "open", "high", "low", "close", "volume"),
     unique_key=("symbol", "date"),
+    collected_glob="prices/**/*.parquet",
 )
 
 
@@ -281,6 +327,48 @@ def build_adjusted(env: str | None = None, con: duckdb.DuckDBPyConnection | None
         _select(seed_raw, PRICE, derive_year=False) + f" WHERE date > '{boundary}'",
         _select(inc, ADJUSTED, derive_year=True),
     ]
+    coll_glob, _ = _collected_part(ADJUSTED, c, [inc])
+    if coll_glob:
+        parts.append(_select(coll_glob, ADJUSTED, derive_year=True))
+
+    # HOW FAR THE GUARD ABOVE CAN ACTUALLY SEE.
+    #
+    # It counts corporate actions after `boundary` in the SEED's actions table —
+    # and that table ends 2026-06-29, four days past the boundary, while the
+    # spliced tail now runs months beyond it. So a clean pass means "no action
+    # in the first four days", not "no action in the tail", and the difference
+    # was invisible. This does not widen the guard; it makes its edge visible
+    # and then looks for the thing the guard would have caught.
+    #
+    # A split, bonus or rights issue shows up in RAW prices as a discontinuity:
+    # close/prev_close near 1/2, 1/5, 1/10. Ordinary bad days do not do that,
+    # and the 20% circuit limit means most equities CANNOT move -35% in a
+    # session. So the tail is searched directly for what the actions table can
+    # no longer tell us.
+    actions_end = c.execute(
+        f"SELECT MAX(CAST(date AS VARCHAR)) FROM read_parquet('{actions}')"
+    ).fetchone()[0]
+    tail_end = c.execute(f"SELECT MAX(date) FROM ({parts[-1]})").fetchone()[0]
+    if actions_end < tail_end:
+        jumps = c.execute(
+            f"WITH tail AS ("
+            f"  SELECT symbol, date, close FROM ({chr(10).join(p2 + chr(10) + 'UNION ALL' for p2 in parts[1:-1])}{chr(10)}{parts[-1]})"
+            f"  WHERE date > '{actions_end}'),"
+            f" r AS (SELECT symbol, date, close,"
+            f"        LAG(close) OVER (PARTITION BY symbol ORDER BY date) prev"
+            f"       FROM tail)"
+            f" SELECT COUNT(*) FROM r WHERE prev > 0 AND close > 0"
+            f"   AND abs(close/prev - 1) > 0.35"
+        ).fetchone()[0]
+        if jumps:
+            raise SpineError(
+                f"{ADJUSTED.name}: the corporate-actions table ends {actions_end} "
+                f"but the spliced tail runs to {tail_end}, and {jumps} price "
+                f"discontinuit(ies) >35% occur in the uncovered window. A split in "
+                f"that window reads as a -50% return in every study built on this "
+                f"spine. Extend corporate_actions past {tail_end} before rebuilding."
+            )
+
     union = "\nUNION ALL\n".join(parts)
 
     dupes = c.execute(
@@ -330,8 +418,8 @@ def build_all(env: str | None = None) -> list[BuildResult]:
     # `seed:v1_export` is a genuine parent of both: it is one carried directory
     # containing stock_data AND fo_data.
     per_spine = {
-        PRICE.name: (SEED, SEED_INCREMENTS / "prices"),
-        ADJUSTED.name: (SEED, SEED_INCREMENTS / "prices"),
+        PRICE.name: (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices"),
+        ADJUSTED.name: (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices"),
         FNO.name: (SEED, SEED_INCREMENTS / "fno"),
     }
 

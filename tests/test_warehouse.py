@@ -128,11 +128,39 @@ def test_the_seed_is_registered_in_the_provenance_graph():
     [("price_spine", 7_749_148), ("price_spine_adj", 7_748_799), ("fno_spine", 174_272_768)],
 )
 def test_spine_row_counts(name, expected):
+    """Counted only up to the last session MICCV2 supplied.
+
+    These three numbers are the frozen reconciliation against the predecessor.
+    From 2026-08-17 the price spines also carry sessions this project collected
+    from NSE itself, which move the totals every day the collector runs — so an
+    unbounded count would fail daily and the fix would look like "update the
+    expected number", which is how a check becomes a receipt.
+
+    Bounding the measurement keeps the oracle load-bearing. The collected rows
+    are covered by `reconcile.collected_starts_after_miccv2` and by the overlap
+    refusal in `spine._collected_part`, not by these constants.
+    """
     con = duckdb.connect()
+    where = "" if name == "fno_spine" else f" WHERE date <= '{reconcile.MICCV2_HORIZON}'"
     got = con.execute(
         f"SELECT COUNT(*) FROM read_parquet('{warehouse_dir('prod') / name}/**/*.parquet')"
+        + where
     ).fetchone()[0]
     assert got == expected
+
+
+@needs_spine
+def test_the_price_spine_extends_past_what_miccv2_supplied():
+    """The collector's whole point. Without this the deals collected since
+    2026-08-17 have no next-session price and stay ineligible forever."""
+    con = duckdb.connect()
+    latest = con.execute(
+        f"SELECT MAX(date) FROM read_parquet('{warehouse_dir('prod') / 'price_spine'}/**/*.parquet')"
+    ).fetchone()[0]
+    assert latest > reconcile.MICCV2_HORIZON, (
+        f"price_spine still ends at {latest}; nothing has been collected past "
+        f"the seed, so live-collected deals cannot become eligible"
+    )
 
 
 @needs_spine
@@ -252,7 +280,10 @@ def test_the_phase_1_reconciliation_gate_passes():
     checks = reconcile.run("prod")
     failed = [f"{c.name}: expected {c.expected}, got {c.actual}" for c in checks if not c.passed]
     assert not failed, "gate failures:\n  " + "\n  ".join(failed)
-    assert len(checks) == 9
+    # 9 counts + the collected-source boundary added when the price collector
+    # started extending the spine past what MICCV2 supplied. The count is
+    # asserted so a check cannot be quietly dropped to make the gate pass.
+    assert len(checks) == 10
 
 
 @needs_spine
