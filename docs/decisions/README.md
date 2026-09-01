@@ -106,3 +106,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0039](0039-the-backup-check-is-the-backup.md) | **A backup nobody checks is a backup nobody has** — 0037 shipped a script that wrote nothing for eight days | 2026-09-01 | ACTIVE |
 | [0040](0040-etf-units-leave-the-universe.md) | **ETF and fund units leave the universe** — seven unadjustable splits, zero eligible events | 2026-09-01 | ACTIVE |
 | [0041](0041-the-adjusted-spine-was-carrying-unadjusted-splits.md) | **The adjusted spine was carrying unadjusted splits** — its guard read a table that ended four days past the boundary | 2026-09-01 | ACTIVE |
+| [0042](0042-salvage-before-deleting-the-predecessors.md) | **What was salvaged before deleting MICC and MICCV2** — the atlas was carried by nothing; market.db was a verified duplicate | 2026-09-01 | ACTIVE |
