@@ -34,13 +34,33 @@ set -eu
 REPO="${0:A:h:h}"
 cd "$REPO"
 
+# ONE BACKUP AT A TIME. cron and launchd BOTH run collect_daily.sh — deliberately,
+# because the collector dedupes on sha256 so a duplicate fetch is a free no-op.
+# The backup is not that. On 2026-09-01 08:00 they fired two seconds apart, wrote
+# two 37 MB generations, interleaved their output into one log, and both hit a
+# destination listing that had not caught up with their own writes. mkdir is
+# atomic on every filesystem that matters, which mkfifo/flock are not portably.
+LOCK="${TMPDIR:-/tmp}/institutional-research-backup.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  # A lock older than an hour outlived any real run and is a crash leftover.
+  if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +60 2>/dev/null)" ]; then
+    echo "  clearing a stale lock (>60 min): $LOCK"
+    rmdir "$LOCK" 2>/dev/null || true
+    mkdir "$LOCK" 2>/dev/null || { echo "BACKUP: SKIPPED (locked)"; exit 0; }
+  else
+    echo "BACKUP: SKIPPED — another backup holds $LOCK"
+    exit 0
+  fi
+fi
+trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
+
 # Default: the iCloud Drive folder the owner created for this. Overridable —
 # an external SSD is the intended second destination:
 #   BACKUP_DEST=/Volumes/<ssd>/institutional-research-backup ./scripts/backup.sh
 DEST="${BACKUP_DEST:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/institutional research/backup}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"; rmdir "$LOCK" 2>/dev/null || true' EXIT
 
 echo "BACKUP  $(date '+%Y-%m-%d %H:%M:%S %Z')"
 echo "  from: $REPO"
@@ -122,26 +142,7 @@ fi
 
 mv "$WORK"/repo-$STAMP.bundle "$WORK"/state-$STAMP.tar.gz "$WORK"/MANIFEST-$STAMP.txt "$DEST/"
 
-# Keep the newest generation from each of the three most recent DAYS.
-#
-# Retention is per-day, not per-run, because collect_daily.sh calls this three
-# times a session. A flat "keep 3" would leave all three copies made within
-# fourteen hours of each other, so a corruption noticed the next morning would
-# already be in every one of them. Three days is three independent chances.
-KEEP_DAYS="$(ls -1 "$DEST"/repo-*.bundle 2>/dev/null | sed -E 's/.*repo-([0-9]{8})-.*/\1/' \
-             | sort -u | tail -3)"
-for f in "$DEST"/repo-*.bundle(N); do
-  st="${f:t:r}"; st="${st#repo-}"; day="${st%%-*}"
-  keep=""
-  for k in ${(f)KEEP_DAYS}; do [ "$k" = "$day" ] && keep=1; done
-  # Within a kept day, only the newest run survives.
-  if [ -n "$keep" ]; then
-    newest_of_day="$(ls -1 "$DEST"/repo-$day-*.bundle | tail -1)"
-    [ "$f" = "$newest_of_day" ] && continue
-  fi
-  rm -f "$DEST/repo-$st.bundle" "$DEST/state-$st.tar.gz" "$DEST/MANIFEST-$st.txt"
-  echo "  pruned generation $st"
-done
+"${0:A:h}/lib/prune_generations.zsh" "$DEST" "$STAMP" 3
 
 echo "  wrote: $(du -ch "$DEST"/repo-$STAMP.bundle "$DEST"/state-$STAMP.tar.gz | tail -1 | cut -f1)"
 echo "BACKUP: GREEN"
