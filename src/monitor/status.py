@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Literal
 
 from src.common.paths import ARCHIVE, DOCS, ROOT, SEED, governance_db, research_db, warehouse_dir
+from src.warehouse import reconcile
 
 Level = Literal["SPECIFIED", "BUILT", "WIRED", "VERIFIED", "IMPOSSIBLE", "BLOCKED"]
 
@@ -130,6 +131,76 @@ class Ctx:
 
     def tested(self, pattern: str) -> bool:
         return bool(re.search(pattern, self.test_text))
+
+    def flag_is_real(self, column: str) -> bool:
+        """Does this column ever take a non-default value?
+
+        A BOOLEAN that is FALSE on all 237,340 rows, or a key that is NULL on
+        all of them, is a placeholder wearing a schema. Phase 4 read VERIFIED
+        with five such columns.
+        """
+        if not self.duck_rows.get("institutional_deals_clean"):
+            return False
+        import duckdb
+        con = duckdb.connect(str(research_db("prod")))
+        try:
+            n = con.execute(
+                f"SELECT COUNT(*) FROM institutional_deals_clean"
+                f" WHERE {column} IS NOT NULL AND CAST({column} AS VARCHAR)"
+                f" NOT IN ('false', '0')").fetchone()[0]
+            return n > 0
+        except Exception:  # noqa: BLE001 - a status page must not crash
+            return False
+        finally:
+            con.close()
+
+    @cached_property
+    def collect_script(self) -> str:
+        p = ROOT / "scripts" / "collect_daily.sh"
+        return p.read_text() if p.exists() else ""
+
+    def _spine_max(self, name: str) -> str:
+        d = warehouse_dir("prod") / name
+        if not list(d.glob("**/*.parquet")):
+            return ""
+        import duckdb
+        con = duckdb.connect()
+        try:
+            return con.execute(
+                f"SELECT MAX(date) FROM read_parquet('{d}/**/*.parquet')").fetchone()[0] or ""
+        finally:
+            con.close()
+
+    @cached_property
+    def price_spine_max(self) -> str:
+        return self._spine_max("price_spine")
+
+    @cached_property
+    def adj_spine_max(self) -> str:
+        return self._spine_max("price_spine_adj")
+
+    @cached_property
+    def sessions(self) -> int:
+        from src.common import calendar
+        try:
+            return len(calendar.sessions("prod"))
+        except Exception:  # noqa: BLE001 - a status page must not crash on data
+            return 0
+
+    @cached_property
+    def corp_actions(self) -> int:
+        from src.common.paths import COLLECTED
+        files = list((COLLECTED / "corporate_actions").glob("*.parquet"))
+        if not files:
+            return 0
+        import duckdb
+        con = duckdb.connect()
+        try:
+            return con.execute(
+                f"SELECT COUNT(*) FROM read_parquet('{COLLECTED}/corporate_actions/*.parquet')"
+            ).fetchone()[0]
+        finally:
+            con.close()
 
     @cached_property
     def backup(self):
@@ -219,7 +290,8 @@ def steps() -> list[Step]:
              wired=lambda c: c.consumed("calendar", "src/common/calendar.py")
                              or "cal AS" in c.src_text.get("src/mart/clean.py", ""),
              verified=lambda c: c.tested(r"test_the_calendar_is_observed_not_generated"),
-             note="5,339 sessions, gate MATCH; found 3 weekend sessions a generated calendar would miss"),
+             note=lambda c: (f"{c.sessions} observed sessions; 3 of them are "
+                             f"Saturdays a generated calendar would drop")),
         Step("1.5", "1 Warehouse", "Migration runner, forward-only and checksummed",
              built=lambda c: c.module("src/common/migrate.py"),
              wired=lambda c: c.consumed("migrate_duckdb", "src/common/migrate.py"),
@@ -237,7 +309,8 @@ def steps() -> list[Step]:
              wired=lambda c: any((warehouse_dir("prod") / "price_spine_adj").glob("**/*.parquet"))
                              and c.consumed("price_spine_adj", "src/warehouse/spine.py"),
              verified=lambda c: c.tested(r"test_adjustment_actually_removes_split_artefacts"),
-             note="PIT universe still missing"),
+             note=lambda c: (f"adjusted spine reaches {c.adj_spine_max}; "
+                             f"PIT universe still missing")),
         Step("1.9", "1 Warehouse", "Provenance DAG live — every table registers artefact and edges",
              built=lambda c: c.gov_rows.get("artefact", 0) > 0,
              wired=lambda c: c.gov_rows.get("artefact_edge", 0) > 0,
@@ -290,12 +363,29 @@ def steps() -> list[Step]:
              wired=lambda c: c.archive_sessions() >= 4,
              verified=lambda c: c.tested(r"test_publication_is_bracketed_by_two_observations"),
              note="launchd added 2026-08-22 after cron silently lost the 19 Aug session"),
+        # The `built` predicate here looked for "bhavcopy" inside stopgap.py,
+        # which was right while the plan assumed the price feed would live in
+        # the deal collector. It moved to its own module and the predicate kept
+        # reporting NOT BUILT — with a hand-written note asserting it. Same
+        # defect as 1.10, found in the same audit that fixed 1.10.
         Step("2.12", "2 Collection", "Daily PRICE feed, so collected deals are usable",
-             built=lambda c: "bhavcopy" in c.src_text.get("src/archive/stopgap.py", "").lower(),
-             note="NOT BUILT. The collector gathers deals and nothing gathers prices, so "
-                  "all 611 live-collected rows are ineligible: 469 'no next session in "
-                  "the data', 142 uncovered. The spine ends 2026-08-14 and collection "
-                  "began 2026-08-17. The gap grows one session per day."),
+             built=lambda c: c.module("src/archive/prices.py")
+                             and c.module("src/ingest/bhavcopy.py"),
+             wired=lambda c: "src.archive.prices" in c.collect_script,
+             verified=lambda c: c.price_spine_max > reconcile.MICCV2_HORIZON,
+             note=lambda c: (
+                 f"price_spine reaches {c.price_spine_max}; MICCV2 stopped at "
+                 f"{reconcile.MICCV2_HORIZON}"
+                 if c.price_spine_max else "no price spine on disk")),
+        Step("2.14", "2 Collection", "Corporate actions, so the adjusted spine can extend",
+             built=lambda c: c.module("src/archive/corporate_actions.py")
+                             and c.module("src/ingest/corp_actions.py"),
+             wired=lambda c: "src.archive.corporate_actions" in c.collect_script,
+             verified=lambda c: c.tested(
+                 r"test_preference_share_bonuses_are_never_treated_as_equity_bonuses"),
+             note=lambda c: (
+                 f"{c.corp_actions} price-affecting action(s) collected; the seed's "
+                 f"table ends 2026-06-29 (decision 0041)")),
         Step("2.10", "2 Collection", "Measure available_from empirically",
              built=lambda c: c.module("src/ingest/publication.py"),
              wired=lambda c: c.archive_sessions() >= 2,
@@ -332,26 +422,141 @@ def steps() -> list[Step]:
              built=lambda c: "roundtrip_ratio" in c.src_text.get("src/mart/eligibility.py", ""),
              wired=lambda c: c.consumed("eligibility", "src/mart/eligibility.py"),
              verified=lambda c: c.tested(r"prop_hft|roundtrip")),
+        Step("3.8", "3 Identity", "Name-pattern classifier for the residual",
+             built=lambda c: "roundtrip_ratio" in c.src_text.get("src/mart/eligibility.py", ""),
+             wired=lambda c: c.consumed("eligibility", "src/mart/eligibility.py"),
+             note=lambda c: "behavioural only; no name-pattern classifier exists"),
+        Step("3.9", "3 Identity", "Merge suggestions recorded, never applied",
+             built=lambda c: c.duck_rows.get("participant_aliases", 0) > 0,
+             note=lambda c: "participant_aliases exists and holds 0 rows"),
+        Step("3.12", "3 Identity", "Manual fund-house mapping file",
+             built=lambda c: (ROOT / "configs" / "fund_houses.yml").exists()),
         Step("3.10", "3 Identity", "Review queue for the 1,515 names",
              built=lambda c: c.module("src/identity/review.py")),
         Step("3.11", "3 Identity", "SHP collector and promoter_entities",
              built=lambda c: c.duck_rows.get("promoter_entities", 0) > 0),
 
         # --- Phase 4+ --------------------------------------------------------
-        Step("4", "4 Clean mart", "institutional_deals_clean, zero silent drops",
+        # PHASES 4-7 WERE ONE ROW EACH UNTIL 2026-09-01, AND THAT UNDER-REPORTED
+        # THEM BADLY. Plan 3 defines 7 steps in Phase 4, 7 in Phase 5, 10 in
+        # Phase 6 and 8 in Phase 7; collapsing each to a single step made
+        # "Phase 4: 1/1 wired or better" read as a finished phase while five of
+        # its six flags were placeholders that are never true. The summary line
+        # was arithmetically correct and substantively false — the same shape of
+        # error as reporting a table complete because it exists.
+        Step("4.1", "4 Clean mart", "institutional_deals_clean with all flags",
              built=lambda c: c.duck_rows.get("institutional_deals_clean", 0) > 0,
              wired=lambda c: "institutional_deals_clean" in c.src_text.get("src/research/measure.py", ""),
-             verified=lambda c: c.tested(r"test_zero_silent_drops"),
-             note="five-day round-trip, internal-transfer and promoter flags are still FALSE placeholders"),
-        Step("5", "5 Costs & benchmarks", "fee_schedule, spreads, impact, six benchmarks",
+             verified=lambda c: c.tested(r"test_zero_silent_drops")),
+        Step("4.2", "4 Clean mart", "Duplicate grouping — NSE/BSE cross-listing, both kept",
+             built=lambda c: c.flag_is_real("duplicate_group_id"),
+             note=lambda c: "" if c.flag_is_real("duplicate_group_id")
+                            else "duplicate_group_id is NULL on every row"),
+        Step("4.3", "4 Clean mart", "Same-day and 5-day round-trip flags",
+             built=lambda c: c.flag_is_real("same_day_round_trip_flag"),
+             wired=lambda c: c.flag_is_real("five_day_round_trip_flag"),
+             note=lambda c: "same-day is real; five-day is FALSE on every row"
+                            if not c.flag_is_real("five_day_round_trip_flag") else ""),
+        Step("4.4", "4 Clean mart", "Internal-transfer and promoter-related flags",
+             built=lambda c: c.flag_is_real("internal_transfer_flag")
+                             and c.flag_is_real("promoter_related_flag"),
+             note=lambda c: "both FALSE on every row; promoter_entities holds 0 rows"),
+        Step("4.5", "4 Clean mart", "Size eligibility: >= 0.5% ADV20 and >= Rs 1cr",
+             built=lambda c: "min_value" in c.src_text.get("src/mart/clean.py", ""),
+             wired=lambda c: "below the ADV20 floor" in c.src_text.get("src/mart/clean.py", ""),
+             verified=lambda c: c.tested(r"test_the_participation_ceiling")),
+        Step("4.6", "4 Clean mart", "eligible_for_research excluding PROP_HFT",
+             built=lambda c: "PROP_HFT" in c.src_text.get("src/mart/clean.py", ""),
+             wired=lambda c: c.consumed("eligible_for_research", "src/mart/clean.py"),
+             verified=lambda c: c.tested(r"test_zero_silent_drops")),
+        Step("4.7", "4 Clean mart", "Three interpretations — individual / accumulated / confirmation",
+             built=lambda c: c.duck_rows.get("deal_interpretation", 0) > 0,
+             note=lambda c: "deal_interpretation exists and holds 0 rows"),
+
+        Step("5.1", "5 Costs & benchmarks", "fee_schedule, rebuilt not ported, every row sourced",
              built=lambda c: c.gov_rows.get("fee_schedule", 0) > 0,
-             note="costs.yml holds verified rates; nothing loads them"),
-        Step("6", "6 Outcome study", "deal_forward_outcomes and study_result",
-             built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0),
+             note=lambda c: "costs.yml holds verified rates; only the participation "
+                            "cap is read, by clean.py"),
+        Step("5.2", "5 Costs & benchmarks", "Corwin-Schultz and Abdi-Ranaldo spread estimators",
+             built=lambda c: "corwin" in "".join(c.src_text.values()).lower()),
+        Step("5.3", "5 Costs & benchmarks", "Square-root market impact with sensitivity",
+             built=lambda c: "impact" in c.src_text.get("src/mart/clean.py", "").lower()
+                             and "sqrt" in "".join(c.src_text.values()).lower()),
+        Step("5.4", "5 Costs & benchmarks", "Participation cap and delay cost",
+             built=lambda c: "participation_ceiling" in c.src_text.get("src/mart/clean.py", ""),
+             wired=lambda c: "TOO_LARGE" in c.src_text.get("src/mart/clean.py", ""),
+             verified=lambda c: c.tested(r"test_the_participation_ceiling"),
+             note=lambda c: "the cap is applied; DELAY cost is not modelled"),
+        Step("5.5", "5 Costs & benchmarks", "Volatility-regime multiplier from India VIX",
+             built=lambda c: "vix" in "".join(c.src_text.values()).lower()),
+        Step("5.6", "5 Costs & benchmarks", "Six benchmarks incl. constructed smallcap and CHAR_MATCHED",
+             built=lambda c: c.module("src/research/charmatch.py"),
+             wired=lambda c: c.consumed("charmatch", "src/research/charmatch.py"),
+             note=lambda c: "charmatch.py is 251 lines that nothing imports; the only "
+                            "test reads its source as text, never runs it"),
+        Step("5.7", "5 Costs & benchmarks", "Gross / base / pessimistic reporting",
+             built=lambda c: "pessimistic" in "".join(c.src_text.values()).lower()),
+
+        Step("6.1", "6 Outcome study", "Register all four experiments, trial counter to 72",
+             built=lambda c: c.gov_rows.get("experiment_registry", 0) > 0,
+             wired=lambda c: c.gov_rows.get("experiment_registry", 0) >= 4,
+             note=lambda c: f"{c.gov_rows.get('experiment_registry', 0)} of 4 registered"),
+        Step("6.2", "6 Outcome study", "Power analysis per stratum, before any fit",
+             built=lambda c: c.module("src/research/power.py"),
+             wired=lambda c: c.consumed("power", "src/research/power.py"),
+             verified=lambda c: c.tested(r"test_the_twelve_month_figure_is_reproducible")),
+        Step("6.3", "6 Outcome study", "deal_forward_outcomes across 9 horizons x 6 benchmarks",
+             built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0,
+             note=lambda c: "the table exists and holds 0 rows"),
+        Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
+             built=lambda c: "recovery" in "".join(c.src_text.values()).lower()),
+        Step("6.5", "6 Outcome study", "Monthly-cohort collapse, block bootstrap, NW-HAC",
+             built=lambda c: "newey" in "".join(c.src_text.values()).lower()
+                             or "serial_inflation" in c.src_text.get("src/research/power.py", ""),
+             wired=lambda c: c.consumed("serial_inflation", "src/research/power.py"),
+             verified=lambda c: c.tested(r"test_the_serial_lag_covers_the_label_overlap")),
+        Step("6.6", "6 Outcome study", "Three-scheme walk-forward: anchored + rolling + CPCV",
+             built=lambda c: "cpcv" in "".join(c.src_text.values()).lower()),
+        Step("6.7", "6 Outcome study", "PBO from the CPCV distribution",
+             built=lambda c: "pbo" in "".join(c.src_text.values()).lower()),
+        Step("6.8", "6 Outcome study", "Romano-Wolf stepdown for ranking",
+             built=lambda c: "romano" in "".join(c.src_text.values()).lower(),
+             wired=lambda c: c.consumed("romano_wolf", "src/research/multiplicity.py"),
+             verified=lambda c: c.tested(r"romano")),
+        Step("6.9", "6 Outcome study", "Null-calibration on shuffled participant labels",
+             built=lambda c: "shuffl" in "".join(c.src_text.values()).lower()),
+        Step("6.10", "6 Outcome study", "Write study_result with corrected p and input hashes",
+             built=lambda c: c.gov_rows.get("study_result", 0) > 0,
+             note=lambda c: f"{c.gov_rows.get('study_result', 0)} row(s), from exp_001"),
+        Step("6R", "6 Outcome study", "Re-run exp_001 reproducibly under the DAG (0013)",
+             built=lambda c: c.gov_rows.get("study_result", 0) > 0,
+             wired=lambda c: c.module("src/research/measure.py"),
+             verified=lambda c: c.tested(r"test_the_twelve_month_figure_is_reproducible")),
+
         Step("6S", "6S Track S", "The scan track — folds, nulls, procedure test",
              built=lambda c: c.module("src/scan/procedure.py")),
-        Step("7", "7 Seasonality", "Validate the atlas on a 100,000-cell sample",
+
+        Step("7.1", "7 Seasonality", "Recompute a 100,000-cell sample, exact match required",
+             built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0,
+             note=lambda c: "seasonality_cell exists and holds 0 rows"),
+        Step("7.2", "7 Seasonality", "Observation minimums >=10 yearly / >=30 monthly",
+             built=lambda c: "min_observations" in c.src_text.get("src/research/families.py", "")
+                             or "min_obs" in "".join(c.src_text.values())),
+        Step("7.3", "7 Seasonality", "Index expansion 46 -> ~202 with dedup",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0),
+        Step("7.4", "7 Seasonality", "Near-duplicate grouping incl. return correlation > 0.9",
+             built=lambda c: "near_duplicate" in "".join(c.src_text.values()).lower()),
+        Step("7.8", "7 Seasonality", "Three-scheme OOS + full cost model",
+             built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0
+                             and c.gov_rows.get("fee_schedule", 0) > 0),
+        Step("7.5", "7 Seasonality", "BY + BH + Storey q over the actual run test count",
+             built=lambda c: c.module("src/research/multiplicity.py"),
+             wired=lambda c: c.consumed("multiplicity", "src/research/multiplicity.py"),
+             verified=lambda c: c.tested(r"test_storey|storey")),
+        Step("7.6", "7 Seasonality", "Permutation, 1,000 rotations",
+             built=lambda c: "rotation" in "".join(c.src_text.values()).lower()),
+        Step("7.7", "7 Seasonality", "Hansen SPA for best-of-family",
+             built=lambda c: "hansen" in "".join(c.src_text.values()).lower()),
         Step("2.13", "2 Collection", "Alert when collection goes stale",
              built=lambda c: c.module("src/monitor/health.py"),
              wired=lambda c: "monitor.health" in (ROOT/"scripts"/"collect_daily.sh").read_text(),
