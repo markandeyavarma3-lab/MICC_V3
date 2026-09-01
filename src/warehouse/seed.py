@@ -149,9 +149,18 @@ def carry(dry_run: bool = False, env: str | None = None) -> CarryReport:
     pred = predecessor_root()
     if not pred.is_dir():
         raise SeedError(
-            f"the predecessor repo is not at {pred}. Set PREDECESSOR_ROOT if it "
-            f"lives elsewhere. Nothing can be carried without it, and the Phase 1 "
-            f"gate is unreachable without the carry."
+            f"the predecessor repo is not at {pred}.\n\n"
+            f"MICCV2 AND MICC WERE DELETED ON 2026-09-01 (decision 0042), after "
+            f"every one of their three carried sources was hash-verified present "
+            f"here. So this is expected, and it is not a problem unless the "
+            f"carried data is ALSO gone — check `seed.verify()` first.\n\n"
+            f"If a re-carry is genuinely needed, the predecessor's code and full "
+            f"history are at data/raw/salvaged/predecessor_repos/MICCV2.bundle "
+            f"(git clone it), and its irreplaceable data is under "
+            f"data/raw/salvaged/. What is NOT recoverable is MICCV2's own "
+            f"derived warehouse, which was deleted as a verified duplicate of "
+            f"data/raw/v1_export.\n\n"
+            f"Set PREDECESSOR_ROOT if it lives elsewhere."
         )
 
     for source in SOURCES:

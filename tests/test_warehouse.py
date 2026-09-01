@@ -97,10 +97,46 @@ def test_the_corrected_fno_figure_keeps_the_old_one_visible():
 
 @needs_seed
 def test_the_carry_is_idempotent():
-    """Re-running must verify, not re-copy. The second run is the check."""
+    """Re-running must verify, not re-copy. The second run is the check.
+
+    UNRUNNABLE SINCE 2026-09-01, and skipped rather than deleted. Decision 0042
+    removed MICCV2 from the machine, so there is no source to carry FROM and
+    this can never execute again here. Deleting it would erase the record that
+    idempotence was ever required; leaving it failing would train someone to
+    ignore a red suite. It runs again the moment PREDECESSOR_ROOT points at a
+    restored clone.
+    """
+    from src.common.paths import predecessor_root
+
+    if not predecessor_root().is_dir():
+        pytest.skip(
+            "the predecessor was deleted (0042); restore it from "
+            "data/raw/salvaged/predecessor_repos/MICCV2.bundle to run this"
+        )
     rep = seed.carry(dry_run=False)
     assert rep.ok, rep.problems
     assert rep.copied == 0, f"a second carry copied {rep.copied} files; it should skip all"
+
+
+def test_carry_refuses_honestly_when_the_predecessor_is_gone():
+    """The failure mode that replaced it, and it IS testable.
+
+    A missing predecessor must not read as "nothing to do". The message has to
+    say that the deletion was deliberate, that seed.verify() is the thing to
+    check first, and where the bundle is — otherwise a future reader finds a
+    hard error pointing at a path that will never exist again.
+    """
+    from src.common.paths import predecessor_root
+
+    if predecessor_root().is_dir():
+        pytest.skip("the predecessor is present; this tests its absence")
+
+    with pytest.raises(seed.SeedError) as exc:
+        seed.carry(dry_run=True)
+    msg = str(exc.value)
+    assert "0042" in msg, "the error must name the decision that deleted it"
+    assert "seed.verify" in msg, "it must say what to check first"
+    assert "MICCV2.bundle" in msg, "it must say where the recovery path is"
 
 
 @needs_seed

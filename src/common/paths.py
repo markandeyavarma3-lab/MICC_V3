@@ -93,6 +93,18 @@ def predecessor_root() -> Path:
 #: parser in this repo, with a different failure mode and a different fix.
 COLLECTED: Final[Path] = ROOT / "data" / "raw" / "collected"
 
+#: Irreplaceable data rescued from MICC (V1) and MICCV2 before those repos were
+#: deleted, 2026-09-01.
+#:
+#: SEPARATE FROM `v1_export` ON PURPOSE. The seed is what decision 0027 chose to
+#: carry when the question was "what does the warehouse need". This is what a
+#: file-by-file audit found when the question was "what dies if these two repos
+#: are deleted" — a different question with a different answer, and merging the
+#: two would let a later reader think 0027 had considered material it never saw.
+#:
+#: What it holds and why each entry cannot be re-fetched is in decision 0042.
+SALVAGED: Final[Path] = ROOT / "data" / "raw" / "salvaged"
+
 #: Permanent raw archive. Plan 1 §5. Append-only; files are never rewritten.
 ARCHIVE: Final[Path] = ROOT / "data" / "raw" / "archive"
 

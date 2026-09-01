@@ -16,8 +16,8 @@ A test asserts no order-placement code exists anywhere in the repo.
 | | |
 |---|---|
 | **Phase** | 1 of 9 — skeleton, migrations, warehouse rebuild |
-| **Tests** | 383 pass |
-| **Decision records** | 41 |
+| **Tests** | 384 pass |
+| **Decision records** | 42 |
 | **Research findings** | One, and it is a rejection: [Finding 001](docs/reports/FINDING_001_bulk_deal_avoidance.md) failed its own pre-registered bar |
 | **Predecessor** | [MICCV2](../MICCV2) frozen at tag `frozen-2026-08-16` |
 
