@@ -372,3 +372,70 @@ def test_the_gate_checks_correctness_not_only_size():
     failed = [f"{c.name}: expected {c.expected}, got {c.actual}" for c in q if not c.passed]
     assert not failed, "quality failures:\n  " + "\n  ".join(failed)
     assert len(q) >= 7
+
+
+@needs_spine
+def test_the_price_spine_reconciles_exactly_with_its_inputs():
+    """The spine must contain its sources and nothing else.
+
+    FOUND BY MEASURING, 2026-09-01. `price_spine` held 3,819 rows that were in
+    no source — 343 per session across the eleven collected dates, exactly the
+    fund/ETF rows decision 0040 removed. The parser was re-run with the ISIN
+    filter, which rewrote the inputs, and only `price_spine_adj` was rebuilt
+    afterwards. The raw spine sat stale and disagreed with its own inputs while
+    every row count still looked plausible.
+
+    Row totals alone would not have caught it. The set difference does.
+    """
+    from src.common.paths import COLLECTED, SEED, SEED_INCREMENTS
+
+    con = duckdb.connect()
+    con.execute("SET memory_limit='6GB'")
+    spine_glob = f"{warehouse_dir('prod') / 'price_spine'}/**/*.parquet"
+    src = (
+        f"SELECT symbol, date FROM read_parquet('{SEED}/stock_data/**/*.parquet')"
+        f" UNION ALL SELECT symbol, date FROM"
+        f" read_parquet('{SEED_INCREMENTS}/prices/**/*.parquet')"
+    )
+    if list((COLLECTED / "prices").glob("*.parquet")):
+        src += (f" UNION ALL SELECT symbol, date FROM"
+                f" read_parquet('{COLLECTED}/prices/*.parquet')")
+
+    extra, missing = con.execute(
+        f"WITH src AS ({src}),"
+        f" sp AS (SELECT symbol, date FROM read_parquet('{spine_glob}'))"
+        f" SELECT (SELECT COUNT(*) FROM (SELECT * FROM sp EXCEPT ALL SELECT * FROM src)),"
+        f"        (SELECT COUNT(*) FROM (SELECT * FROM src EXCEPT ALL SELECT * FROM sp))"
+    ).fetchone()
+
+    assert extra == 0, (
+        f"{extra:,} (symbol, date) rows are in price_spine but in no source — the "
+        f"spine is stale relative to its inputs. Rebuild it: "
+        f"python -m src.warehouse.spine"
+    )
+    assert missing == 0, (
+        f"{missing:,} source rows never reached price_spine"
+    )
+
+
+@needs_spine
+def test_the_two_price_spines_cover_the_same_universe():
+    """Raw and adjusted must describe the same instruments.
+
+    They diverged at 4,412 against 4,382 symbols for the same reason: one was
+    built before decision 0040's ISIN filter and one after. A 30-symbol gap
+    between the spine research reads and the spine it is checked against is the
+    kind of difference nobody notices until a result depends on it.
+    """
+    con = duckdb.connect()
+    a, b = (
+        con.execute(
+            f"SELECT COUNT(DISTINCT symbol) FROM"
+            f" read_parquet('{warehouse_dir('prod') / t}/**/*.parquet')"
+        ).fetchone()[0]
+        for t in ("price_spine", "price_spine_adj")
+    )
+    assert a == b, (
+        f"price_spine has {a:,} symbols and price_spine_adj has {b:,}; one was "
+        f"built from different inputs than the other"
+    )
