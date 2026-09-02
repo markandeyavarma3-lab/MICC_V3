@@ -65,6 +65,36 @@ mkdir -p "$REPO/logs"
   echo "corpact=$?"
   "$REPO/.venv/bin/python" -m src.ingest.corp_actions
   echo "corpact_parse=$?"
+  # INSIDER FILINGS (0046). The best-powered event class measured so far —
+  # promoter sells at 1.25x short against consensus's 1.94x — and the only one
+  # whose gap closes in years rather than decades. Every session collected is a
+  # cohort the study could not otherwise have.
+  #
+  # A 30-day trailing window: filings are revised and back-dated, so re-reading
+  # the recent past is how a revision is picked up. sha256 dedupe makes an
+  # unchanged window a no-op.
+  "$REPO/.venv/bin/python" -m src.archive.insider --start "$(date -v-30d +%Y-%m-%d)"
+  echo "insider=$?"
+  "$REPO/.venv/bin/python" -m src.ingest.insider
+  echo "insider_parse=$?"
+  # REBUILD THE SPINE, WITHOUT WHICH ALL OF THE ABOVE IS INERT.
+  #
+  # Found 2026-09-01 by test_the_price_spine_reconciles_exactly_with_its_inputs,
+  # hours after it was written: the 20:22 run had collected and parsed
+  # 2026-09-01 and the spine still ended 2026-08-31. Collection was working
+  # perfectly and every downstream measurement was reading yesterday.
+  #
+  # price_spine and price_spine_adj only. fno_spine is 174M rows and nothing
+  # collects F&O yet, so rebuilding it daily would burn minutes to reproduce an
+  # identical file.
+  "$REPO/.venv/bin/python" -c "
+from src.warehouse import spine
+import duckdb
+c = duckdb.connect()
+print(' ', spine.build(spine.PRICE, env='prod', con=c).render())
+print(' ', spine.build_adjusted(env='prod', con=c).render())
+"
+  echo "spine=$?"
   "$REPO/.venv/bin/python" -m src.monitor.health
   echo "health=$?"
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight

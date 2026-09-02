@@ -83,16 +83,18 @@ class Row:
         )
 
 
-def _returns_sql(spine: str, sessions: int) -> str:
+def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
     """Forward return over `sessions`, entered at the OPEN of the session AFTER
     the trade date — never the same session's close, because the disclosure is
     published after that close (`configs/research.yml` timing.no_same_day_close).
     """
+    # An AND clause, not a WHERE: the read below already has one.
+    cut = f" AND date <= '{cutoff}'" if cutoff else ""
     return f"""
     WITH px AS (
         SELECT symbol, date, open, close, volume,
                ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) AS i
-        FROM read_parquet('{spine}') WHERE close > 0 AND open > 0
+        FROM read_parquet('{spine}') WHERE close > 0 AND open > 0{cut}
     ),
     f AS (
         SELECT a.symbol, a.date,
@@ -107,7 +109,22 @@ def _returns_sql(spine: str, sessions: int) -> str:
     """
 
 
-def grid(env: str | None = None) -> list[Row]:
+#: The event horizon the committed figures are quoted at.
+#:
+#: WHY A FIXED CUTOFF EXISTS AT ALL. Until 2026-09-01 `grid()` measured every
+#: event on disk, so its answer moved whenever the collector ran — 4,766 events
+#: at 20:00 and 4,790 at 20:22. A decision record quoting "13.2701%" was then
+#: unreproducible by the following morning, which is precisely the defect
+#: PLAN_3 §6R records about exp_001: *"the analysis code was never committed"*.
+#: Committing the code and leaving the DATA unbounded reproduces the same
+#: failure one layer down.
+#:
+#: Raising this is a deliberate act that changes what the quoted figures mean,
+#: and it belongs in a decision record alongside the re-measured values.
+REPRODUCIBILITY_HORIZON = "2026-08-31"
+
+
+def grid(env: str | None = None, cutoff: str | None = REPRODUCIBILITY_HORIZON) -> list[Row]:
     """The power grid, from the adjusted spine and the eligibility filter.
 
     THE ADJUSTED SPINE, NOT THE RAW ONE. `universe.yml` sets
@@ -125,7 +142,7 @@ def grid(env: str | None = None) -> list[Row]:
 
     out: list[Row] = []
     for label, sessions, months in HORIZONS:
-        con.execute(f"CREATE OR REPLACE VIEW rets AS {_returns_sql(spine, sessions)}")
+        con.execute(f"CREATE OR REPLACE VIEW rets AS {_returns_sql(spine, sessions, cutoff)}")
         # Market-relative: the equal-weighted cross-sectional mean of the same
         # session. Decision 0021 — a pooled average of market-relative returns is
         # identically zero, so the demean is the comparison, not the estimator.
