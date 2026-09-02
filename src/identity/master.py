@@ -112,6 +112,24 @@ def build(env: str | None = None) -> BuildReport:
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
 
     try:
+        # READ BEFORE DESTROYING. A failed rebuild must leave the previous
+        # state intact.
+        #
+        # On 2026-09-02 the INSERT below died on a corrupt spine partition
+        # AFTER these two DELETEs had run. DuckDB autocommits, so the deletes
+        # stood: security_master went to 0 rows, symbol_history to 0, and
+        # institutional_deals_clean followed to 0 on the next mart build. A
+        # transient read error in one upstream file emptied three tables.
+        #
+        # NOT a transaction: security_master and symbol_history are joined by a
+        # foreign key, and DuckDB refuses the delete inside one. So the spine is
+        # read into a temp table FIRST. If a partition is unreadable this raises
+        # here, with both tables still populated, which is the property that
+        # matters. See decision 0049.
+        con.execute(
+            f"CREATE OR REPLACE TEMP TABLE _spine_symbols AS"
+            f" SELECT DISTINCT symbol FROM read_parquet('{spine}')"
+        )
         con.execute("DELETE FROM symbol_history")
         con.execute("DELETE FROM security_master")
 

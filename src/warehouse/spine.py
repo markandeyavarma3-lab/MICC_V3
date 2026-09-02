@@ -28,6 +28,9 @@ because an implicit cast is a decision nobody recorded.
 
 from __future__ import annotations
 
+import contextlib
+from contextlib import contextmanager
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -176,7 +179,51 @@ def _collected_part(spec: SpineSpec, c: duckdb.DuckDBPyConnection,
     return glob, rows
 
 
-def build(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
+@contextmanager
+def _exclusive(name: str):
+    """One spine build at a time, per spine.
+
+    WHY THIS EXISTS. On 2026-09-02 `price_spine_adj/_y=2005/data_0.parquet`
+    became unreadable: `COUNT(*)` still worked, because that reads only the
+    parquet footer, but any read of the `symbol` COLUMN raised
+    `TProtocolException: Invalid data`. `identity/master.py` then truncated
+    `security_master` and died mid-rebuild, taking `institutional_deals_clean`
+    to 0 rows with it.
+
+    The cause was two builds writing the same partition at once — a manual
+    rebuild against the 22:30 scheduled run. `collect_daily.sh` now rebuilds the
+    spine three times a session, so the window is no longer rare.
+
+    mkdir is atomic on every filesystem that matters. A lock older than an hour
+    outlived any real build and is a crash leftover, matching backup.sh.
+    """
+    import os
+    import tempfile
+    import time
+
+    lock = Path(tempfile.gettempdir()) / f"institutional-research-spine-{name}.lock"
+    try:
+        os.mkdir(lock)
+    except FileExistsError:
+        age = time.time() - lock.stat().st_mtime if lock.exists() else 0
+        if age > 3600:
+            with contextlib.suppress(OSError):
+                os.rmdir(lock)
+            os.mkdir(lock)
+        else:
+            raise SpineError(
+                f"another {name} build holds {lock}. Concurrent builds corrupt "
+                f"partitions — see decision 0049. Wait for it, or remove the "
+                f"lock if no build is running."
+            ) from None
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.rmdir(lock)
+
+
+def _build_impl(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
     """Union the sources into one partitioned parquet dataset, verified."""
     seed_glob = str(SEED / spec.seed_glob)
     inc_glob = str(SEED_INCREMENTS / spec.increment_glob) if spec.increment_glob else None
@@ -280,7 +327,14 @@ ADJUSTED = SpineSpec(
 )
 
 
-def build_adjusted(env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
+def build(spec: SpineSpec, env: str | None = None,
+          con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
+    """Build one spine, holding an exclusive lock on it. See `_exclusive`."""
+    with _exclusive(spec.name):
+        return _build_impl(spec, env, con)
+
+
+def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
     """The adjusted spine, spliced and self-validating.
 
     `stock_data_adj` stops on 2026-06-25 while raw runs to 2026-07-08 and the
@@ -446,6 +500,13 @@ def build_adjusted(env: str | None = None, con: duckdb.DuckDBPyConnection | None
     total_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{out}/**/*.parquet')").fetchone()[0]
     adj_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{seed_adj}')").fetchone()[0]
     return BuildResult(ADJUSTED.name, total_rows, adj_rows, total_rows - adj_rows, 0, out)
+
+
+def build_adjusted(env: str | None = None,
+                   con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
+    """Build the adjusted spine, holding an exclusive lock on it."""
+    with _exclusive(ADJUSTED.name):
+        return _build_adjusted_impl(env, con)
 
 
 def build_all(env: str | None = None) -> list[BuildResult]:

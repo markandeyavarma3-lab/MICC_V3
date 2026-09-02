@@ -46,8 +46,29 @@ HORIZONS: tuple[tuple[str, int, float], ...] = (
     ("252s (12m)", 252, 12.0),
 )
 
-#: research.yml power.plausible_effect_bound_monthly
-BOUND_PER_MONTH = 0.005
+def _bound_per_month() -> float:
+    """The plausible effect bound, READ FROM research.yml rather than restated.
+
+    This was `BOUND_PER_MONTH = 0.005` — a literal that happened to equal
+    `power.plausible_effect_bound_monthly` and was not connected to it. Editing
+    the config would have changed nothing and said nothing, which matters more
+    than usual here: 0044 found the observed sell effect is 4x this bound, so
+    whether 0011's 0.5%/month is right is now the project's live question. A
+    config the verdicts ignore is a config that cannot answer it.
+
+    Found by an external audit, 2026-09-02.
+    """
+    import yaml
+
+    from src.common.paths import CONFIGS
+
+    spec = yaml.safe_load((CONFIGS / "research.yml").read_text())
+    return float(spec["power"]["plausible_effect_bound_monthly"])
+
+
+#: Resolved once at import. research.yml is frozen for a run by definition; a
+#: bound that could change mid-measurement would make two rows incomparable.
+BOUND_PER_MONTH = _bound_per_month()
 
 #: configs/participants.yml eligibility. A deal must be economically real before
 #: it is an event: at least Rs 1 crore AND at least 0.5% of 20-day ADV.

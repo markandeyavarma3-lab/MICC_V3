@@ -485,3 +485,45 @@ def test_the_forward_horizon_is_not_silently_stretched_beyond_tolerance():
         f"the median '252-session' window spans {med:.0f} calendar days; "
         f"outside 360-400 means the spine's session coverage has changed"
     )
+
+
+@pytest.mark.unit
+def test_two_spine_builds_cannot_run_at_once():
+    """0049. price_spine_adj/_y=2005/data_0.parquet was corrupted on
+    2026-09-02 by a manual rebuild racing the 22:30 scheduled one.
+
+    The corruption was invisible to COUNT(*), which reads only the parquet
+    footer — every row count in the project stayed correct while any read of
+    the `symbol` column raised TProtocolException. collect_daily.sh now rebuilds
+    three times a session, so the race is not rare.
+    """
+    from src.warehouse import spine
+
+    with spine._exclusive("test_spine"):
+        with pytest.raises(spine.SpineError, match="another test_spine build"):
+            with spine._exclusive("test_spine"):
+                pass
+    # released on exit, so a later build is not blocked forever
+    with spine._exclusive("test_spine"):
+        pass
+
+
+@pytest.mark.unit
+def test_the_identity_rebuild_reads_before_it_destroys():
+    """0049. master.py ran DELETE on security_master and symbol_history, then
+    died on the corrupt spine. DuckDB autocommits, so the deletes stood: three
+    tables went to 0 rows because one upstream file was briefly unreadable.
+
+    The spine is now materialised into a temp table BEFORE the deletes, so an
+    unreadable partition raises with both tables still populated. Not a
+    transaction — DuckDB refuses the FK'd delete inside one.
+    """
+    import inspect
+
+    src = inspect.getsource(__import__("src.identity.master", fromlist=["build"]).build)
+    temp = src.index("_spine_symbols")
+    delete = src.index('DELETE FROM symbol_history')
+    assert temp < delete, (
+        "the spine is read AFTER the delete; an unreadable partition would "
+        "again empty security_master and symbol_history"
+    )

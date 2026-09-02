@@ -171,3 +171,42 @@ def test_zero_silent_drops():
         con.close()
     assert clean == raw, f"{raw:,} raw rows produced {clean:,} clean rows"
     assert unexplained == 0, f"{unexplained:,} rows excluded with no stated reason"
+
+
+@pytest.mark.unit
+def test_the_pass_bar_is_read_from_config_not_restated():
+    """A verdict that ignores its own config cannot be revisited by editing it.
+
+    BOUND_PER_MONTH was the literal 0.005, equal to research.yml's
+    plausible_effect_bound_monthly by coincidence and connected to it by
+    nothing. 0044 found the observed sell effect is 4x this bound, so whether
+    0011's 0.5%/month is right is the project's live question — and until
+    2026-09-02 changing the config to ask it would have changed no verdict.
+
+    Found by an external audit, not by this suite.
+    """
+    import yaml
+
+    from src.common.paths import CONFIGS
+    from src.research import measure
+
+    declared = yaml.safe_load(
+        (CONFIGS / "research.yml").read_text()
+    )["power"]["plausible_effect_bound_monthly"]
+    assert measure.BOUND_PER_MONTH == pytest.approx(float(declared)), (
+        "the bound every verdict uses has drifted from the one research.yml "
+        "declares"
+    )
+
+
+@pytest.mark.unit
+def test_every_study_uses_the_same_bound():
+    """consensus.py and selling.py must not acquire their own bar. All three
+    studies were measured against 0028's horizon-scaled rule and a study that
+    quietly relaxes it would read POWERED for the wrong reason."""
+    from src.research import consensus, measure, selling
+
+    m = next(r for r in [measure.Row("252s (12m)", 252, 12.0, 1, 1, 0.1, 1.0, 0.1)] if r)
+    c = consensus.Verdict("STRICT", "252s (12m)", 12.0, 1, 1, 0.1, 0.1)
+    s = selling.Row("252s (12m)", 12.0, 1, 1, 0.1, 0.1)
+    assert m.bound == c.bound == s.bound == pytest.approx(measure.BOUND_PER_MONTH * 12.0)
