@@ -135,6 +135,29 @@ class Ctx:
     def module(self, rel: str) -> bool:
         return (ROOT / rel).exists()
 
+    def provides(self, module: str, symbol: str) -> bool:
+        """Does `module` actually define `symbol`, importably and callably?
+
+        THE UPGRADE FROM `mentions`, AND THE REASON IT MATTERS.
+
+        `mentions("hansen")` fixed the self-match but not the category error: it
+        still asks whether a WORD appears somewhere in the tree. A comment, a
+        docstring, a TODO or a variable named `hansen_todo` all satisfy it, and
+        none of them is Hansen's SPA. A grader built on string presence measures
+        vocabulary, not work.
+
+        This imports the module and looks the symbol up. It cannot be satisfied
+        by prose, it fails loudly if the module does not import, and a step
+        graded by it is graded on something that would actually run.
+        """
+        import importlib
+
+        try:
+            m = importlib.import_module(module)
+        except Exception:  # noqa: BLE001 - an unimportable module is not built
+            return False
+        return callable(getattr(m, symbol, None))
+
     def mentions(self, needle: str) -> bool:
         """Does any module OTHER THAN THIS ONE contain `needle`?
 
@@ -525,24 +548,23 @@ def steps() -> list[Step]:
              note=lambda c: "costs.yml holds verified rates; only the participation "
                             "cap is read, by clean.py"),
         Step("5.2", "5 Costs & benchmarks", "Corwin-Schultz and Abdi-Ranaldo spread estimators",
-             built=lambda c: c.mentions("corwin")),
+             built=lambda c: c.provides("src.research.costs", "corwin_schultz_spread")),
         Step("5.3", "5 Costs & benchmarks", "Square-root market impact with sensitivity",
-             built=lambda c: "impact" in c.src_text.get("src/mart/clean.py", "").lower()
-                             and c.mentions("sqrt")),
+             built=lambda c: c.provides("src.research.costs", "sqrt_impact")),
         Step("5.4", "5 Costs & benchmarks", "Participation cap and delay cost",
              built=lambda c: "participation_ceiling" in c.src_text.get("src/mart/clean.py", ""),
              wired=lambda c: "TOO_LARGE" in c.src_text.get("src/mart/clean.py", ""),
              verified=lambda c: c.tested(r"test_the_participation_ceiling"),
              note=lambda c: "the cap is applied; DELAY cost is not modelled"),
         Step("5.5", "5 Costs & benchmarks", "Volatility-regime multiplier from India VIX",
-             built=lambda c: c.mentions("vix")),
+             built=lambda c: c.provides("src.research.costs", "vix_regime_multiplier")),
         Step("5.6", "5 Costs & benchmarks", "Six benchmarks incl. constructed smallcap and CHAR_MATCHED",
              built=lambda c: c.module("src/research/charmatch.py"),
              wired=lambda c: c.consumed("charmatch", "src/research/charmatch.py"),
              note=lambda c: "charmatch.py is 251 lines that nothing imports; the only "
                             "test reads its source as text, never runs it"),
         Step("5.7", "5 Costs & benchmarks", "Gross / base / pessimistic reporting",
-             built=lambda c: c.mentions("pessimistic")),
+             built=lambda c: c.provides("src.research.costs", "cost_scenarios")),
 
         Step("6.1", "6 Outcome study", "Register all four experiments, trial counter to 72",
              built=lambda c: c.gov_rows.get("experiment_registry", 0) > 0,
@@ -556,22 +578,21 @@ def steps() -> list[Step]:
              built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0,
              note=lambda c: "the table exists and holds 0 rows"),
         Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
-             built=lambda c: c.mentions("recovery")),
+             built=lambda c: c.provides("src.research.outcomes", "delisting_recovery")),
         Step("6.5", "6 Outcome study", "Monthly-cohort collapse, block bootstrap, NW-HAC",
-             built=lambda c: c.mentions("newey")
-                             or "serial_inflation" in c.src_text.get("src/research/power.py", ""),
+             built=lambda c: c.provides("src.research.power", "serial_inflation"),
              wired=lambda c: c.consumed("serial_inflation", "src/research/power.py"),
              verified=lambda c: c.tested(r"test_the_serial_lag_covers_the_label_overlap")),
         Step("6.6", "6 Outcome study", "Three-scheme walk-forward: anchored + rolling + CPCV",
-             built=lambda c: c.mentions("cpcv")),
+             built=lambda c: c.provides("src.research.walkforward", "cpcv_paths")),
         Step("6.7", "6 Outcome study", "PBO from the CPCV distribution",
-             built=lambda c: c.mentions("pbo")),
+             built=lambda c: c.provides("src.research.walkforward", "probability_of_backtest_overfitting")),
         Step("6.8", "6 Outcome study", "Romano-Wolf stepdown for ranking",
-             built=lambda c: c.mentions("romano"),
+             built=lambda c: c.provides("src.research.multiplicity", "romano_wolf"),
              wired=lambda c: c.consumed("romano_wolf", "src/research/multiplicity.py"),
              verified=lambda c: c.tested(r"romano")),
         Step("6.9", "6 Outcome study", "Null-calibration on shuffled participant labels",
-             built=lambda c: c.mentions("shuffl")),
+             built=lambda c: c.provides("src.research.outcomes", "null_calibration")),
         Step("6.10", "6 Outcome study", "Write study_result with corrected p and input hashes",
              built=lambda c: c.gov_rows.get("study_result", 0) > 0,
              note=lambda c: f"{c.gov_rows.get('study_result', 0)} row(s), from exp_001"),
@@ -587,12 +608,11 @@ def steps() -> list[Step]:
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0,
              note=lambda c: "seasonality_cell exists and holds 0 rows"),
         Step("7.2", "7 Seasonality", "Observation minimums >=10 yearly / >=30 monthly",
-             built=lambda c: "min_observations" in c.src_text.get("src/research/families.py", "")
-                             or c.mentions("min_obs")),
+             built=lambda c: c.provides("src.research.seasonality", "min_observations")),
         Step("7.3", "7 Seasonality", "Index expansion 46 -> ~202 with dedup",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0),
         Step("7.4", "7 Seasonality", "Near-duplicate grouping incl. return correlation > 0.9",
-             built=lambda c: c.mentions("near_duplicate")),
+             built=lambda c: c.provides("src.research.seasonality", "group_near_duplicates")),
         Step("7.8", "7 Seasonality", "Three-scheme OOS + full cost model",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0
                              and c.gov_rows.get("fee_schedule", 0) > 0),
@@ -601,9 +621,9 @@ def steps() -> list[Step]:
              wired=lambda c: c.consumed("multiplicity", "src/research/multiplicity.py"),
              verified=lambda c: c.tested(r"test_storey|storey")),
         Step("7.6", "7 Seasonality", "Permutation, 1,000 rotations",
-             built=lambda c: c.mentions("rotation")),
+             built=lambda c: c.provides("src.research.seasonality", "rotation_permutation")),
         Step("7.7", "7 Seasonality", "Hansen SPA for best-of-family",
-             built=lambda c: c.mentions("hansen")),
+             built=lambda c: c.provides("src.research.seasonality", "hansen_spa")),
         Step("2.13", "2 Collection", "Alert when collection goes stale",
              built=lambda c: c.module("src/monitor/health.py"),
              wired=lambda c: "monitor.health" in (ROOT/"scripts"/"collect_daily.sh").read_text(),

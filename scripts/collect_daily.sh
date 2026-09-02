@@ -95,6 +95,23 @@ print(' ', spine.build(spine.PRICE, env='prod', con=c).render())
 print(' ', spine.build_adjusted(env='prod', con=c).render())
 "
   echo "spine=$?"
+  # THE RELATIONAL HALF, WHICH WAS NOT IN THIS SCRIPT AND SHOULD HAVE BEEN.
+  #
+  # land -> master -> clean is the only path collected DEALS take into the
+  # database. None of it ran here. On 2026-09-01 `land` broke on an unhandled
+  # _csv.Error and nothing noticed for a day: the collectors reported success,
+  # health stayed green, the gate stayed 20/20, and no deal reached the mart
+  # after 08-28. An external audit found it, not this project.
+  #
+  # A pipeline stage that only ever runs by hand is a stage whose failure is
+  # silent by construction. Running it here makes a break loud on the next
+  # session instead of on the next audit.
+  "$REPO/.venv/bin/python" -m src.ingest.land
+  echo "land=$?"
+  "$REPO/.venv/bin/python" -m src.identity.master
+  echo "identity=$?"
+  "$REPO/.venv/bin/python" -m src.mart.clean
+  echo "mart=$?"
   "$REPO/.venv/bin/python" -m src.monitor.health
   echo "health=$?"
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight

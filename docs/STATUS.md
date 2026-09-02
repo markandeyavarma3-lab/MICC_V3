@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 26  WIRED: 11  BUILT: 7  SPECIFIED: 27  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 26  WIRED: 11  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 26  WIRED: 11  BUILT: 7  SPECIFIED: 27  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-02; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-02 14:50 UTC, 4 generation(s), 0 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-02 15:34 UTC, 2 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -117,7 +117,7 @@ VERIFIED: 26  WIRED: 11  BUILT: 7  SPECIFIED: 27  IMPOSSIBLE: 2  BLOCKED: 0
 | 6.6 | Three-scheme walk-forward: anchored + rolling + CPCV | — |  |
 | 6.7 | PBO from the CPCV distribution | — |  |
 | 6.8 | Romano-Wolf stepdown for ranking | — |  |
-| 6.9 | Null-calibration on shuffled participant labels | BUILT |  |
+| 6.9 | Null-calibration on shuffled participant labels | — |  |
 | 6.10 | Write study_result with corrected p and input hashes | BUILT | 2 row(s), from exp_001 |
 | 6R | Re-run exp_001 reproducibly under the DAG (0013) | **VERIFIED** |  |
 
@@ -148,4 +148,4 @@ VERIFIED: 26  WIRED: 11  BUILT: 7  SPECIFIED: 27  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `f79ac5d`.
+Derived at commit `f575863`.

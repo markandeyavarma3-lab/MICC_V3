@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import pytest
 
+from src.common.paths import ROOT
+
 from src.monitor import status
 
 pytestmark = pytest.mark.data
@@ -110,3 +112,70 @@ def test_the_three_steps_i_misreported_now_grade_honestly():
         assert s.level(c) in {"WIRED", "VERIFIED"}, (
             f"{sid} grades {s.level(c)}; it holds rows and has consumers today"
         )
+
+
+@pytest.mark.unit
+def test_every_pipeline_stage_runs_in_the_daily_job():
+    """A stage that only runs by hand is a stage whose failure is silent.
+
+    0048: `src.ingest.land` was not in collect_daily.sh. It broke on 2026-09-01
+    with an unhandled _csv.Error and nothing noticed for a day — the collectors
+    reported success, health stayed green, the gate stayed 20/20, and no deal
+    reached the mart after 08-28. An external audit found it.
+
+    This asserts the whole chain is scheduled. A new module added to the flow
+    must be added here too, which is the point: forgetting is the failure mode.
+    """
+    script = (ROOT / "scripts" / "collect_daily.sh").read_text()
+    required = [
+        "src.archive.stopgap",      # deals: raw bytes
+        "src.archive.prices",       # prices: raw bytes
+        "src.ingest.bhavcopy",      # prices -> parquet
+        "src.archive.corporate_actions",
+        "src.ingest.corp_actions",
+        "src.archive.insider",
+        "src.ingest.insider",
+        "src.ingest.land",          # deals -> institutional_deals_raw
+        "src.identity.master",      # -> security_master, deal_resolution
+        "src.mart.clean",           # -> institutional_deals_clean
+        "src.monitor.health",
+    ]
+    missing = [m for m in required if m not in script]
+    assert not missing, (
+        f"{len(missing)} pipeline stage(s) are not scheduled and would fail "
+        f"silently: {missing}"
+    )
+    assert "spine" in script, "the spine rebuild is not scheduled"
+    assert "backup.sh" in script, "the backup is not scheduled"
+
+
+@pytest.mark.unit
+def test_status_predicates_cannot_be_satisfied_by_their_own_descriptions():
+    """0048's worst finding. Fourteen predicates read
+    `"romano" in "".join(c.src_text.values())`, and src_text INCLUDES status.py
+    — so a step's own description satisfied its own check.
+
+    Ctx.mentions() now excludes this file, and every unbuilt-phase predicate was
+    moved to Ctx.provides(), which imports the module and looks the symbol up.
+    A word in a docstring cannot satisfy that.
+    """
+    src = (ROOT / "src" / "monitor" / "status.py").read_text()
+    assert 'join(c.src_text.values())' not in src, (
+        "a predicate is scanning all source text again, including this file"
+    )
+    body = src.split("def steps()")[1]
+    assert "c.mentions(" not in body, (
+        "a step predicate is back to matching text rather than importing a symbol"
+    )
+
+
+@pytest.mark.unit
+def test_provides_reports_absent_symbols_as_absent():
+    """The grader must be able to say no. Romano-Wolf is specified by Plan 3
+    step 6.8 and multiplicity.py implements Sidak and a Gumbel-limit max-null-t
+    — not Romano-Wolf under any name."""
+    c = status.Ctx()
+    assert c.provides("src.research.power", "serial_inflation")
+    assert not c.provides("src.research.multiplicity", "romano_wolf")
+    assert not c.provides("src.research.seasonality", "hansen_spa")
+    assert not c.provides("src.does.not.exist", "anything")
