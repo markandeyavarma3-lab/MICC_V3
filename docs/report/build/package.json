@@ -1,0 +1,12 @@
+{
+  "name": "institutional-research-report-build",
+  "private": true,
+  "description": "Renders the project report and plan documents to PDF. Written 2026-09-01, because node_modules held 54 MB with NO manifest — the build's only dependency existed in exactly one place and npm could not have restored it.",
+  "scripts": {
+    "render": "node render.js",
+    "check-diagrams": "node check_diagrams.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "24.43.1"
+  }
+}

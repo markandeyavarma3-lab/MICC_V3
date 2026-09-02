@@ -38,7 +38,7 @@ from functools import lru_cache
 import duckdb
 import yaml
 
-from src.common.paths import CONFIGS, SEED, warehouse_dir
+from src.common.paths import CONFIGS, SEED
 
 
 @lru_cache(maxsize=1)

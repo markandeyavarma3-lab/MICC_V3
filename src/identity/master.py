@@ -200,10 +200,7 @@ def build(env: str | None = None) -> BuildReport:
     # Lineage to the master it was derived from. Without this the security
     # master is a root node, and "where did this identity come from?" has no
     # answer in the graph.
-    import sqlite3
-
     from src.common.hashing import hash_file
-    from src.common.paths import governance_db
 
     src_hash = hash_file(im)
     prov.register(
