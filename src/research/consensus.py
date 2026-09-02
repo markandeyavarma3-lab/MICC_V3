@@ -151,7 +151,7 @@ def measure_basis(con, spine: str, strict: bool) -> list[Verdict]:
     out: list[Verdict] = []
     for label, sessions, months in measure.HORIZONS:
         con.execute(f"CREATE OR REPLACE VIEW px AS SELECT * FROM read_parquet('{spine}')")
-        con.execute(f"CREATE OR REPLACE VIEW rets AS {measure._returns_sql(spine, sessions)}")
+        con.execute(f"CREATE OR REPLACE VIEW rets AS {measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
         con.execute("CREATE OR REPLACE VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
         con.execute(f"CREATE OR REPLACE VIEW ev AS {_events_sql(strict)}")
         df = con.execute(

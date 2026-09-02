@@ -50,6 +50,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
+import duckdb
+
 from src.common.paths import ARCHIVE, DOCS, ROOT, SEED, governance_db, research_db, warehouse_dir
 from src.warehouse import reconcile
 
@@ -95,7 +97,22 @@ class Ctx:
                     " WHERE table_schema='main'"
                 ).fetchall()
             ]
-            return {n: con.execute(f"SELECT COUNT(*) FROM {n}").fetchone()[0] for n in names}
+            # COUNT EACH ONE SEPARATELY AND SURVIVE THE ONES THAT FAIL.
+            #
+            # `information_schema.tables` includes VIEWS, and measure.grid()
+            # leaves `rets` and `mkt` behind on the research connection as a side
+            # effect of running. A view whose dependency has been dropped raises
+            # on COUNT, and in a dict comprehension one such view takes the whole
+            # status page down — which is how a monitoring module becomes the
+            # thing that needs monitoring. Found 2026-09-01 when exploratory
+            # scripts left eight views in the production database.
+            out: dict[str, int] = {}
+            for n in names:
+                try:
+                    out[n] = con.execute(f"SELECT COUNT(*) FROM {n}").fetchone()[0]
+                except duckdb.Error:
+                    continue
+            return out
         finally:
             con.close()
 
