@@ -112,3 +112,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0045](0045-the-spine-is-eq-only-and-nothing-said-so.md) | **The spine is EQ-only and nothing said so** — found by validating against the exchange's own files; the collector disagreed with the seed | 2026-09-01 | ACTIVE |
 | [0046](0046-the-data-we-already-have-is-better-powered.md) | **The best-powered event class was already on disk** — 109 of 119 seed tables unread; promoter sells is 1.25x short, and the source is live | 2026-09-01 | ACTIVE |
 | [0047](0047-the-collector-never-rebuilt-the-spine.md) | **The collector never rebuilt the spine** — and the committed figures moved every time it ran | 2026-09-01 | ACTIVE |
+| [0048](0048-an-external-audit-found-what-the-machinery-did-not.md) | **An external audit found three defects the machinery was built to catch** — broken pipeline, self-grading status page, effect estimate outside the guard | 2026-09-02 | ACTIVE |
