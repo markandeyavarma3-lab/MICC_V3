@@ -113,3 +113,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0046](0046-the-data-we-already-have-is-better-powered.md) | **The best-powered event class was already on disk** — 109 of 119 seed tables unread; promoter sells is 1.25x short, and the source is live | 2026-09-01 | ACTIVE |
 | [0047](0047-the-collector-never-rebuilt-the-spine.md) | **The collector never rebuilt the spine** — and the committed figures moved every time it ran | 2026-09-01 | ACTIVE |
 | [0048](0048-an-external-audit-found-what-the-machinery-did-not.md) | **An external audit found three defects the machinery was built to catch** — broken pipeline, self-grading status page, effect estimate outside the guard | 2026-09-02 | ACTIVE |
+| [0049](0049-concurrent-builds-corrupted-a-partition.md) | **Two spine builds raced and emptied three tables** — the corruption was invisible to COUNT(*) | 2026-09-02 | ACTIVE |

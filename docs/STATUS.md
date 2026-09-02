@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 26  WIRED: 11  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 27  WIRED: 10  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 26  WIRED: 11  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-02; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-02 15:34 UTC, 2 generation(s), 0 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-02 18:12 UTC, 2 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -68,7 +68,7 @@ VERIFIED: 26  WIRED: 11  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 3.1 | security_master | WIRED |  |
+| 3.1 | security_master | **VERIFIED** |  |
 | 3.2 | symbol_history and one point-in-time resolve() | **VERIFIED** |  |
 | 3.3 | Delisting detection and classification | BUILT | delisting_reason is UNKNOWN for all — MERGER vs SUSPENSION needs corporate actions |
 | 3.4 | Resolve the unmatched deal symbols | WIRED | unresolved 4.14% — under the <5% gate |
@@ -148,4 +148,4 @@ VERIFIED: 26  WIRED: 11  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `f575863`.
+Derived at commit `84e6d25`.
