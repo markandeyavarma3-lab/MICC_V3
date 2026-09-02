@@ -407,13 +407,6 @@ def write_merkle_root(as_of: str | None = None, env: str | None = None) -> str:
         con.close()
 
 
-def params_digest(params: dict[str, Any]) -> str:
-    """Stable digest of a parameter set, for artefacts that are computed rather
-    than stored — a result has no file to hash, so its identity is its inputs
-    plus its parameters."""
-    return hash_params(params)
-
-
 def data_checksum(con, glob: str, columns: Sequence[str]) -> str:
     """Content address of a TABLE's DATA, independent of how it was serialised.
 
