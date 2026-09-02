@@ -18,6 +18,24 @@ carries more information per event even before the count is considered.
 It has also never been examined — not here, not in MICCV2, not in the 2026-08-16
 audit, which measured buys only.
 
+NO EFFECT IS COMPUTED HERE, AND THAT IS A CORRECTION.
+
+Until 2026-09-02 this module computed `mean_ab=float(cohorts.mean())` and
+printed it. Decision [0035](../../docs/decisions/0035-power-may-use-the-full-universe-effects-may-not.md)
+is explicit: *"Any estimate of an effect must go through the guard: means,
+medians, hit rates, t-statistics ... and every one of them charges its family."*
+A cohort mean on the full universe is exactly that, and it charged nothing —
+`family_charge` holds 0 rows.
+
+`measure.py`'s own docstring states the rule one file away: *"The moment this
+file computes a mean return it must move behind the ConfirmationGuard and charge
+a trial family."* measure.py obeys it. This module was written afterwards and
+did not. Found by an external audit, not by this project's machinery.
+
+Dispersion only now: cohort SD, serial inflation, MDE. Those describe the data's
+noise and cannot distinguish a true effect from a false one, which is 0035's
+dividing line.
+
 THE EXPECTED SIGN IS NEGATIVE, AND THE BAR IS NOT. If institutional selling
 predicts anything it predicts UNDERperformance, so the effect is negative while
 the plausible bound is a magnitude. `power.py` works on |effect|, which is why
@@ -43,7 +61,6 @@ class Row:
     n_cohorts: int
     cohort_sd: float
     mde: float
-    mean_ab: float
 
     @property
     def bound(self) -> float:
@@ -56,8 +73,7 @@ class Row:
     def render(self) -> str:
         v = "POWERED" if self.powered else f"{self.mde / self.bound:.2f}x short"
         return (f"  {self.horizon:>11}{self.n_events:>8,}{self.n_cohorts:>6}"
-                f"{self.cohort_sd:>9.2%}{self.mde:>10.4%}{self.bound:>9.2%}"
-                f"{self.mean_ab:>10.2%}{v:>14}")
+                f"{self.cohort_sd:>9.2%}{self.mde:>10.4%}{self.bound:>9.2%}{v:>14}")
 
 
 #: The same filters the buy side gets, applied to sells. NOT re-derived here —
@@ -101,7 +117,6 @@ def grid(env: str | None = None) -> list[Row]:
                 horizon=label, months=months, n_events=len(df), n_cohorts=len(cohorts),
                 cohort_sd=power.cohort_sd(cohorts),
                 mde=power.mde_serial_corrected(cohorts, label_periods=lp),
-                mean_ab=float(cohorts.mean()),
             ))
     finally:
         con.close()
@@ -113,7 +128,7 @@ def main() -> int:
     print("  same filters as the buy side; the only difference is the side")
     print("  expected sign is NEGATIVE; the bound is a magnitude, so it is unchanged")
     print(f"\n  {'horizon':>11}{'n':>8}{'coh':>6}{'sd':>9}{'MDE':>10}"
-          f"{'bound':>9}{'mean':>10}{'verdict':>14}")
+          f"{'bound':>9}{'verdict':>14}")
     rows = grid()
     for r in rows:
         print(r.render())

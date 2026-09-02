@@ -135,6 +135,31 @@ class Ctx:
     def module(self, rel: str) -> bool:
         return (ROOT / rel).exists()
 
+    def mentions(self, needle: str) -> bool:
+        """Does any module OTHER THAN THIS ONE contain `needle`?
+
+        THE DEFECT THIS EXISTS TO KILL, AND IT WAS MINE. Fourteen predicates
+        were written as `c.mentions("romano")` —
+        a scan of every source file, INCLUDING status.py. The word "romano"
+        appears in `src/` exactly once: in this file, in step 6.8's own
+        description and its own predicate. So the check matched its own text
+        and step 6.8 read VERIFIED while `romano_wolf` existed nowhere in
+        `src/research/`.
+
+        The same held for corwin, vix, cpcv, pbo, hansen, shuffl, rotation,
+        near_duplicate, pessimistic, recovery, newey, min_obs and sqrt. The
+        module written to detect "the artefact exists is not the step works"
+        was the largest single source of exactly that error in the project.
+
+        Found by an external audit on 2026-09-02, not by this project's own
+        machinery — which is the part worth remembering.
+        """
+        return any(
+            needle.lower() in text.lower()
+            for path, text in self.src_text.items()
+            if path != "src/monitor/status.py"
+        )
+
     def consumed(self, needle: str, definer: str) -> bool:
         """Does any module OTHER than its definer reference this?
 
@@ -500,24 +525,24 @@ def steps() -> list[Step]:
              note=lambda c: "costs.yml holds verified rates; only the participation "
                             "cap is read, by clean.py"),
         Step("5.2", "5 Costs & benchmarks", "Corwin-Schultz and Abdi-Ranaldo spread estimators",
-             built=lambda c: "corwin" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("corwin")),
         Step("5.3", "5 Costs & benchmarks", "Square-root market impact with sensitivity",
              built=lambda c: "impact" in c.src_text.get("src/mart/clean.py", "").lower()
-                             and "sqrt" in "".join(c.src_text.values()).lower()),
+                             and c.mentions("sqrt")),
         Step("5.4", "5 Costs & benchmarks", "Participation cap and delay cost",
              built=lambda c: "participation_ceiling" in c.src_text.get("src/mart/clean.py", ""),
              wired=lambda c: "TOO_LARGE" in c.src_text.get("src/mart/clean.py", ""),
              verified=lambda c: c.tested(r"test_the_participation_ceiling"),
              note=lambda c: "the cap is applied; DELAY cost is not modelled"),
         Step("5.5", "5 Costs & benchmarks", "Volatility-regime multiplier from India VIX",
-             built=lambda c: "vix" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("vix")),
         Step("5.6", "5 Costs & benchmarks", "Six benchmarks incl. constructed smallcap and CHAR_MATCHED",
              built=lambda c: c.module("src/research/charmatch.py"),
              wired=lambda c: c.consumed("charmatch", "src/research/charmatch.py"),
              note=lambda c: "charmatch.py is 251 lines that nothing imports; the only "
                             "test reads its source as text, never runs it"),
         Step("5.7", "5 Costs & benchmarks", "Gross / base / pessimistic reporting",
-             built=lambda c: "pessimistic" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("pessimistic")),
 
         Step("6.1", "6 Outcome study", "Register all four experiments, trial counter to 72",
              built=lambda c: c.gov_rows.get("experiment_registry", 0) > 0,
@@ -531,22 +556,22 @@ def steps() -> list[Step]:
              built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0,
              note=lambda c: "the table exists and holds 0 rows"),
         Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
-             built=lambda c: "recovery" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("recovery")),
         Step("6.5", "6 Outcome study", "Monthly-cohort collapse, block bootstrap, NW-HAC",
-             built=lambda c: "newey" in "".join(c.src_text.values()).lower()
+             built=lambda c: c.mentions("newey")
                              or "serial_inflation" in c.src_text.get("src/research/power.py", ""),
              wired=lambda c: c.consumed("serial_inflation", "src/research/power.py"),
              verified=lambda c: c.tested(r"test_the_serial_lag_covers_the_label_overlap")),
         Step("6.6", "6 Outcome study", "Three-scheme walk-forward: anchored + rolling + CPCV",
-             built=lambda c: "cpcv" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("cpcv")),
         Step("6.7", "6 Outcome study", "PBO from the CPCV distribution",
-             built=lambda c: "pbo" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("pbo")),
         Step("6.8", "6 Outcome study", "Romano-Wolf stepdown for ranking",
-             built=lambda c: "romano" in "".join(c.src_text.values()).lower(),
+             built=lambda c: c.mentions("romano"),
              wired=lambda c: c.consumed("romano_wolf", "src/research/multiplicity.py"),
              verified=lambda c: c.tested(r"romano")),
         Step("6.9", "6 Outcome study", "Null-calibration on shuffled participant labels",
-             built=lambda c: "shuffl" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("shuffl")),
         Step("6.10", "6 Outcome study", "Write study_result with corrected p and input hashes",
              built=lambda c: c.gov_rows.get("study_result", 0) > 0,
              note=lambda c: f"{c.gov_rows.get('study_result', 0)} row(s), from exp_001"),
@@ -563,11 +588,11 @@ def steps() -> list[Step]:
              note=lambda c: "seasonality_cell exists and holds 0 rows"),
         Step("7.2", "7 Seasonality", "Observation minimums >=10 yearly / >=30 monthly",
              built=lambda c: "min_observations" in c.src_text.get("src/research/families.py", "")
-                             or "min_obs" in "".join(c.src_text.values())),
+                             or c.mentions("min_obs")),
         Step("7.3", "7 Seasonality", "Index expansion 46 -> ~202 with dedup",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0),
         Step("7.4", "7 Seasonality", "Near-duplicate grouping incl. return correlation > 0.9",
-             built=lambda c: "near_duplicate" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("near_duplicate")),
         Step("7.8", "7 Seasonality", "Three-scheme OOS + full cost model",
              built=lambda c: c.duck_rows.get("seasonality_cell", 0) > 0
                              and c.gov_rows.get("fee_schedule", 0) > 0),
@@ -576,9 +601,9 @@ def steps() -> list[Step]:
              wired=lambda c: c.consumed("multiplicity", "src/research/multiplicity.py"),
              verified=lambda c: c.tested(r"test_storey|storey")),
         Step("7.6", "7 Seasonality", "Permutation, 1,000 rotations",
-             built=lambda c: "rotation" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("rotation")),
         Step("7.7", "7 Seasonality", "Hansen SPA for best-of-family",
-             built=lambda c: "hansen" in "".join(c.src_text.values()).lower()),
+             built=lambda c: c.mentions("hansen")),
         Step("2.13", "2 Collection", "Alert when collection goes stale",
              built=lambda c: c.module("src/monitor/health.py"),
              wired=lambda c: "monitor.health" in (ROOT/"scripts"/"collect_daily.sh").read_text(),

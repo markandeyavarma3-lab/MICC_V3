@@ -187,10 +187,37 @@ def parse_archive(path: Path | str) -> ParsedFile:
                       session_date=session, rows=tuple(rows), error=err)
 
 
+#: The report types THIS parser understands. Declared, not inferred.
+#:
+#: BROKEN 2026-09-01, FIXED 2026-09-02. `iter_archive` used to rglob every
+#: `*.gz` under the archive, which was correct while the archive held only deal
+#: CSVs. Three collectors were then added — PRICE (`.csv.zip.gz`), INSIDER
+#: (`.xml.gz`) and CORPACT (`.json.gz`) — and the glob swallowed all of them.
+#: `parse_csv` hit a gzipped ZIP, raised an unhandled `_csv.Error`, and
+#: `python -m src.ingest.land` died on the first PRICE file.
+#:
+#: The consequence was silent and total: no collected deal reached
+#: `institutional_deals_raw` after 2026-08-28, while every collector kept
+#: reporting success and the daily job stayed green — because land.py is not in
+#: `collect_daily.sh` and nothing else calls it.
+#:
+#: `parse_archive` already knew this set; it defaulted anything else to
+#: report_type "UNKNOWN" and tried to parse it anyway. The knowledge existed one
+#: function away from where it was needed.
+DEAL_REPORT_TYPES: tuple[str, ...] = ("BULK", "BLOCK", "FII_DII")
+
+
 def iter_archive(root: Path | None = None) -> list[Path]:
-    """Every archived payload, oldest first. Excludes the manifest."""
+    """Every archived DEAL payload, oldest first. Excludes the manifest.
+
+    Restricted to `DEAL_REPORT_TYPES` on purpose: a new collector must be
+    parsed by code that understands its format, and adding one must not
+    silently redirect its bytes into this parser.
+    """
     base = root or ARCHIVE
-    return sorted(p for p in base.rglob("*.gz") if p.is_file())
+    return sorted(
+        p for t in DEAL_REPORT_TYPES for p in (base / t).rglob("*.gz") if p.is_file()
+    )
 
 
 def parse_all(root: Path | None = None) -> list[ParsedFile]:
