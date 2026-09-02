@@ -35,13 +35,28 @@ export RESEARCH_ENV=prod
 # mode 600 and names a password file; absent, alerting stays desktop-only and
 # everything else runs unchanged.
 [ -f "$HOME/.micc_alert_env" ] && . "$HOME/.micc_alert_env"
+# EXIT CODES PROPAGATE. Until 2026-09-03 every stage's status was echoed into a
+# log nobody reads and the script returned 0 unconditionally — so launchd and
+# cron could not tell a total failure from a clean run. That is the same
+# green-over-broken pattern as the retired-endpoint envelope and the swallowed
+# XBRL fetch: the signal existed and nothing carried it.
+#
+# `note` records a stage and remembers the worst code seen. The script exits
+# with it, so a scheduler that checks status finally learns something.
+RC=0
+note() {  # note <stage> <code>
+  echo "$1=$2"
+  [ "$2" -ne 0 ] && RC=1
+  return 0
+}
+
 LOG="$REPO/logs/collect_$(date +%Y-%m).log"
 mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   "$REPO/.venv/bin/python" -m src.archive.stopgap
-  echo "exit=$?"
+  note "exit" $?
   # ALWAYS run the health check, including after a failed fetch — especially
   # then. On 2026-08-28 all three slots failed on DNS, the collector said "may
   # be permanently lost", exited 1, and nobody saw it for two days. Detection
@@ -54,17 +69,17 @@ mkdir -p "$REPO/logs"
   # every one is "no next session in the data", and without corporate actions
   # the adjusted spine refuses to extend past a split.
   "$REPO/.venv/bin/python" -m src.archive.prices
-  echo "prices=$?"
+  note "prices" $?
   "$REPO/.venv/bin/python" -m src.ingest.bhavcopy
-  echo "bhavcopy=$?"
+  note "bhavcopy" $?
   # A 90-day window ending today: actions are announced ahead of their ex-date,
   # so re-reading the recent past is how a revision is picked up at all. sha256
   # dedupe makes an unchanged window a no-op.
   "$REPO/.venv/bin/python" -m src.archive.corporate_actions \
       --start "$(date -v-90d +%Y-%m-%d)"
-  echo "corpact=$?"
+  note "corpact" $?
   "$REPO/.venv/bin/python" -m src.ingest.corp_actions
-  echo "corpact_parse=$?"
+  note "corpact_parse" $?
   # INSIDER FILINGS (0046). The best-powered event class measured so far —
   # promoter sells at 1.25x short against consensus's 1.94x — and the only one
   # whose gap closes in years rather than decades. Every session collected is a
@@ -74,9 +89,9 @@ mkdir -p "$REPO/logs"
   # the recent past is how a revision is picked up. sha256 dedupe makes an
   # unchanged window a no-op.
   "$REPO/.venv/bin/python" -m src.archive.insider --start "$(date -v-30d +%Y-%m-%d)"
-  echo "insider=$?"
+  note "insider" $?
   "$REPO/.venv/bin/python" -m src.ingest.insider
-  echo "insider_parse=$?"
+  note "insider_parse" $?
   # REBUILD THE SPINE, WITHOUT WHICH ALL OF THE ABOVE IS INERT.
   #
   # Found 2026-09-01 by test_the_price_spine_reconciles_exactly_with_its_inputs,
@@ -94,7 +109,7 @@ c = duckdb.connect()
 print(' ', spine.build(spine.PRICE, env='prod', con=c).render())
 print(' ', spine.build_adjusted(env='prod', con=c).render())
 "
-  echo "spine=$?"
+  note "spine" $?
   # THE RELATIONAL HALF, WHICH WAS NOT IN THIS SCRIPT AND SHOULD HAVE BEEN.
   #
   # land -> master -> clean is the only path collected DEALS take into the
@@ -107,17 +122,23 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # silent by construction. Running it here makes a break loud on the next
   # session instead of on the next audit.
   "$REPO/.venv/bin/python" -m src.ingest.land
-  echo "land=$?"
+  note "land" $?
   "$REPO/.venv/bin/python" -m src.identity.master
-  echo "identity=$?"
+  note "identity" $?
   "$REPO/.venv/bin/python" -m src.mart.clean
-  echo "mart=$?"
+  note "mart" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
-  echo "health=$?"
+  note "health" $?
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
   # days without running once; a session archived but not backed up sits on one
   # disk, and the endpoint that could re-serve it answers 503. The script is a
   # no-op-ish 11 MB write and prunes itself to three generations.
   "$REPO/scripts/backup.sh"
-  echo "backup=$?"
+  note "backup" $?
 } >> "$LOG" 2>&1
+
+# The whole point: a failed stage makes the RUN fail.
+if [ "$RC" -ne 0 ]; then
+  echo "COLLECT: one or more stages FAILED — see $LOG" >&2
+fi
+exit "$RC"

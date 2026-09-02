@@ -202,7 +202,18 @@ def capture_window(op, frm: date, to: date, seen: set[str],
     entry["path"] = str(dest)
 
     # The transaction detail lives per filing, in XBRL on nsearchives.
+    #
+    # FAILURES ARE COUNTED, NOT JUST TOLERATED. One bad filing must not stop the
+    # run — but until 2026-09-02 every failure here was `except: continue` with
+    # no record, so if the XBRL host moved or started refusing, EVERY fetch
+    # would fail, `details_stored` would read 0, and the entry would still be
+    # STORED with a healthy `filings` count from the index.
+    #
+    # That is precisely the green-but-empty failure this module's docstring is
+    # about, reproduced in the same file, one function below the guard written
+    # to prevent it. The index guard covered the index and nothing covered this.
     got = 0
+    detail_failures = 0
     for r in rows:
         if budget[0] <= 0:
             break
@@ -213,6 +224,7 @@ def capture_window(op, frm: date, to: date, seen: set[str],
         try:
             xb = _get(op, xml, "https://www.nseindia.com/")
         except Exception:  # noqa: BLE001 - one bad filing must not stop the run
+            detail_failures += 1
             continue
         budget[0] -= 1
         d2 = hash_bytes(xb)
@@ -224,6 +236,16 @@ def capture_window(op, frm: date, to: date, seen: set[str],
         got += 1
         time.sleep(RATE_LIMIT)
     entry["details_stored"] = got
+    entry["detail_failures"] = detail_failures
+    # Every detail fetch failing while the index succeeded means the XBRL host
+    # has moved or is refusing us, not that the filings had no detail.
+    if detail_failures and got == 0:
+        entry["status"] = "FAILED"
+        entry["error"] = (
+            f"index returned {len(rows)} filings but ALL {detail_failures} XBRL "
+            f"detail fetches failed. The transaction detail — category, type, "
+            f"quantity, value — is on nsearchives and none of it arrived."
+        )
     return entry
 
 

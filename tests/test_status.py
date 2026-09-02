@@ -179,3 +179,49 @@ def test_provides_reports_absent_symbols_as_absent():
     assert not c.provides("src.research.multiplicity", "romano_wolf")
     assert not c.provides("src.research.seasonality", "hansen_spa")
     assert not c.provides("src.does.not.exist", "anything")
+
+
+@pytest.mark.unit
+def test_the_daily_job_propagates_failure():
+    """A scheduler that cannot tell failure from success is not monitoring.
+
+    Until 2026-09-03 collect_daily.sh echoed every stage's exit code into a log
+    nobody reads and returned 0 unconditionally. launchd and cron saw a clean
+    run whether the pipeline worked or died — the same green-over-broken shape
+    as the retired-endpoint envelope and the swallowed XBRL fetch. The signal
+    existed and nothing carried it.
+    """
+    script = (ROOT / "scripts" / "collect_daily.sh").read_text()
+    assert 'exit "$RC"' in script, "the daily job does not exit with a status"
+    assert "note()" in script, "no per-stage status recorder"
+    assert 'echo "$1=$2"' in script
+    stages = script.count("\n  note ")
+    assert stages >= 11, f"only {stages} stages report a status; expected >= 11"
+    # the old pattern must not creep back
+    assert 'echo "land=$?"' not in script, (
+        "a stage is echoing its code instead of recording it through note()"
+    )
+
+
+@pytest.mark.unit
+def test_the_insider_detail_fetch_reports_total_failure():
+    """0048's lesson applied to the layer it missed.
+
+    insider.py guards the INDEX against an empty envelope, then fetched each
+    filing's XBRL detail under `except: continue` with no record. If the XBRL
+    host moved, every fetch would fail, details_stored would read 0, and the
+    entry would still be STORED with a healthy index count — green but empty,
+    in the same file as the docstring warning about it.
+
+    Verified by execution 2026-09-03: with the host broken, 264 filings indexed,
+    0 stored, 264 failures, status FAILED.
+    """
+    import inspect
+
+    from src.archive import insider
+
+    src = inspect.getsource(insider.capture_window)
+    assert "detail_failures" in src, "detail-fetch failures are not counted"
+    assert "detail_failures and got == 0" in src, (
+        "a run where every detail fetch failed is not marked FAILED"
+    )
