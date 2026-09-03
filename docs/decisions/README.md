@@ -114,3 +114,4 @@ asked where it came from. Recording who chose makes that visible immediately.
 | [0047](0047-the-collector-never-rebuilt-the-spine.md) | **The collector never rebuilt the spine** — and the committed figures moved every time it ran | 2026-09-01 | ACTIVE |
 | [0048](0048-an-external-audit-found-what-the-machinery-did-not.md) | **An external audit found three defects the machinery was built to catch** — broken pipeline, self-grading status page, effect estimate outside the guard | 2026-09-02 | ACTIVE |
 | [0049](0049-concurrent-builds-corrupted-a-partition.md) | **Two spine builds raced and emptied three tables** — the corruption was invisible to COUNT(*) | 2026-09-02 | ACTIVE |
+| [0050](0050-pledge-data-does-not-rescue-the-power-problem.md) | **Pledge disclosures do not rescue the power problem** — worst-powered population measured; 0046 is now reproducible code | 2026-09-03 | ACTIVE |
