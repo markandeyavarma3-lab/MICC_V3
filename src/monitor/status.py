@@ -207,7 +207,7 @@ class Ctx:
         if not self.duck_rows.get("institutional_deals_clean"):
             return False
         import duckdb
-        con = duckdb.connect(str(research_db("prod")))
+        con = duckdb.connect(str(research_db("prod")), read_only=True)
         try:
             n = con.execute(
                 f"SELECT COUNT(*) FROM institutional_deals_clean"
@@ -545,8 +545,12 @@ def steps() -> list[Step]:
 
         Step("5.1", "5 Costs & benchmarks", "fee_schedule, rebuilt not ported, every row sourced",
              built=lambda c: c.gov_rows.get("fee_schedule", 0) > 0,
-             note=lambda c: "costs.yml holds verified rates; only the participation "
-                            "cap is read, by clean.py"),
+             wired=lambda c: c.gov_rows.get("fee_schedule", 0) > 0
+                             and c.provides("src.research.costs", "statutory_cost"),
+             verified=lambda c: c.tested(r"test_stt_is_charged_on_both_legs"),
+             note=lambda c: (
+                 f"{c.gov_rows.get('fee_schedule', 0)} statutory rows seeded from "
+                 f"costs.yml; NSE round trip 29.33 bps headline")),
         Step("5.2", "5 Costs & benchmarks", "Corwin-Schultz and Abdi-Ranaldo spread estimators",
              built=lambda c: c.provides("src.research.costs", "corwin_schultz_spread")),
         Step("5.3", "5 Costs & benchmarks", "Square-root market impact with sensitivity",

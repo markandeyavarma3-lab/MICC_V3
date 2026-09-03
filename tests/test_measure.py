@@ -210,3 +210,43 @@ def test_every_study_uses_the_same_bound():
     c = consensus.Verdict("STRICT", "252s (12m)", 12.0, 1, 1, 0.1, 0.1)
     s = selling.Row("252s (12m)", 12.0, 1, 1, 0.1, 0.1)
     assert m.bound == c.bound == s.bound == pytest.approx(measure.BOUND_PER_MONTH * 12.0)
+
+
+@pytest.mark.unit
+def test_readers_do_not_take_a_write_lock():
+    """DuckDB locks exclusively on write. Once collect_daily.sh began running
+    land -> master -> clean three times a session, status.py and every study
+    failed outright with "Conflicting lock is held" during collection — a reader
+    that cannot read while data arrives fails exactly when someone looks.
+    """
+    import inspect
+
+    from src.monitor import status
+    from src.research import consensus, measure, selling
+
+    for mod in (measure, consensus, selling, status):
+        src = inspect.getsource(mod)
+        for line in src.splitlines():
+            if "duckdb.connect(str(research_db" in line:
+                assert "read_only=True" in line, (
+                    f"{mod.__name__} opens the research db for writing: {line.strip()}"
+                )
+
+
+@pytest.mark.unit
+def test_studies_create_only_temp_views():
+    """0047 found eight views left in the PRODUCTION database by measurement
+    code, one of which later took the whole status page down when its dependency
+    was dropped. TEMP views are session-local: they work under read_only and
+    vanish on close. The measurement layer should not write to the store it
+    reads."""
+    import inspect
+
+    from src.research import consensus, measure, selling
+
+    for mod in (measure, consensus, selling):
+        src = inspect.getsource(mod)
+        assert "CREATE OR REPLACE VIEW " not in src, (
+            f"{mod.__name__} creates a persistent view in the research database"
+        )
+        assert "CREATE OR REPLACE TEMP VIEW" in src

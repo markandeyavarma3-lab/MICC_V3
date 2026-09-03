@@ -150,10 +150,10 @@ def measure_basis(con, spine: str, strict: bool) -> list[Verdict]:
     basis = "STRICT" if strict else "PERMISSIVE"
     out: list[Verdict] = []
     for label, sessions, months in measure.HORIZONS:
-        con.execute(f"CREATE OR REPLACE VIEW px AS SELECT * FROM read_parquet('{spine}')")
-        con.execute(f"CREATE OR REPLACE VIEW rets AS {measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
-        con.execute("CREATE OR REPLACE VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
-        con.execute(f"CREATE OR REPLACE VIEW ev AS {_events_sql(strict)}")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW px AS SELECT * FROM read_parquet('{spine}')")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW rets AS {measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
+        con.execute("CREATE OR REPLACE TEMP VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW ev AS {_events_sql(strict)}")
         df = con.execute(
             "SELECT ev.date AS tdate, r.ret - m.m AS ab"
             " FROM ev JOIN rets r ON r.symbol = ev.symbol AND r.date = ev.date"
@@ -174,7 +174,7 @@ def measure_basis(con, spine: str, strict: bool) -> list[Verdict]:
 
 def grid(env: str | None = None) -> list[Verdict]:
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
-    con = duckdb.connect(str(research_db(env)))
+    con = duckdb.connect(str(research_db(env)), read_only=True)
     con.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false; SET threads=4;")
     try:
         return measure_basis(con, spine, True) + measure_basis(con, spine, False)

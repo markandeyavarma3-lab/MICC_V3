@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 27  WIRED: 10  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 28  WIRED: 10  BUILT: 10  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 27  WIRED: 10  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-02; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-02 18:21 UTC, 2 generation(s), 0 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-03 03:09 UTC, 3 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -97,13 +97,13 @@ VERIFIED: 27  WIRED: 10  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 5.1 | fee_schedule, rebuilt not ported, every row sourced | — | costs.yml holds verified rates; only the participation cap is read, by clean.py |
-| 5.2 | Corwin-Schultz and Abdi-Ranaldo spread estimators | — |  |
-| 5.3 | Square-root market impact with sensitivity | — |  |
+| 5.1 | fee_schedule, rebuilt not ported, every row sourced | **VERIFIED** | 6 statutory rows seeded from costs.yml; NSE round trip 29.33 bps headline |
+| 5.2 | Corwin-Schultz and Abdi-Ranaldo spread estimators | BUILT |  |
+| 5.3 | Square-root market impact with sensitivity | BUILT |  |
 | 5.4 | Participation cap and delay cost | WIRED | the cap is applied; DELAY cost is not modelled |
-| 5.5 | Volatility-regime multiplier from India VIX | — |  |
+| 5.5 | Volatility-regime multiplier from India VIX | BUILT |  |
 | 5.6 | Six benchmarks incl. constructed smallcap and CHAR_MATCHED | WIRED | charmatch.py is 251 lines that nothing imports; the only test reads its source as text, never runs it |
-| 5.7 | Gross / base / pessimistic reporting | — |  |
+| 5.7 | Gross / base / pessimistic reporting | BUILT |  |
 
 ## Phase 6 Outcome study
 
@@ -148,4 +148,4 @@ VERIFIED: 27  WIRED: 10  BUILT: 6  SPECIFIED: 28  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `abb5d52`.
+Derived at commit `ed21685`.
