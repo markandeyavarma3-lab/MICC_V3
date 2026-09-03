@@ -10,7 +10,7 @@ Detection was never the problem. Nothing carried it anywhere.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -113,3 +113,65 @@ def test_the_local_channel_needs_no_network(monkeypatch):
     body = src.split("def notify_desktop")[1].split("def notify_email")[0]
     assert "osascript" in body
     assert "smtp" not in body.lower() and "http" not in body.lower()
+
+
+def test_a_hole_behind_the_latest_session_is_detected(tmp_path, monkeypatch):
+    """THE DEFECT THIS CLOSES. read() kept only the LATEST session per source,
+    so it could see that collection had STOPPED and could not see a hole behind
+    it. 2026-08-19 and 2026-08-27 were both lost while HEALTH.md said "all
+    sources current" — the alert was structurally incapable of the observation.
+    """
+    rows = []
+    # the price collector's record of which days actually traded
+    for d in ("2026-08-18", "2026-08-19", "2026-08-20"):
+        rows.append({"source_id": "nse_bhavcopy", "session_date": d,
+                     "status": "STORED",
+                     "fetched_at": datetime.now(UTC).isoformat()})
+    # a deal source that holds the outer two and not the middle
+    for d in ("2026-08-18", "2026-08-20"):
+        rows.append(_rec("nse_bulk_deals", d))
+    _manifest(tmp_path, monkeypatch, rows)
+    monkeypatch.setattr(health, "MANIFEST", tmp_path / "manifest.jsonl")
+
+    bulk = next(r for r in health.read() if r.source_id == "nse_bulk_deals")
+    assert bulk.gaps == (date(2026, 8, 19),), f"gaps were {bulk.gaps}"
+    assert bulk.alerting, "a permanently lost session must alert"
+
+
+def test_a_holiday_is_not_a_gap(tmp_path, monkeypatch):
+    """A weekday calendar would count Diwali as missing and the alert would be
+    muted within a week. The trading calendar comes from the price collector's
+    own manifest: a day it recorded no bhavcopy for is a day NSE did not trade.
+    """
+    rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
+             "fetched_at": datetime.now(UTC).isoformat()}
+            for d in ("2026-08-18", "2026-08-20")]          # 08-19 did not trade
+    rows += [_rec("nse_bulk_deals", d) for d in ("2026-08-18", "2026-08-20")]
+    _manifest(tmp_path, monkeypatch, rows)
+    monkeypatch.setattr(health, "MANIFEST", tmp_path / "manifest.jsonl")
+
+    bulk = next(r for r in health.read() if r.source_id == "nse_bulk_deals")
+    assert bulk.gaps == (), "a non-trading day was reported as a lost session"
+
+
+def test_an_empty_day_answer_is_not_a_loss(tmp_path, monkeypatch):
+    """We asked and the exchange said "NO RECORDS". That is a different fact
+    from never asking, and only the second is a loss.
+
+    An empty file carries no session date — there is no first data row to read
+    one from — so it cannot go in `held`. Measured on the real archive: block
+    deals on 2026-08-25 were flagged LOST until this was handled, and a false
+    LOST trains the reader to ignore the alert.
+    """
+    rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
+             "fetched_at": datetime.now(UTC).isoformat()}
+            for d in ("2026-08-24", "2026-08-25", "2026-08-26")]
+    rows += [_rec("nse_block_deals", d) for d in ("2026-08-24", "2026-08-26")]
+    rows.append({"source_id": "nse_block_deals", "session_date": None,
+                 "status": "EMPTY_DAY",
+                 "fetched_at": "2026-08-25T14:00:00+00:00"})
+    _manifest(tmp_path, monkeypatch, rows)
+    monkeypatch.setattr(health, "MANIFEST", tmp_path / "manifest.jsonl")
+
+    blk = next(r for r in health.read() if r.source_id == "nse_block_deals")
+    assert blk.gaps == (), f"an answered empty day was reported lost: {blk.gaps}"
