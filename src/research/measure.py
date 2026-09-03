@@ -158,16 +158,28 @@ def grid(env: str | None = None, cutoff: str | None = REPRODUCIBILITY_HORIZON) -
     # lineage. It now reads institutional_deals_clean, where every row has been
     # resolved point-in-time, dated against the observed calendar, and given an
     # explicit eligibility reason.
-    con = duckdb.connect(str(research_db(env)))
+    # READ-ONLY, AND THE VIEWS ARE TEMP. Two defects, one fix.
+    #
+    # DuckDB takes an exclusive lock on write, so status.py and every study
+    # failed outright with "Conflicting lock is held" once collect_daily.sh
+    # started running land -> master -> clean three times a session. A reader
+    # that cannot read during collection fails exactly when someone looks.
+    #
+    # Read-only then forbids CREATE VIEW — which is the second defect surfacing:
+    # 0047 found eight views left behind in the PRODUCTION database by
+    # measurement code, one of which later took the whole status page down. TEMP
+    # views are session-local, so they work read-only and vanish on close. The
+    # measurement layer should never have been writing to the store it reads.
+    con = duckdb.connect(str(research_db(env)), read_only=True)
     con.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false; SET threads=4;")
 
     out: list[Row] = []
     for label, sessions, months in HORIZONS:
-        con.execute(f"CREATE OR REPLACE VIEW rets AS {_returns_sql(spine, sessions, cutoff)}")
+        con.execute(f"CREATE OR REPLACE TEMP VIEW rets AS {_returns_sql(spine, sessions, cutoff)}")
         # Market-relative: the equal-weighted cross-sectional mean of the same
         # session. Decision 0021 — a pooled average of market-relative returns is
         # identically zero, so the demean is the comparison, not the estimator.
-        con.execute("CREATE OR REPLACE VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
+        con.execute("CREATE OR REPLACE TEMP VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
         # The size and round-trip filters already live in the mart's
         # eligible_for_research, applied once where they can be counted, rather
         # than re-implemented in every study that needs them.
