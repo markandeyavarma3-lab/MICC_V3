@@ -43,7 +43,7 @@ VERIFIED: 29  WIRED: 10  BUILT: 9  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-02; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-03 03:13 UTC, 3 generation(s), 1 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-03 04:28 UTC, 3 generation(s), 0 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -148,4 +148,4 @@ VERIFIED: 29  WIRED: 10  BUILT: 9  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `1e82a92`.
+Derived at commit `df3a2b6`.
