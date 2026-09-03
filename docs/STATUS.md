@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 28  WIRED: 10  BUILT: 10  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 29  WIRED: 10  BUILT: 9  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 28  WIRED: 10  BUILT: 10  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-02; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-03 03:13 UTC, 3 generation(s), 0 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-03 03:13 UTC, 3 generation(s), 1 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -56,7 +56,7 @@ VERIFIED: 28  WIRED: 10  BUILT: 10  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 | 2.5 | Backfill the full NSE history | **IMPOSSIBLE** | Same 503. Twenty years cannot be re-fetched; the V1 export is the only copy and is why decision 0027 carries it. |
 | 2.6 | BSE bulk and block | BUILT | sources.yml marks both BSE routes UNPROVEN — 301 to an error page |
 | 2.7 | FII/DII cash collector | **VERIFIED** |  |
-| 2.8 | participant_oi ported as the FII/DII proxy | BUILT |  |
+| 2.8 | participant_oi ported as the FII/DII proxy | **VERIFIED** | 15,359 rows, 2014-01-01 .. 2026-06-25; positioning, not cash flow (sources.yml) |
 | 2.9 | Scheduled collection running | **VERIFIED** | launchd added 2026-08-22 after cron silently lost the 19 Aug session |
 | 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-09-02; MICCV2 stopped at 2026-08-14 |
 | 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 38 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
@@ -148,4 +148,4 @@ VERIFIED: 28  WIRED: 10  BUILT: 10  SPECIFIED: 23  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `b25e410`.
+Derived at commit `1e82a92`.
