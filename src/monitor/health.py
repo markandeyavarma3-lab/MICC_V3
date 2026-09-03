@@ -66,15 +66,22 @@ class SourceHealth:
     last_success: datetime | None
     sessions_stale: int
     required: bool
+    #: Trading sessions this source is MISSING behind its latest one. Each is
+    #: permanent: the historical endpoint answers 503.
+    gaps: tuple[date, ...] = ()
 
     @property
     def alerting(self) -> bool:
         return self.required and (
-            self.last_session is None or self.sessions_stale >= STALE_SESSIONS
+            self.last_session is None
+            or self.sessions_stale >= STALE_SESSIONS
+            or bool(self.gaps)
         )
 
     def render(self) -> str:
-        mark = "STALE" if self.alerting else "ok"
+        mark = "STALE" if self.sessions_stale >= STALE_SESSIONS else "ok"
+        if self.gaps:
+            mark = f"**{len(self.gaps)} MISSING**"
         last = self.last_session.isoformat() if self.last_session else "never"
         return (f"| `{self.source_id}` | {last} | {self.sessions_stale} | "
                 f"{'yes' if self.required else 'no'} | {mark} |")
@@ -97,13 +104,58 @@ def _weekday_sessions_between(a: date, b: date) -> int:
                if (a + timedelta(days=i)).weekday() < 5)
 
 
+def observed_sessions() -> set[date]:
+    """Sessions NSE actually traded, per the price collector's own manifest.
+
+    WHY NOT WEEKDAYS. A weekday calendar counts Diwali and Republic Day as
+    missing, so every real holiday raises a false alarm and the alert is muted
+    within a week. `src/archive/prices.py` records STORED for a session that
+    published a bhavcopy and NO_SESSION for a 404 on a past date — that IS the
+    observed trading calendar for every day this project has collected, and it
+    cost nothing extra to record.
+
+    Falls back to an empty set before the price collector has run, in which case
+    `read()` reports no gaps rather than inventing them.
+    """
+    if not MANIFEST.exists():
+        return set()
+    out: set[date] = set()
+    for line in MANIFEST.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("source_id") != "nse_bhavcopy":
+            continue
+        if r.get("status") in {"STORED", "DUPLICATE"} and r.get("session_date"):
+            out.add(date.fromisoformat(r["session_date"][:10]))
+    return out
+
+
 def read() -> list[SourceHealth]:
-    """Per-source health from the archive manifest. Read-only."""
+    """Per-source health from the archive manifest. Read-only.
+
+    GAPS, NOT JUST STALENESS. Until 2026-09-03 this kept only the LATEST session
+    per source, so it could see that collection had stopped and could not see a
+    hole behind it. 2026-08-19 and 2026-08-27 were both lost while HEALTH.md
+    said "all sources current" — the alert was structurally incapable of the
+    observation.
+
+    Every missed session is permanent: the historical endpoint answers 503.
+    """
     if not MANIFEST.exists():
         return [SourceHealth(s, None, None, 999, s in REQUIRED)
                 for s in (*REQUIRED, *OPTIONAL)]
 
     latest: dict[str, tuple[date, datetime]] = {}
+    held: dict[str, set[date]] = {}
+    # EMPTY_DAY files carry no session date — an empty CSV has no first data row
+    # to read one from — so they cannot go in `held`. They are still evidence
+    # that we ASKED and the exchange answered "none", which is a different fact
+    # from never having asked, and only the second is a loss.
+    asked: dict[str, set[date]] = {}
     for line in MANIFEST.read_text().splitlines():
         if not line.strip():
             continue
@@ -111,20 +163,46 @@ def read() -> list[SourceHealth]:
         if r.get("status") not in {"STORED", "DUPLICATE", "EMPTY_DAY"}:
             continue
         sid, sess = r.get("source_id"), r.get("session_date")
+        if sid and not sess and r.get("status") == "EMPTY_DAY" and r.get("fetched_at"):
+            asked.setdefault(sid, set()).add(
+                datetime.fromisoformat(r["fetched_at"]).date())
         if not sid or not sess:
             continue
         d = date.fromisoformat(sess[:10])
         got = datetime.fromisoformat(r["fetched_at"])
+        held.setdefault(sid, set()).add(d)
         if sid not in latest or d > latest[sid][0]:
             latest[sid] = (d, got)
 
     today = datetime.now(UTC).date()
+    traded = observed_sessions()
     out = []
     for sid in (*REQUIRED, *OPTIONAL):
         if sid in latest:
             d, got = latest[sid]
+            mine = held.get(sid, set())
+            # Only sessions inside this source's OWN collected window. A source
+            # that started later than another has not "missed" the earlier ones.
+            first = min(mine) if mine else d
+            # A session is a GAP only if we hold no file for it AND no
+            # empty-day answer covering it. The evening slots fetch the same
+            # day; the 08:00 slot fetches the previous session. So an EMPTY_DAY
+            # covers the trading session on its fetch date or the one before —
+            # an ambiguity inherent to an undated file, resolved generously,
+            # because a false "LOST" trains the reader to ignore the alert.
+            covered = set()
+            for f in asked.get(sid, set()):
+                covered.add(f)
+                prior = [t for t in traded if t < f]
+                if prior:
+                    covered.add(max(prior))
+            gaps = tuple(sorted(
+                t for t in traded
+                if first < t < d and t not in mine and t not in covered
+            ))
             out.append(SourceHealth(sid, d, got,
-                                    _weekday_sessions_between(d, today), sid in REQUIRED))
+                                    _weekday_sessions_between(d, today),
+                                    sid in REQUIRED, gaps))
         else:
             out.append(SourceHealth(sid, None, None, 999, sid in REQUIRED))
     return out
@@ -152,6 +230,20 @@ def render(rows: list[SourceHealth], backup: backup_state.BackupState | None = N
         "",
         f"Alert threshold: {STALE_SESSIONS} missed trading sessions.",
     ]
+    lost = [(r, g) for r in rows for g in r.gaps]
+    if lost:
+        lines += [
+            "",
+            "## Permanently missing sessions",
+            "",
+            "These traded — the price collector archived a bhavcopy for each —",
+            "and no deal file was captured. The historical endpoint answers 503,",
+            "so they cannot be re-fetched at any price.",
+            "",
+            "| source | session |",
+            "|---|---|",
+            *[f"| `{r.source_id}` | {g} |" for r, g in lost],
+        ]
     if backup is not None:
         lines += [
             "",
@@ -239,6 +331,8 @@ def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
     alerting = [r for r in rows if r.alerting]
     if alerting and send:
         detail = ", ".join(
+            (f"{r.source_id} MISSING {len(r.gaps)} session(s): "
+             f"{', '.join(str(g) for g in r.gaps)}") if r.gaps else
             f"{r.source_id} last {r.last_session or 'never'} ({r.sessions_stale} sessions)"
             for r in alerting
         )
