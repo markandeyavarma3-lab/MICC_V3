@@ -104,9 +104,18 @@ def run(env: str | None = None, sessions: int = 252) -> list[Result]:
             FROM ev JOIN rets r ON r.symbol = ev.symbol AND CAST(r.date AS VARCHAR) = ev.tdate
                     JOIN mkt m ON m.date = r.date""")
 
-        n, raw = con.execute("SELECT COUNT(*), avg(ab) FROM ab").fetchone()
+        # COUNT(*) COUNTS NULLS AND avg() DOES NOT. Until 2026-09-03 this line
+        # was `COUNT(*), avg(ab)` and reported "n=1,255, raw effect -30.30%" —
+        # two numbers from two different populations, because 110 events have no
+        # 252-session exit and were dropped from the mean while still counted.
+        # COUNT(ab) is the population the effect is actually measured on;
+        # delisting.py explains where the other 110 went.
+        n, n_priced, raw = con.execute(
+            "SELECT COUNT(ab), COUNT(*) - COUNT(ab), avg(ab) FROM ab").fetchone()
         out.append(Result("_baseline", "MEASURED",
-                          f"EXPLORE sell events n={n:,}, raw effect {raw:+.2%}"))
+                          f"EXPLORE sell events n={n:,}, raw effect {raw:+.2%}",
+                          [f"{n_priced} further events have no {sessions}-session exit and "
+                           f"are NOT in this mean — see src/research/delisting.py"]))
 
         out.append(_microstructure(con, raw))
         out.append(_volatility(con, env, raw))

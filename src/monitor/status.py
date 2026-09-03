@@ -587,7 +587,18 @@ def steps() -> list[Step]:
              built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0,
              note=lambda c: "the table exists and holds 0 rows"),
         Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
-             built=lambda c: c.provides("src.research.outcomes", "delisting_recovery")),
+             # The predicate named src.research.outcomes.delisting_recovery, a
+             # module that was never written under that name. A predicate
+             # pointing at a file nobody intends to create reports "—" forever
+             # and cannot distinguish "unbuilt" from "misaddressed".
+             built=lambda c: c.provides("src.research.delisting", "run"),
+             wired=lambda c: c.consumed("delisting", "src/research/delisting.py"),
+             verified=lambda c: c.tested(
+                 r"test_the_recovery_factor_is_not_load_bearing_on_this_population"),
+             note=lambda c: "measured on EXPLORE sells; NOT persisted into "
+                            "deal_forward_outcomes, which holds 0 rows (6.3). "
+                            "MERGED/SUSPENDED cannot be separated — "
+                            "delisting_reason is UNKNOWN on every row (3.3)"),
         Step("6.5", "6 Outcome study", "Monthly-cohort collapse, block bootstrap, NW-HAC",
              built=lambda c: c.provides("src.research.power", "serial_inflation"),
              wired=lambda c: c.consumed("serial_inflation", "src/research/power.py"),
