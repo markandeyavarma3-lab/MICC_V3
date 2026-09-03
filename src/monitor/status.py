@@ -427,7 +427,12 @@ def steps() -> list[Step]:
              wired=lambda c: c.duck_rows.get("deal_source_files", 0) > 0,
              verified=lambda c: c.tested(r"test_fii_dii_lands_as_a_file_but_not_as_deal_rows")),
         Step("2.8", "2 Collection", "participant_oi ported as the FII/DII proxy",
-             built=lambda c: c.consumed("participant_oi", "")),
+             built=lambda c: c.duck_rows.get("participant_oi", 0) > 0,
+             wired=lambda c: c.consumed("participant_oi", "src/warehouse/participant_oi.py"),
+             verified=lambda c: c.tested(r"test_total_is_a_computed_row_not_a_sixth_participant"),
+             note=lambda c: (f"{c.duck_rows.get('participant_oi', 0):,} rows, "
+                             f"2014-01-01 .. 2026-06-25; positioning, not cash "
+                             f"flow (sources.yml)")),
         Step("2.9", "2 Collection", "Scheduled collection running",
              built=lambda c: (ROOT / "scripts" / "collect_daily.sh").exists(),
              wired=lambda c: c.archive_sessions() >= 4,
