@@ -128,3 +128,56 @@ def test_a_single_day_is_not_an_empty_keep_window(tmp_path):
         "one day of backups must not read as an empty keep window"
     )
     assert _stamps(tmp_path) == {"20260901-080028"}
+
+
+# --- the listing that was never ready ----------------------------------------
+#
+# The tests above run against a local tmp_path, where a file written on one line
+# is visible on the next. That is exactly why they passed for four days while
+# retention never ran once in production: the destination is iCloud, the prune
+# is called microseconds after `mv`, and the listing was empty EVERY time.
+# `du` on the same directory succeeded on the very next line of backup.sh.
+
+
+def test_the_listing_is_waited_for_rather_than_trusted_on_the_first_look(tmp_path):
+    """The readiness signal is the generation we just wrote.
+
+    A destination that answers "empty" one microsecond after a 92 MB move has
+    not told us it is empty; it has told us nothing yet. Retrying until the
+    fresh generation appears is what separates "nothing to prune" from "not
+    ready to prune", and the old code could not tell those apart.
+    """
+    src = PRUNE.read_text()
+    assert "while (( attempt <" in src, "the listing is still taken once and trusted"
+    assert "attempt(s)" in src, "the skip message does not say how long it waited"
+
+
+def test_the_retry_loop_does_not_kill_the_script_on_its_first_pass(tmp_path):
+    """WATCHED FAILING, 2026-09-05.
+
+    The first version used `(( attempt++ ))`, which yields the value BEFORE the
+    increment. On the first pass that is 0, zsh treats an arithmetic 0 as a
+    failed command, and `set -e` exited the script — status 1, no output, both
+    the skip and refuse branches unreachable. The whole file exists because a
+    retention policy failing silently is indistinguishable from one with nothing
+    to do, and the retry loop reintroduced precisely that.
+    """
+    assert "(( ++attempt ))" in PRUNE.read_text(), "post-increment trips set -e at 0"
+    # Both branches must be REACHED, not merely present: _run asserts rc == 0.
+    out = _run(tmp_path, "20260901-080000")
+    assert "skipped" in out.lower()
+    for s in ("20260830-200000", "20260831-200000"):
+        _gen(tmp_path, s)
+    out = _run(tmp_path, "29990101-000000")
+    assert "SKIPPED" in out
+    assert len(_stamps(tmp_path)) == 2
+
+
+def test_a_membership_test_on_a_miss_must_not_trip_set_u(tmp_path):
+    """`${bundles[(r)needle]}` raises "parameter not set" under `set -u` when
+    the needle is absent — on the refusal path, which is the path that protects
+    the backups. `(Ie)` yields an index or 0 and is the idiom already used for
+    the keep-day test lower in the same file."""
+    src = PRUNE.read_text()
+    assert "[(r)$DEST/repo-$STAMP.bundle]" not in src
+    assert "[(Ie)$DEST/repo-$STAMP.bundle]" in src
