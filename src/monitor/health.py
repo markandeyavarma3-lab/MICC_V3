@@ -69,19 +69,38 @@ class SourceHealth:
     #: Trading sessions this source is MISSING behind its latest one. Each is
     #: permanent: the historical endpoint answers 503.
     gaps: tuple[date, ...] = ()
+    #: The subset of `gaps` written down in sources.yml `acknowledged_gaps`.
+    #: Still reported; no longer paged. See `acknowledged_gaps()`.
+    acknowledged: tuple[date, ...] = ()
+
+    @property
+    def open_gaps(self) -> tuple[date, ...]:
+        """Gaps nobody has written down yet. These are the ones worth waking for."""
+        return tuple(d for d in self.gaps if d not in self.acknowledged)
 
     @property
     def alerting(self) -> bool:
+        # ACKNOWLEDGED GAPS DO NOT PAGE. Until 2026-09-05 this read
+        # `or bool(self.gaps)`, so the three permanently-lost sessions alerted
+        # by email on every run — three times a session, forever, for something
+        # nobody can act on. The terminal even printed "STALE ... 0 session(s)
+        # stale", a flag and a number from two different conditions.
+        #
+        # This project lost 2026-08-19 because a signal reached nothing. The
+        # opposite failure — a channel nobody reads because it is always red —
+        # ends in the same place.
         return self.required and (
             self.last_session is None
             or self.sessions_stale >= STALE_SESSIONS
-            or bool(self.gaps)
+            or bool(self.open_gaps)
         )
 
     def render(self) -> str:
         mark = "STALE" if self.sessions_stale >= STALE_SESSIONS else "ok"
-        if self.gaps:
-            mark = f"**{len(self.gaps)} MISSING**"
+        if self.open_gaps:
+            mark = f"**{len(self.open_gaps)} MISSING**"
+        elif self.gaps:
+            mark = f"{len(self.gaps)} lost (acknowledged)"
         last = self.last_session.isoformat() if self.last_session else "never"
         return (f"| `{self.source_id}` | {last} | {self.sessions_stale} | "
                 f"{'yes' if self.required else 'no'} | {mark} |")
@@ -132,6 +151,30 @@ def observed_sessions() -> set[date]:
         if r.get("status") in {"STORED", "DUPLICATE"} and r.get("session_date"):
             out.add(date.fromisoformat(r["session_date"][:10]))
     return out
+
+
+def acknowledged_gaps() -> dict[str, tuple[date, ...]]:
+    """Permanently-lost sessions, written down in sources.yml with a reason.
+
+    READ FROM CONFIG, NOT HARDCODED. A literal list in this file would drift
+    from the decision records that explain each loss, and the whole point of
+    acknowledging a gap is that somebody wrote down why. If sources.yml has no
+    such block, nothing is acknowledged and every gap pages — the safe default,
+    because forgetting to acknowledge is noisy and forgetting to alert is not.
+    """
+    import yaml
+
+    from src.common.paths import CONFIGS
+
+    spec = yaml.safe_load((CONFIGS / "sources.yml").read_text()) or {}
+    out: dict[str, list[date]] = {}
+    for entry in spec.get("acknowledged_gaps") or ():
+        sid, sess = entry.get("source_id"), entry.get("session")
+        if not sid or not sess:
+            continue
+        d = sess if isinstance(sess, date) else date.fromisoformat(str(sess)[:10])
+        out.setdefault(sid, []).append(d)
+    return {k: tuple(sorted(v)) for k, v in out.items()}
 
 
 def read() -> list[SourceHealth]:
@@ -202,7 +245,8 @@ def read() -> list[SourceHealth]:
             ))
             out.append(SourceHealth(sid, d, got,
                                     _weekday_sessions_between(d, today),
-                                    sid in REQUIRED, gaps))
+                                    sid in REQUIRED, gaps,
+                                    acknowledged_gaps().get(sid, ())))
         else:
             out.append(SourceHealth(sid, None, None, 999, sid in REQUIRED))
     return out
@@ -352,9 +396,18 @@ def main() -> int:
     rows = check()
     print("COLLECTION HEALTH")
     for r in rows:
+        # THE FLAG AND THE NUMBER MUST DESCRIBE THE SAME CONDITION. This
+        # printed `STALE ... 0 session(s) stale` for two days, because the flag
+        # came from `alerting` (which gaps triggered) and the number from
+        # `sessions_stale`. Two facts, one line, no way to tell them apart.
         flag = "STALE" if r.alerting else "ok   "
         last = r.last_session.isoformat() if r.last_session else "never"
-        print(f"  {flag}  {r.source_id:<18} last {last}  {r.sessions_stale} session(s) stale")
+        why = f"{r.sessions_stale} session(s) stale"
+        if r.open_gaps:
+            why += f", {len(r.open_gaps)} MISSING behind it"
+        elif r.gaps:
+            why += f", {len(r.gaps)} lost and acknowledged"
+        print(f"  {flag}  {r.source_id:<18} last {last}  {why}")
     b = backup_state.read()
     print(f"  {'AT RISK' if b.alerting else 'ok   '}  {'off-machine backup':<18} {b.summary}")
     alerting = [r for r in rows if r.alerting]

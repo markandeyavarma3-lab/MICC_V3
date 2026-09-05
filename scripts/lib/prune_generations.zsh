@@ -35,16 +35,50 @@ DEST="${1:?dest required}"
 STAMP="${2:?stamp just written required}"
 KEEP="${3:-3}"
 
-bundles=("$DEST"/repo-*.bundle(N))
+# 4. THE LISTING IS TAKEN MICROSECONDS AFTER `mv`, AND IT IS EMPTY EVERY TIME.
+#    Defect 3 predicted this and treated it as occasional. It is not: from
+#    2026-09-01 to 2026-09-05 the caller logged "destination lists no
+#    generations" on EVERY scheduled run while eleven bundles sat in the
+#    directory, and the very next line of backup.sh ran `du` on that same
+#    directory successfully. So the guard worked exactly as designed and
+#    retention never ran once — 11 generations, 772 MB, growing ~75 MB a day.
+#
+#    Nothing was ever at risk, which is why it went unnoticed for four days: a
+#    retention policy that silently does nothing looks identical to one that has
+#    nothing to do. The fix is to WAIT for the listing rather than trust the
+#    first one, with the freshly-written generation as the readiness signal —
+#    the same anchor defect 3 already established as the trust condition.
+
+typeset -a bundles
+integer attempt=0
+while (( attempt < 10 )); do
+  bundles=("$DEST"/repo-*.bundle(N))
+  # Ready when the listing contains the generation we just wrote. Anything less
+  # is a listing that has not caught up, not a destination that is empty.
+  # `(Ie)` yields the index or 0 and never trips `set -u`; the `(r)` reverse
+  # form raises "parameter not set" on a miss, which crashed this guard on the
+  # exact path it exists to protect. Same idiom as the keep-day test below.
+  (( ${bundles[(Ie)$DEST/repo-$STAMP.bundle]} )) && break
+  # PRE-increment, deliberately. `(( attempt++ ))` yields the value BEFORE the
+  # increment, so on the first pass it evaluates to 0, which zsh treats as a
+  # failed command, and `set -e` kills the script — silently, exit 1, no
+  # message, nothing pruned. Both the skip and the refuse branches below became
+  # unreachable. Found by running the two of them.
+  (( ++attempt ))
+  sleep 0.5
+done
+
 if (( ${#bundles} == 0 )); then
-  echo "  prune: skipped — destination lists no generations"
+  echo "  prune: skipped — destination lists no generations after ${attempt} attempt(s)"
   exit 0
 fi
 
-# The trust check. Not a sanity assertion: this exact condition occurred.
-if [[ ! -e "$DEST/repo-$STAMP.bundle" ]]; then
+# The trust check, unchanged in meaning: if after waiting the listing still does
+# not contain what we just wrote, it is not a listing we may delete on.
+if (( ! ${bundles[(Ie)$DEST/repo-$STAMP.bundle]} )); then
   echo "  prune: SKIPPED — the generation just written ($STAMP) is not in the"
-  echo "  listing, so the listing cannot be trusted to say what is safe to delete."
+  echo "  listing after ${attempt} attempt(s), so the listing cannot be trusted"
+  echo "  to say what is safe to delete."
   exit 0
 fi
 

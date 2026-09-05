@@ -184,3 +184,48 @@ deferred:
       therefore NOT to pay a recurring fee at this time.
       MICCV2 holds ~970 lines of working read-only Kite code (auth/login/archive/
       indices) that ports in an afternoon if the trigger fires."
+
+# =============================================================================
+# ACKNOWLEDGED LOSSES
+# =============================================================================
+#
+# Sessions this project asked for, did not get, and CANNOT EVER GET. The
+# historical endpoint answers 503 (decisions 0024, 2.4/2.5 in PLAN_3 are graded
+# IMPOSSIBLE for this reason), so the only copy that would ever have existed is
+# the rolling current-day file that was missed at the time.
+#
+# WHY THIS LIST EXISTS AT ALL. Gap detection landed on 2026-09-03 and correctly
+# found these three. It then alerted on them on every single run — three times a
+# session, by email, for a condition that will never change and that nobody can
+# act on. An alert that cannot be cleared is an alert that gets filtered, and
+# this project already lost 2026-08-19 because a signal reached nothing.
+#
+# A gap listed here stays VISIBLE in HEALTH.md and stops paging. A gap NOT
+# listed here still alerts, which is the whole point: acknowledging a loss is a
+# deliberate act with a date and a reason attached, not a threshold that decays.
+acknowledged_gaps:
+  - source_id: nse_bulk_deals
+    session: 2026-08-19
+    acknowledged: 2026-09-05
+    reason: >-
+      cron fired but the launchd agent was not yet installed; noticed 2026-08-22
+      and the endpoint had already rolled. Unrecoverable — /api/historical/
+      bulk-deals answers 503 with and without a session cookie.
+  - source_id: nse_bulk_deals
+    session: 2026-08-27
+    acknowledged: 2026-09-05
+    reason: >-
+      collector ran and the fetch was swallowed by the archive path bug fixed in
+      src/ingest/parse.py; recovered by hand two days late, which was already
+      past the rolling window.
+  - source_id: nse_block_deals
+    session: 2026-08-19
+    acknowledged: 2026-09-05
+    reason: same launchd gap as nse_bulk_deals on the same session.
+  - source_id: fii_dii_cash
+    session: 2026-08-19
+    acknowledged: 2026-09-05
+    reason: >-
+      same launchd gap as the deal feeds on the same session. This one never
+      paged because fii_dii_cash is OPTIONAL, so it was invisible in the
+      terminal until the flag and the count were separated on 2026-09-05.

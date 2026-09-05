@@ -133,8 +133,14 @@ def test_a_hole_behind_the_latest_session_is_detected(tmp_path, monkeypatch):
     _manifest(tmp_path, monkeypatch, rows)
     monkeypatch.setattr(health, "MANIFEST", tmp_path / "manifest.jsonl")
 
+    monkeypatch.setattr(health, "acknowledged_gaps", dict)
     bulk = next(r for r in health.read() if r.source_id == "nse_bulk_deals")
     assert bulk.gaps == (date(2026, 8, 19),), f"gaps were {bulk.gaps}"
+    # ASSERT ON open_gaps, NOT alerting. This fixture's last session is weeks
+    # behind today, so `alerting` is True on staleness alone and would pass with
+    # gap detection ripped out entirely. That is what it did when acknowledged
+    # gaps landed on 2026-09-05: the test stayed green while proving nothing.
+    assert bulk.open_gaps == (date(2026, 8, 19),)
     assert bulk.alerting, "a permanently lost session must alert"
 
 
@@ -175,3 +181,86 @@ def test_an_empty_day_answer_is_not_a_loss(tmp_path, monkeypatch):
 
     blk = next(r for r in health.read() if r.source_id == "nse_block_deals")
     assert blk.gaps == (), f"an answered empty day was reported lost: {blk.gaps}"
+
+
+# --- the alert that could never be cleared -----------------------------------
+
+
+def test_an_acknowledged_gap_stops_paging_but_stays_visible(tmp_path, monkeypatch):
+    """WHY THIS EXISTS. Gap detection landed 2026-09-03 and immediately began
+    alerting by email on 2026-08-19 and 2026-08-27 — three times a session,
+    forever, for sessions nobody can ever recover because the historical
+    endpoint answers 503. The terminal printed `STALE ... 0 session(s) stale`,
+    a flag and a number describing two different conditions.
+
+    This project lost 2026-08-19 because a signal reached nothing. A channel
+    that is permanently red ends in the same place, by a different route.
+    """
+    # DATES NEAR TODAY, DELIBERATELY. With a fixture weeks in the past this
+    # source is stale anyway, `alerting` is True for that reason alone, and the
+    # assertion below would pass with the acknowledgement logic deleted. That is
+    # how the first version of this test was written and it proved nothing.
+    hole, before, after = _days_ago(3), _days_ago(4), _days_ago(2)
+    rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
+             "fetched_at": datetime.now(UTC).isoformat()}
+            for d in (before, hole, after)]
+    rows += [_rec("nse_bulk_deals", d) for d in (before, after)]
+    _manifest(tmp_path, monkeypatch, rows)
+    monkeypatch.setattr(health, "acknowledged_gaps",
+                        lambda: {"nse_bulk_deals": (date.fromisoformat(hole),)})
+
+    bulk = next(r for r in health.read() if r.source_id == "nse_bulk_deals")
+    assert bulk.gaps == (date.fromisoformat(hole),), "the loss must remain recorded"
+    assert bulk.open_gaps == (), "an acknowledged loss must not stay open"
+    assert "acknowledged" in bulk.render(), "an acknowledged loss must stay visible"
+    # THE ASSERTION THAT MATTERS: no email. Everything above can hold while the
+    # thing still pages three times a session forever.
+    assert not bulk.alerting, "an acknowledged, unrecoverable loss must not page"
+
+
+def test_an_unacknowledged_gap_still_pages(tmp_path, monkeypatch):
+    """The default is to alert. Acknowledging is a deliberate act with a date
+    and a reason in sources.yml, not a threshold that decays on its own."""
+    hole, before, after = _days_ago(3), _days_ago(4), _days_ago(2)
+    rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
+             "fetched_at": datetime.now(UTC).isoformat()}
+            for d in (before, hole, after)]
+    rows += [_rec("nse_bulk_deals", d) for d in (before, after)]
+    _manifest(tmp_path, monkeypatch, rows)
+    monkeypatch.setattr(health, "acknowledged_gaps", dict)
+
+    bulk = next(r for r in health.read() if r.source_id == "nse_bulk_deals")
+    # Same fixture, same recency: the ONLY difference from the test above is
+    # whether the gap is written down. So `alerting` here isolates that.
+    assert bulk.open_gaps == (date.fromisoformat(hole),)
+    assert bulk.alerting
+
+
+def test_every_acknowledged_gap_carries_a_reason_and_a_date():
+    """A loss written down without a why is a loss nobody can re-examine."""
+    import yaml
+
+    from src.common.paths import CONFIGS
+
+    spec = yaml.safe_load((CONFIGS / "sources.yml").read_text())
+    entries = spec.get("acknowledged_gaps") or []
+    assert entries, "the acknowledged-gap list vanished; every gap now pages"
+    for e in entries:
+        assert e.get("source_id") and e.get("session")
+        assert e.get("acknowledged"), f"{e['source_id']} {e['session']}: no date"
+        assert len(str(e.get("reason", ""))) > 40, (
+            f"{e['source_id']} {e['session']} was acknowledged without a reason"
+        )
+
+
+def test_the_acknowledged_list_only_covers_gaps_that_are_real():
+    """A stale acknowledgement silences a gap that has since been recovered, or
+    one that never existed. Every entry must correspond to a gap health.read()
+    actually observes."""
+    observed = {r.source_id: set(r.gaps) for r in health.read()}
+    for sid, dates in health.acknowledged_gaps().items():
+        for d in dates:
+            assert d in observed.get(sid, set()), (
+                f"{sid} {d} is acknowledged but is not a gap — the entry is "
+                f"stale and would silence a future loss on that session"
+            )
