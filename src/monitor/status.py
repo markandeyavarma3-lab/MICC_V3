@@ -569,9 +569,12 @@ def steps() -> list[Step]:
              built=lambda c: c.provides("src.research.costs", "vix_regime_multiplier")),
         Step("5.6", "5 Costs & benchmarks", "Six benchmarks incl. constructed smallcap and CHAR_MATCHED",
              built=lambda c: c.module("src/research/charmatch.py"),
-             wired=lambda c: c.consumed("charmatch", "src/research/charmatch.py"),
-             note=lambda c: "charmatch.py is 251 lines that nothing imports; the only "
-                            "test reads its source as text, never runs it"),
+             wired=lambda c: c.duck_rows.get("outcome_benchmark_returns", 0) > 0,
+             note=lambda c: "five of six built; CHAR_MATCHED runs per event in "
+                            "outcomes.py. NIFTY50_TR is a PRICE index despite "
+                            "total_return: true, and SMALLCAP_SYNTH is equal-"
+                            "weighted despite free_float_proxy_mcap — both "
+                            "declared in src/warehouse/benchmarks.py"),
         Step("5.7", "5 Costs & benchmarks", "Gross / base / pessimistic reporting",
              built=lambda c: c.provides("src.research.costs", "cost_scenarios")),
 
@@ -585,7 +588,15 @@ def steps() -> list[Step]:
              verified=lambda c: c.tested(r"test_the_twelve_month_figure_is_reproducible")),
         Step("6.3", "6 Outcome study", "deal_forward_outcomes across 9 horizons x 6 benchmarks",
              built=lambda c: c.duck_rows.get("deal_forward_outcomes", 0) > 0,
-             note=lambda c: "the table exists and holds 0 rows"),
+             wired=lambda c: c.duck_rows.get("outcome_benchmark_returns", 0) > 0,
+             verified=lambda c: c.tested(
+                 r"test_a_horizon_never_spans_more_calendar_time_than_it_claims"),
+             note=lambda c: (
+                 f"{c.duck_rows.get('deal_forward_outcomes', 0):,} outcomes, "
+                 f"{c.duck_rows.get('outcome_benchmark_returns', 0):,} benchmark rows "
+                 f"against FIVE benchmarks — NIFTY500_TR is unbuildable "
+                 f"(warehouse.benchmark_n500tr does not exist) and it is the "
+                 f"config's declared broad_market_headline")),
         Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
              # The predicate named src.research.outcomes.delisting_recovery, a
              # module that was never written under that name. A predicate
