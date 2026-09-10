@@ -174,6 +174,50 @@ studentised mean over two observations has no stable denominator. The
 leaderboard ranks sparsity, not skill, and the one apparent finding in nine
 horizons is the sparsest name in its family.
 
+## Second amendment, 2026-09-10 — the kill was scoped correctly and reported carelessly
+
+An outside review asked what 0056 actually measured before the kill was accepted
+as fact. Three checks; one materially changes what may be claimed.
+
+**1. "119, not 7." The verdict above is correct FOR THE §6.3 SPECIFICATION and
+was generalised beyond it in conversation.** §6.3 requires buys only, a size
+floor, an ADV floor, the TOO_LARGE participation cap, CHAR_MATCHED coverage
+(74%) and twelve-month maturity. Stacked, those leave 7 testable names, and the
+month-sparsity finding above stands untouched for that population.
+
+Measured on the DIRECTIONAL population instead — same-day round trips removed,
+symbol resolvable and priced, no size or side filter:
+
+| | |
+|---|---|
+| deals | 60,775 |
+| entities | 20,660 |
+| entities with ≥30 deals **and** ≥12 months | **119** |
+| entities with ≥20 deals **and** ≥24 months | 70 |
+
+Société Générale carries 343 deals across 94 months; BNP Paribas Arbitrage 184
+across 91; Deutsche Securities Mauritius 199 across 64. These are real time
+series. **A differently-specified entity study is not dead — it was never run.**
+"Measured and near-zero" was the wrong claim; "not measured at that
+specification" is the right one.
+
+The category objection survives the count and is unchanged: the head of that
+119 is still ETFs, ODI issuers and bank execution arms, and nothing in the data
+says whether `SOCIETE GENERALE` is a decision-maker or a custody wrapper.
+
+**2. The PROP_HFT classifier does almost nothing, and I credited it with the
+exclusion.** It tags **168 deals of 239,480** — 0.07%. Graviton (13,512), HRT
+(6,204), Tower Research (2,330) and XTX (1,714) are NOT removed by it. What
+removes them is the same-day round-trip flag, 147,116 deals, 61% of the corpus.
+The behavioural filter is doing the work the classifier is named for, and step
+3.7 grading as WIRED disguises that.
+
+**3. The 29.33 bps figure is the STATUTORY leg only.** Market impact is modelled
+separately and correctly — `sqrt_impact` is `Y * sigma_daily * sqrt(Q/ADV)` with
+Y at 0.5/0.8/1.0 across the gross/base/pessimistic scenarios, participation read
+from config. Quoting 29.33 without saying "fees only" understated the cost model
+by leaving out the half that dominates above a few percent of ADV.
+
 ## What would reverse this
 
 A participant identity layer that resolves to beneficial owners rather than
