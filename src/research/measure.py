@@ -104,10 +104,49 @@ class Row:
         )
 
 
+#: Trading sessions in a calendar year, used only to convert a session horizon
+#: into the calendar span it OUGHT to occupy.
+SESSIONS_PER_YEAR = 252.0
+
+
+def max_span_days(sessions: int) -> float:
+    """The calendar span a horizon of `sessions` sessions may legitimately take.
+
+    THE SINGLE DEFINITION. `outcomes.py` imports this rather than restating it —
+    two thresholds for the same rule are two rules.
+
+    The allowance is 1.5x the expected span plus ten days: generous enough that
+    a run of holidays never trips it, tight enough to catch the 707-day
+    "twelve-month" windows this project was counting as ordinary.
+    """
+    return sessions * 365.0 / SESSIONS_PER_YEAR * 1.5 + 10.0
+
+
 def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
     """Forward return over `sessions`, entered at the OPEN of the session AFTER
     the trade date — never the same session's close, because the disclosure is
     published after that close (`configs/research.yml` timing.no_same_day_close).
+
+    `sessions` MEANS SESSIONS, WHICH IT DID NOT UNTIL 2026-09-05.
+
+    `LEAD(close, N)` counts ROWS of this name's own price history, not sessions
+    of the calendar. A name that stops trading and relists supplies its Nth row
+    years later, and the result was returned here as an N-session forward
+    return. Six modules share this function — measure, consensus, selling,
+    insider_power, confounds, delisting — so every power verdict and every
+    effect estimate the project has published came through it.
+
+    Measured on the EXPLORE sell population: 37 of 1,145 twelve-month events
+    spanned over 500 calendar days, the worst being ATLASCYCLE at 3,506 days
+    (9.6 years) at -117.8% abnormal. Those 37 averaged -51.4% against -29.6%
+    for the rest.
+
+    A window wider than `max_span_days` did not hold a position for `sessions`
+    sessions; it held one across a trading suspension. `ret` is NULL there, so
+    such an event is excluded from every mean rather than contributing a
+    multi-year return under a one-year label. It is NULL rather than dropped
+    because callers count rows: 0052 already established that COUNT(*) and
+    avg() disagreeing is how these events hide.
     """
     # An AND clause, not a WHERE: the read below already has one.
     cut = f" AND date <= '{cutoff}'" if cutoff else ""
@@ -121,12 +160,17 @@ def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
         SELECT a.symbol, a.date,
                LEAD(a.open, 1) OVER w AS entry,
                LEAD(a.close, {sessions}) OVER w AS exit_px,
+               LEAD(a.date, {sessions}) OVER w AS exit_date,
                median(a.close * a.volume) OVER (
                    PARTITION BY a.symbol ORDER BY a.i ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
                ) AS adv20
         FROM px a WINDOW w AS (PARTITION BY a.symbol ORDER BY a.i)
     )
-    SELECT symbol, date, adv20, exit_px / entry - 1 AS ret FROM f WHERE entry > 0
+    SELECT symbol, date, adv20,
+           CASE WHEN date_diff('day', CAST(date AS DATE), CAST(exit_date AS DATE))
+                     <= {max_span_days(sessions)}
+                THEN exit_px / entry - 1 END AS ret
+    FROM f WHERE entry > 0
     """
 
 

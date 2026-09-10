@@ -20,11 +20,12 @@ def test_the_threshold_and_window_match_the_config():
     it. The alternates exist as declared robustness runs, never as a search for
     the threshold that produces a result."""
     import yaml
+
     from src.common.paths import CONFIGS
 
     spec = yaml.safe_load((CONFIGS / "participants.yml").read_text())["consensus"]
-    assert consensus.THRESHOLD == spec["threshold_institutions"]
-    assert consensus.WINDOW_SESSIONS == spec["window_sessions"]
+    assert spec["threshold_institutions"] == consensus.THRESHOLD
+    assert spec["window_sessions"] == consensus.WINDOW_SESSIONS
     assert spec["primary_definition"] == "distinct_participant_name", (
         "consensus.py keys on the raw client name; if the primary definition "
         "changes to parent grouping the constructor must change with it"

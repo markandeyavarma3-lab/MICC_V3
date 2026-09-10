@@ -82,16 +82,17 @@ def horizons() -> list[tuple[int, int | None]]:
 
 
 def _max_span_days(sessions: int) -> float:
-    """The calendar span a horizon of `sessions` may legitimately occupy.
+    """Delegates to `measure.max_span_days`.
 
-    A window wider than this did not hold a position for `sessions` sessions; it
-    held one across a trading suspension. The allowance is 1.5x the expected
-    span plus ten days — generous enough that a run of holidays never trips it,
-    tight enough to catch the 707-day "twelve-month" windows that were being
-    counted as ordinary.
+    THE THRESHOLD LIVES IN ONE PLACE. This module defined its own copy of the
+    arithmetic until 2026-09-05, while `measure._returns_sql` — the engine six
+    study modules share — had no span check at all. Two definitions of the same
+    rule is two rules, and the one that mattered more was the one that did not
+    exist.
     """
-    expected = sessions * 365.0 / SESSIONS_PER_YEAR
-    return expected * 1.5 + 10.0
+    from src.research import measure
+
+    return measure.max_span_days(sessions)
 
 
 @dataclass

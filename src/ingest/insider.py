@@ -105,18 +105,19 @@ def _num(s: str) -> float | None:
 
 
 def parse_file(path: str) -> list[Txn]:
-    text = gzip.open(path, "rb").read().decode("utf-8", "replace")
+    with gzip.open(path, "rb") as fh:
+        text = fh.read().decode("utf-8", "replace")
     by_ctx: dict[str, dict[str, str]] = {}
     for name, ctx, val in _EL.findall(text):
         by_ctx.setdefault(ctx, {})[name] = val.strip()
 
     head: dict[str, str] = {}
-    for ctx, d in by_ctx.items():
+    for d in by_ctx.values():
         if "Symbol" in d or "ISINCode" in d:
             head.update(d)
 
     out: list[Txn] = []
-    for ctx, d in by_ctx.items():
+    for d in by_ctx.values():
         if "SecuritiesAcquiredOrDisposedTransactionType" not in d:
             continue
         cat_raw = d.get("CategoryOfPerson", "")

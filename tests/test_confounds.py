@@ -92,8 +92,14 @@ def test_survivorship_exposure_is_reported_and_unrecovered(results):
     s = results["survivorship"]
     assert s.verdict == "MEASURED"
     assert "dead names" in s.headline
-    assert any("recovery factor is NOT applied" in d for d in s.detail), (
-        "the unapplied delisting recovery factor is no longer disclosed"
+    # UPDATED 2026-09-06. This asserted the detail line said the recovery factor
+    # was "NOT applied — step 6.4 unbuilt". 6.4 was built on 2026-09-03 (0052)
+    # and the prose kept saying otherwise for two days, because a status claim
+    # hardcoded in a string cannot notice that it came true. The requirement is
+    # unchanged — the exposure must be disclosed — but what there is to disclose
+    # is now the opposite fact.
+    assert any("recovery factor IS now applied" in d for d in s.detail), (
+        "the delisting recovery treatment is no longer disclosed"
     )
 
 

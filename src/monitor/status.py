@@ -87,7 +87,6 @@ class Ctx:
         db = research_db("prod")
         if not db.exists():
             return {}
-        import duckdb
 
         con = duckdb.connect(str(db))
         try:
@@ -206,7 +205,6 @@ class Ctx:
         """
         if not self.duck_rows.get("institutional_deals_clean"):
             return False
-        import duckdb
         con = duckdb.connect(str(research_db("prod")), read_only=True)
         try:
             n = con.execute(
@@ -228,7 +226,6 @@ class Ctx:
         d = warehouse_dir("prod") / name
         if not list(d.glob("**/*.parquet")):
             return ""
-        import duckdb
         con = duckdb.connect()
         try:
             return con.execute(
@@ -258,7 +255,6 @@ class Ctx:
         files = list((COLLECTED / "corporate_actions").glob("*.parquet"))
         if not files:
             return 0
-        import duckdb
         con = duckdb.connect()
         try:
             return con.execute(
@@ -673,7 +669,7 @@ class Report:
     rows: list[tuple[Step, Level]] = field(default_factory=list)
     #: The same ground truth the levels were graded against. Carried so a
     #: derived note cannot be resolved from a second, differing read.
-    ctx: "Ctx | None" = None
+    ctx: Ctx | None = None
 
     def by_phase(self) -> dict[str, list[tuple[Step, Level]]]:
         out: dict[str, list[tuple[Step, Level]]] = {}

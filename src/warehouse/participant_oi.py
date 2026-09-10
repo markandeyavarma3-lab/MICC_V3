@@ -35,8 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import duckdb  # noqa: E402
 
 from src.common.hashing import hash_file  # noqa: E402
-from src.common.paths import SEED, research_db  # noqa: E402
 from src.common.migrate import migrate_duckdb  # noqa: E402
+from src.common.paths import SEED, research_db  # noqa: E402
 from src.governance import provenance as prov  # noqa: E402
 
 SOURCE_FILE = SEED / "participant_oi.parquet"

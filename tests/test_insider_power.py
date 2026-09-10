@@ -71,10 +71,15 @@ def test_the_grid_reproduces_0046_exactly():
     rows = insider_power.grid("prod")
     buy = next(r for r in rows if r.population == "promoter buy" and r.horizon == "252s (12m)")
     sell = next(r for r in rows if r.population == "promoter sell" and r.horizon == "252s (12m)")
-    assert buy.n_events == 24_835
-    assert buy.mde == pytest.approx(0.090728, abs=1e-4)
-    assert sell.n_events == 12_829
-    assert sell.mde == pytest.approx(0.075268, abs=1e-4)
+    # RE-MEASURED 2026-09-06 under the corrected horizon rule (0055). The
+    # suspension-spanning windows leave both populations: 24,835 -> 24,169 and
+    # 12,829 -> 12,231. Promoter sell is the only figure in the project that got
+    # WORSE (1.25x -> 1.30x short) and it was the closest to its bound, so it is
+    # worth stating plainly rather than reporting only the improvements.
+    assert buy.n_events == 24_169
+    assert buy.mde == pytest.approx(0.080590, abs=1e-4)
+    assert sell.n_events == 12_231
+    assert sell.mde == pytest.approx(0.078089, abs=1e-4)
 
 
 def test_pledge_invoke_does_not_open_a_new_path():

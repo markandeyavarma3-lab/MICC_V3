@@ -41,7 +41,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -141,7 +141,9 @@ def parse() -> list[Action]:
     """
     seen: dict[tuple[str, str, str], Action] = {}
     for f in archived_files():
-        for r in json.loads(gzip.open(f, "rb").read()):
+        with gzip.open(f, "rb") as fh:
+            records = json.loads(fh.read())
+        for r in records:
             subject = (r.get("subject") or "").strip()
             verdict = classify(subject)
             if verdict is None:

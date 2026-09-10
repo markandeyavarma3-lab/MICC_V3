@@ -32,7 +32,11 @@ def test_the_census_accounts_for_every_event(run):
     """
     census, _ = run
     assert sum(census.values()) == 1255
-    assert set(census) == {"HORIZON", "CENSORED", "STOPPED", "NO_BENCHMARK"}
+    # SUSPENDED joined the census on 2026-09-06 (0055): windows that complete on
+    # a row count but span a trading halt. Plan 2 §3.4 named the case from the
+    # start and nothing could detect it until the span guard landed.
+    assert set(census) == {"HORIZON", "CENSORED", "STOPPED", "NO_BENCHMARK",
+                           "SUSPENDED"}
 
 
 def test_horizon_count_matches_the_population_confounds_measures_on(run):
@@ -58,8 +62,8 @@ def test_censored_events_are_excluded_not_priced(run):
     assert census["CENSORED"] > 0
     # Only STOPPED events are added on top of the base population.
     assert by_name["ALL"].n_priced == census["STOPPED"]
-    assert (by_name["ALL"].n_base + census["STOPPED"]
-            + census["CENSORED"] + census["NO_BENCHMARK"]) == 1255
+    assert (by_name["ALL"].n_base + census["STOPPED"] + census["CENSORED"]
+            + census["NO_BENCHMARK"] + census["SUSPENDED"]) == 1255
     # AND THE MEAN IS TAKEN OVER EXACTLY THOSE ROWS. The first version of this
     # test asserted only the counts above, so deleting the CENSORED filter
     # entirely left it green while 76 live companies were priced at -100%.
@@ -115,8 +119,10 @@ def test_confounds_no_longer_reports_a_count_from_a_different_population():
     """COUNT(*) counts NULLs and avg() does not. The baseline read
     "n=1,255, raw effect -30.30%" where the mean was over 1,145 rows."""
     r = {x.confound_id: x for x in confounds.run("prod")}["_baseline"]
-    assert "n=1,145" in r.headline
-    assert any("110" in d and "no 252-session exit" in d for d in r.detail)
+    # 1,145 -> 1,115 on 2026-09-06: the horizon rule now excludes 30 windows
+    # that spanned a trading suspension (0055).
+    assert "n=1,115" in r.headline
+    assert any("140" in d and "no 252-session exit" in d for d in r.detail)
 
 
 def test_the_merged_case_is_declared_rather_than_silently_priced():

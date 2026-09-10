@@ -33,8 +33,15 @@ from pathlib import Path
 import duckdb
 
 from src.common.paths import (
-    COLLECTED, DOCS, ROOT, SALVAGED, SEED, SEED_INCREMENTS,
-    governance_db, research_db, warehouse_dir,
+    COLLECTED,
+    DOCS,
+    ROOT,
+    SALVAGED,
+    SEED,
+    SEED_INCREMENTS,
+    governance_db,
+    research_db,
+    warehouse_dir,
 )
 
 INVENTORY_PATH = DOCS / "DATA_INVENTORY.md"

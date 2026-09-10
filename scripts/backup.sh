@@ -142,7 +142,16 @@ fi
 
 mv "$WORK"/repo-$STAMP.bundle "$WORK"/state-$STAMP.tar.gz "$WORK"/MANIFEST-$STAMP.txt "$DEST/"
 
-"${0:A:h}/lib/prune_generations.zsh" "$DEST" "$STAMP" 3
+# THE GENERATION INDEX. Under launchd this process may not enumerate the
+# destination — `~/Library/Mobile Documents` is TCC-protected and readdir comes
+# back empty rather than erroring (measured 2026-09-10; see the header of
+# prune_generations.zsh). So retention is driven from a local index instead of a
+# directory listing, and this is the only line that appends to it.
+INDEX="$REPO/logs/backup_generations.txt"
+mkdir -p "$REPO/logs"
+echo "$STAMP" >> "$INDEX"
+
+"${0:A:h}/lib/prune_generations.zsh" "$DEST" "$STAMP" 3 "$INDEX"
 
 echo "  wrote: $(du -ch "$DEST"/repo-$STAMP.bundle "$DEST"/state-$STAMP.tar.gz | tail -1 | cut -f1)"
 echo "BACKUP: GREEN"

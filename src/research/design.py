@@ -37,7 +37,6 @@ skipped in silence.
 from __future__ import annotations
 
 import re
-
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Literal
