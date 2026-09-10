@@ -135,6 +135,21 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # nightly mart rebuild and the next manual run, which is the worse failure:
   # step 6.3 would report BUILT while every study reading it got nothing back.
   # 97 seconds against a mart rebuild that already costs more than that.
+  # CHAR_PANEL BEFORE OUTCOMES, AND IT WAS NEVER HERE AT ALL.
+  #
+  # The panel carries the size/momentum/volatility buckets CHAR_MATCHED matches
+  # on, and benchmarks.yml calls CHAR_MATCHED the primary measure of participant
+  # skill. Nothing rebuilt it: the spine advanced daily, outcomes rebuilt daily,
+  # and the panel sat frozen at 2026-08-14 for 27 days while every event after
+  # that date was matched against characteristics from the last rebalance it had.
+  #
+  # Not a correctness bug — the ASOF join still takes the most recent rebalance
+  # at or before each event, so the match stays point-in-time. It is a quality
+  # bug that degrades a little every day and reports nothing, which is worse:
+  # a wrong number argues with you, a slowly staler one does not.
+  # Found 2026-09-10 by giving DATA_INVENTORY.md an age column.
+  "$REPO/.venv/bin/python" -m src.research.charmatch
+  note "charpanel" $?
   "$REPO/.venv/bin/python" -m src.research.outcomes
   note "outcomes" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
