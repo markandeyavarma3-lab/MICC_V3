@@ -686,3 +686,79 @@ class TestVerdictMatchesTheEvidence:
             f"{c.testable} participants are now testable; VERDICT.md §4.3 says "
             f"the study cannot be run"
         )
+
+
+class TestNoFeedRotsInvisibly:
+    """A span ending "2026-06-25" reads as a fact, not a warning.
+
+    Nobody subtracts it from today while scanning 124 rows of a table, which is
+    how `char_panel` — the input to CHAR_MATCHED, the benchmark benchmarks.yml
+    calls primary — sat 27 days stale behind an em-dash while the spine and the
+    outcomes it feeds were both rebuilt daily. Nothing was wrong; something was
+    quietly getting worse, which is harder to notice.
+    """
+
+    @pytest.mark.unit
+    def test_the_inventory_reports_an_age_for_every_dated_table(self):
+        from src.monitor import inventory
+
+        text = (DOCS / "DATA_INVENTORY.md").read_text()
+        assert "| age |" in text, "the inventory no longer reports data age"
+        # A table with a span must carry an age, a PARKED marker, or be frozen.
+        # GROUP-AWARE. The seed, the increments and the salvaged predecessor
+        # state are frozen by construction and will never advance, so a blank
+        # age there is correct — flagging them would be noise that trains the
+        # reader to ignore the column that matters.
+        bad, group = [], ""
+        for line in text.splitlines():
+            if line.startswith("## "):
+                group = line[3:].strip()
+                continue
+            if not line.startswith("| `"):
+                continue
+            if any(group.startswith(g) for g in inventory.FROZEN_GROUPS):
+                continue
+            cells = [c.strip() for c in line.split("|")]
+            name, span, age = cells[1].strip("`"), cells[4], cells[5]
+            if name in inventory.PARKED:
+                continue
+            # EVERY BUILT WAREHOUSE TABLE IS DATED. Checking only rows that
+            # already show a span let a table escape by losing its date column
+            # altogether — which is exactly how char_panel hid: an unrecognised
+            # column produced an em-dash, and an em-dash was skipped. Watched
+            # failing 2026-09-10 by deleting `rebalance_date` from DATE_COLS.
+            if group.startswith("4. Built warehouse"):
+                assert "→" in span, (
+                    f"{name} reports no date span at all; an unrecognised date "
+                    f"column must not read as 'undated'"
+                )
+            if "→" in span and not age:
+                bad.append(f"{group}/{name}")
+        assert not bad, f"live tables reporting no age: {bad}"
+
+    @pytest.mark.unit
+    def test_a_parked_feed_names_the_trigger_that_would_restart_it(self):
+        """PARKED means somebody decided; STALE means nobody noticed. The
+        difference has to be legible, and the trigger comes from sources.yml so
+        "later" stays a decision rather than a drift."""
+        import yaml
+
+        from src.common.paths import CONFIGS
+        from src.monitor import inventory
+
+        spec = yaml.safe_load((CONFIGS / "sources.yml").read_text())
+        triggers = {d["id"] for d in spec.get("deferred", [])}
+        for table, trigger in inventory.PARKED.items():
+            assert trigger in triggers, (
+                f"{table} is parked behind '{trigger}', which is not a deferred "
+                f"source in sources.yml — the trigger cannot fire if nobody "
+                f"wrote it down"
+            )
+
+    @pytest.mark.unit
+    def test_the_characteristic_panel_is_rebuilt_by_the_collector(self):
+        """It was built only by hand for the life of the project."""
+        sh = (ROOT / "scripts" / "collect_daily.sh").read_text()
+        assert "src.research.charmatch" in sh
+        # and before outcomes, which consumes it
+        assert sh.index("src.research.charmatch") < sh.index("src.research.outcomes")

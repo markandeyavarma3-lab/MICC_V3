@@ -27,6 +27,7 @@ WHAT "CROSS-CHECKED" MEANS HERE. Three things, and they are different:
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,8 +50,38 @@ INVENTORY_PATH = DOCS / "DATA_INVENTORY.md"
 #: Columns that mean "when", in the order we prefer them. Tables use different
 #: names for the same idea and guessing wrongly reports a healthy table as
 #: undated, which reads like a defect.
+# A table whose date column is not listed here reports NO span and therefore no
+# age, which is how char_panel — the input to CHAR_MATCHED, the benchmark
+# benchmarks.yml calls primary — sat 27 days stale showing an em-dash. An
+# unrecognised date column must not read as "no dates".
 DATE_COLS = ("date", "trade_date", "TradDt", "session_date", "ex_date",
-             "as_of_date", "period_end", "timestamp", "dt")
+             "as_of_date", "period_end", "timestamp", "dt",
+             "rebalance_date", "rebal_date", "effective_from", "report_date")
+
+
+#: Feeds this project does NOT collect on purpose. `sources.yml` parks each one
+#: behind a named trigger so "later" is a decision rather than a drift, and the
+#: trigger is read from there rather than restated here.
+#:
+#: WHY THIS DISTINCTION EXISTS. A span ending "2026-06-25" reads as a fact, not a
+#: warning: nobody subtracts it from today while scanning a table of 124 rows. So
+#: a parked feed and a rotting one looked identical, which is precisely how a
+#: study gets built on data that stopped moving three months ago. PARKED says
+#: somebody decided; STALE says nobody noticed.
+PARKED: dict[str, str] = {
+    "participant_oi": "fno_institutional_positioning",
+    "fno_spine": "fno_institutional_positioning",
+}
+
+#: Groups that are frozen by construction. The seed and the salvaged predecessor
+#: state will never advance again — flagging them stale would be noise that
+#: trains the reader to ignore the column that matters.
+FROZEN_GROUPS = ("1. Seed", "2. Increments", "5. Salvaged")
+
+#: Sessions behind before a live feed is called stale. Two trading sessions,
+#: matching the collection alert in src/monitor/health.py rather than inventing
+#: a second threshold.
+STALE_DAYS = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +93,25 @@ class Table:
     span: str
     bytes: int
     note: str = ""
+
+    @property
+    def last_date(self) -> str:
+        return self.span.split("→")[-1].strip() if "→" in self.span else ""
+
+    def freshness(self, today: date) -> str:
+        """PARKED, STALE + age, or blank. Never silent about an old live feed."""
+        if self.name in PARKED:
+            return f"**PARKED** ({PARKED[self.name]})"
+        if any(self.group.startswith(g) for g in FROZEN_GROUPS):
+            return ""
+        last = self.last_date
+        if not last:
+            return ""
+        try:
+            age = (today - date.fromisoformat(last[:10])).days
+        except ValueError:
+            return ""
+        return f"**{age}d STALE**" if age > STALE_DAYS else f"{age}d"
 
 
 def _dir_bytes(p: Path) -> int:
@@ -154,6 +204,8 @@ def databases(env: str = "prod") -> list[Table]:
 def render(tables: list[Table]) -> str:
     from datetime import UTC, datetime
 
+    today = datetime.now(UTC).date()
+
     lines = [
         "# Data inventory",
         "",
@@ -183,14 +235,15 @@ def render(tables: list[Table]) -> str:
     lines.append("")
 
     for g, ts in groups.items():
-        lines += [f"## {g}", "", "| table | rows | cols | span | size | note |",
-                  "|---|---:|---:|---|---:|---|"]
+        lines += [f"## {g}", "", "| table | rows | cols | span | age | size | note |",
+                  "|---|---:|---:|---|---|---:|---|"]
         for x in sorted(ts, key=lambda x: -x.rows):
             size = (f"{x.bytes/1e9:.2f} GB" if x.bytes >= 1e9
                     else f"{x.bytes/1e6:.1f} MB" if x.bytes >= 1e6
                     else f"{x.bytes/1e3:.0f} KB" if x.bytes else "—")
             rows = "UNREADABLE" if x.rows < 0 else f"{x.rows:,}"
-            lines.append(f"| `{x.name}` | {rows} | {x.cols} | {x.span} | {size} | {x.note} |")
+            lines.append(f"| `{x.name}` | {rows} | {x.cols} | {x.span} | "
+                         f"{x.freshness(today)} | {size} | {x.note} |")
         lines.append("")
     return "\n".join(lines) + "\n"
 
