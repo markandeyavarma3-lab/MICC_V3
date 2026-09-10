@@ -617,9 +617,20 @@ def steps() -> list[Step]:
         Step("6.8", "6 Outcome study", "Romano-Wolf stepdown for ranking",
              built=lambda c: c.provides("src.research.multiplicity", "romano_wolf"),
              wired=lambda c: c.consumed("romano_wolf", "src/research/multiplicity.py"),
-             verified=lambda c: c.tested(r"romano")),
+             verified=lambda c: c.tested(
+                 r"test_it_is_a_stepdown_and_not_westfall_young_single_step"),
+             note=lambda c: "built for 6.9; the participant leaderboard it "
+                            "corrects has 1 testable candidate (decision 0056)"),
         Step("6.9", "6 Outcome study", "Null-calibration on shuffled participant labels",
-             built=lambda c: c.provides("src.research.outcomes", "null_calibration")),
+             built=lambda c: c.provides("src.research.nullcal", "run"),
+             wired=lambda c: c.consumed("nullcal", "src/research/nullcal.py"),
+             verified=lambda c: c.tested(
+                 r"test_the_procedure_does_not_manufacture_findings_from_noise"),
+             note=lambda c: "the procedure does not manufacture findings from "
+                            "noise (1.8% at a nominal 5%), and the participant "
+                            "study in Plan 2 §6.3 cannot be run: 1 of 7 eligible "
+                            "names has the months a monthly-cohort statistic "
+                            "needs (decision 0056)"),
         Step("6.10", "6 Outcome study", "Write study_result with corrected p and input hashes",
              built=lambda c: c.gov_rows.get("study_result", 0) > 0,
              note=lambda c: f"{c.gov_rows.get('study_result', 0)} row(s), from exp_001"),

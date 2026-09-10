@@ -273,3 +273,91 @@ def bar(
             f"derivation."
         ),
     )
+
+
+# =============================================================================
+# Romano-Wolf stepdown — Plan 3 step 6.8, Plan 2 §6.2
+# =============================================================================
+#
+# WHY IT IS HERE AND WHAT IT IS FOR. Plan 2 §6.3 fixes the participant-ranking
+# procedure before any leaderboard is computed, and step 4 of it is a
+# Romano-Wolf stepdown over all N eligible participants. Nothing else in this
+# module can do that job: `bar()` answers "how high would the best of N pure
+# noise trials have been", which is a single threshold. Romano-Wolf returns an
+# adjusted p for EVERY candidate, which is what §6.3 step 5 requires — "report
+# the FWER-adjusted p for every participant, not only the winners".
+#
+# WHY NOT BONFERRONI OR HOLM. Both assume the worst about dependence and pay for
+# it in power. Participant statistics here are strongly dependent: the same
+# market, overlapping months, often the same stocks. Romano-Wolf learns the
+# dependence from the bootstrap distribution instead of bounding it, which is
+# why Plan 2 §6.2 calls it "the genuinely better model for §6.3".
+#
+# WHAT IT DOES NOT DO. It controls the family-wise error rate over the N
+# candidates it is given. It cannot know about candidates you dropped before
+# calling it, which is exactly why §6.3 step 2 requires N to be declared and
+# stored BEFORE the run rather than read off the output.
+
+
+def romano_wolf(
+    observed: list[float],
+    bootstrap: list[list[float]],
+    two_sided: bool = True,
+) -> list[float]:
+    """FWER-adjusted p-values by Romano-Wolf stepdown (Romano & Wolf 2005).
+
+    `observed` is one statistic per candidate. `bootstrap` is B resamples, each
+    a full vector of the same length, ALREADY CENTRED on the observed values so
+    that it represents the null. Centring is the caller's job because only the
+    caller knows what the null is; getting it wrong silently produces adjusted
+    p-values that are far too small, which is the failure mode this whole module
+    exists to prevent.
+
+    THE STEPDOWN. Order candidates by |statistic| descending. For the largest,
+    the adjusted p is the fraction of bootstrap draws whose maximum |statistic|
+    over ALL candidates reaches it. Then drop it and repeat over the remainder,
+    so later candidates are judged against a shrinking family rather than the
+    full one — that is where the power over Bonferroni comes from. Monotonicity
+    is enforced afterwards, since a stepdown can otherwise hand a lower adjusted
+    p to a weaker candidate.
+
+    The +1 in the numerator and denominator is Davison-Hinkley: with B draws the
+    smallest achievable p is 1/(B+1), never 0. A reported p of exactly 0 would
+    be an artefact of finite bootstrap, and this project has enough of those.
+    """
+    n = len(observed)
+    if n == 0:
+        raise MultiplicityError("Romano-Wolf needs at least one candidate")
+    b = len(bootstrap)
+    if b == 0:
+        raise MultiplicityError("Romano-Wolf needs a bootstrap distribution")
+    for row in bootstrap:
+        if len(row) != n:
+            raise MultiplicityError(
+                f"every bootstrap draw must cover all {n} candidates; "
+                f"got a draw of length {len(row)}"
+            )
+
+    def mag(x: float) -> float:
+        return abs(x) if two_sided else x
+
+    obs = [mag(v) for v in observed]
+    order = sorted(range(n), key=lambda i: obs[i], reverse=True)
+
+    adjusted = [1.0] * n
+    prev = 0.0
+    for step, idx in enumerate(order):
+        remaining = order[step:]
+        # The max over the SHRINKING family, recomputed per step. Taking it over
+        # the full family every time is Westfall-Young single-step, not a
+        # stepdown, and is uniformly less powerful.
+        hits = 0
+        for draw in bootstrap:
+            m = max(mag(draw[j]) for j in remaining)
+            if m >= obs[idx]:
+                hits += 1
+        p = (hits + 1) / (b + 1)
+        p = max(p, prev)          # monotone in the stepdown order
+        adjusted[idx] = min(p, 1.0)
+        prev = p
+    return adjusted

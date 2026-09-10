@@ -127,6 +127,16 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "identity" $?
   "$REPO/.venv/bin/python" -m src.mart.clean
   note "mart" $?
+  # OUTCOMES MUST FOLLOW THE MART, EVERY TIME.
+  #
+  # deal_forward_outcomes holds a foreign key to institutional_deals_clean, so a
+  # mart rebuild deletes every outcome row — see the cascade in src/mart/clean.py
+  # and decision 0055. Without this stage the table would sit EMPTY between the
+  # nightly mart rebuild and the next manual run, which is the worse failure:
+  # step 6.3 would report BUILT while every study reading it got nothing back.
+  # 97 seconds against a mart rebuild that already costs more than that.
+  "$REPO/.venv/bin/python" -m src.research.outcomes
+  note "outcomes" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
   note "health" $?
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
