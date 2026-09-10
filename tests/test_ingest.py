@@ -335,8 +335,8 @@ class TestSeedCorpus:
         import duckdb
 
         from src.common.paths import research_db
-        from src.ingest.seed_deals import SEED_PARSER_VERSION
         from src.ingest.land import PARSER_VERSION
+        from src.ingest.seed_deals import SEED_PARSER_VERSION
 
         assert SEED_PARSER_VERSION != PARSER_VERSION, (
             "seed and live rows must not share a parser_version"
@@ -381,8 +381,8 @@ def test_an_empty_day_is_recordable(tmp_path, monkeypatch):
     """
     import duckdb
 
-    from src.ingest import land as land_mod
     from src.governance import provenance as prov_mod
+    from src.ingest import land as land_mod
 
     db = tmp_path / "research_test.duckdb"
     monkeypatch.setattr(land_mod, "research_db", lambda e=None: db)

@@ -40,3 +40,9 @@ docs/report/build/*.html
 # Scratch from one-off render experiments (raster-vs-vector diagram comparison,
 # Google Docs export spike). Underscore-prefixed by convention = disposable.
 docs/report/build/_*
+
+# DuckDB spills here when a query exceeds memory_limit, relative to the cwd it
+# was launched from. A killed process leaves the files behind: the 2026-09-06
+# suite run was OOM-killed and left 7.1 GB. Untracked and unignored, they were
+# one `git add -A` away from the repository.
+.tmp/

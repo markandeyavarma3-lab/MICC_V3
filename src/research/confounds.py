@@ -187,7 +187,10 @@ def _size(con, env, raw: float) -> Result:
                   AND CAST(cp.rebalance_date AS VARCHAR) <= a.tdate
                   ORDER BY cp.rebalance_date DESC LIMIT 1) AS sq
               FROM ab a)
-        SELECT sq, COUNT(*), avg(ab) FROM q WHERE sq IS NOT NULL GROUP BY 1 ORDER BY 1
+        -- COUNT(ab): see the baseline note. Four confounds reported COUNT(*)
+        -- beside avg(ab) until 2026-09-06, so every published n was the row
+        -- count and every published effect was the non-null count.
+        SELECT sq, COUNT(ab), avg(ab) FROM q WHERE sq IS NOT NULL GROUP BY 1 ORDER BY 1
     """).fetchall()
     if not rows:
         return Result("size", "MEASURED", "no size_q coverage for these events")
@@ -214,7 +217,7 @@ def _momentum(con, spine: str, raw: float) -> Result:
         qq AS (SELECT ab, pre21, NTILE(5) OVER (ORDER BY pre21) q FROM j)
         SELECT (SELECT corr(pre21, ab) FROM j),
                list(struct_pack(q := q, n := n, e := e))
-        FROM (SELECT q, COUNT(*) n, avg(ab) e FROM qq GROUP BY 1 ORDER BY 1)
+        FROM (SELECT q, COUNT(ab) n, avg(ab) e FROM qq GROUP BY 1 ORDER BY 1)
     """).fetchone()
     corr, quints = r
     detail = [f"pre-return quintile {d['q']}: n={d['n']:,} effect {d['e']:+.2%}"
@@ -239,7 +242,7 @@ def _liquidity(con) -> Result:
                  FROM pu WHERE pu.symbol=a.symbol AND CAST(pu.rebal_date AS VARCHAR) <= a.tdate
                  ORDER BY pu.rebal_date DESC LIMIT 1) AS tier
               FROM ab a)
-        SELECT tier, COUNT(*), avg(ab) FROM t WHERE tier IS NOT NULL GROUP BY 1
+        SELECT tier, COUNT(ab), avg(ab) FROM t WHERE tier IS NOT NULL GROUP BY 1
     """).fetchall()
     if not rows:
         return Result("liquidity", "MEASURED", "no PIT universe coverage for these events")
@@ -257,7 +260,7 @@ def _time_concentration(con) -> Result:
                     WHEN tdate < '2016-01-01' THEN '2011-15'
                     WHEN tdate < '2021-01-01' THEN '2016-20'
                     ELSE '2021-26' END era,
-               COUNT(*), avg(ab) FROM ab GROUP BY 1 ORDER BY 1
+               COUNT(ab), avg(ab) FROM ab GROUP BY 1 ORDER BY 1
     """).fetchall()
     detail = [f"{e:<9} n={c:,} effect {v:+.2%}" for e, c, v in rows]
     signs = {(v < 0) for _, _, v in rows}
@@ -296,14 +299,22 @@ def _survivorship(con, spine: str) -> Result:
     return Result("survivorship", "MEASURED",
                   f"spine carries {dead:,} dead names; {ev_dead:,} EXPLORE sell "
                   f"events are on names that later stopped trading",
-                  ["delisting recovery factor is NOT applied — Plan 3 step 6.4 unbuilt"])
+                  ["a recovery factor IS now applied — src/research/delisting.py "
+                   "(step 6.4, decision 0052). This line read 'NOT applied — "
+                   "step 6.4 unbuilt' for two days after 6.4 was built: a status "
+                   "claim hardcoded in prose cannot notice that it came true."])
 
 
 def _roundtrip(con, spine: str, explore: set[str]) -> Result:
     """PROP_HFT sensitivity. A filter touching 44% of the data must be visible."""
+    # COUNT(ab), NOT COUNT(*). The same defect the baseline carried until
+    # 2026-09-03: COUNT(*) counts rows whose abnormal return is NULL, so this
+    # reported "population after exclusion n=1,255" while every effect above it
+    # was computed over 1,115. One fix does not generalise to the other call
+    # sites by itself.
     r = con.execute("""
         SELECT
-          (SELECT COUNT(*) FROM ab),
+          (SELECT COUNT(ab) FROM ab),
           (SELECT COUNT(*) FROM institutional_deals_clean cl
              JOIN institutional_deals_raw rw USING (raw_deal_id)
            WHERE cl.side='SELL' AND cl.same_day_round_trip_flag)

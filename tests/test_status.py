@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 
 from src.common.paths import ROOT
-
 from src.monitor import status
 
 pytestmark = pytest.mark.data

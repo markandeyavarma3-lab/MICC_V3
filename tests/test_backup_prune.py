@@ -19,6 +19,7 @@ logic was pulled out into `scripts/lib/prune_generations.zsh`.
 
 from __future__ import annotations
 
+import pathlib
 import subprocess
 
 import pytest
@@ -37,7 +38,22 @@ def _gen(d, stamp: str) -> None:
 
 
 def _run(d, stamp: str, keep: int = 3):
-    r = subprocess.run([str(PRUNE), str(d), stamp, str(keep)],
+    """Retention over the generations present in `d`.
+
+    Since 2026-09-10 the script is driven by an index file rather than a
+    directory listing, so the helper writes one describing the fixture. Without
+    it these calls would fall back to the REPOSITORY's real index, find none of
+    their own stamps in it, and skip — passing for the wrong reason.
+    """
+    index = pathlib.Path(d) / "_index.txt"
+    found = sorted(p.name[len("repo-"):-len(".bundle")]
+                   for p in pathlib.Path(d).glob("repo-*.bundle"))
+    index.write_text("\n".join(found) + ("\n" if found else ""))
+    return _run_idx(d, stamp, str(index), keep)
+
+
+def _run_idx(d, stamp: str, index: str, keep: int = 3) -> str:
+    r = subprocess.run([str(PRUNE), str(d), stamp, str(keep), index],
                        capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     return r.stdout
@@ -130,54 +146,96 @@ def test_a_single_day_is_not_an_empty_keep_window(tmp_path):
     assert _stamps(tmp_path) == {"20260901-080028"}
 
 
-# --- the listing that was never ready ----------------------------------------
+# --- the listing that was never readable -------------------------------------
 #
-# The tests above run against a local tmp_path, where a file written on one line
-# is visible on the next. That is exactly why they passed for four days while
-# retention never ran once in production: the destination is iCloud, the prune
-# is called microseconds after `mv`, and the listing was empty EVERY time.
-# `du` on the same directory succeeded on the very next line of backup.sh.
+# The tests above run against a local tmp_path where a directory can be listed.
+# That is why they passed for nine days while retention never ran once in
+# production: under launchd the destination CANNOT BE ENUMERATED. Measured
+# 2026-09-10, same script, same path, same minute — interactive saw 26 bundles
+# and 78 entries; launchd saw 0 and 1, while stat on a known path worked in both.
+#
+# `~/Library/Mobile Documents` is TCC-protected. Decision 0053 misread the empty
+# listing as an iCloud lag and added a retry loop; retrying a permission denial
+# produces more denials, and the backup grew from 11 generations to 26 (2.5 GB)
+# while the log reported the fix was in.
 
 
-def test_the_listing_is_waited_for_rather_than_trusted_on_the_first_look(tmp_path):
-    """The readiness signal is the generation we just wrote.
+def _index(d, stamps) -> str:
+    p = d / "index.txt"
+    p.write_text("\n".join(stamps) + "\n")
+    return str(p)
 
-    A destination that answers "empty" one microsecond after a 92 MB move has
-    not told us it is empty; it has told us nothing yet. Retrying until the
-    fresh generation appears is what separates "nothing to prune" from "not
-    ready to prune", and the old code could not tell those apart.
+
+def test_retention_works_when_the_directory_cannot_be_listed(tmp_path):
+    """THE ONE THAT MATTERS NOW.
+
+    `chmod 300` is the faithful reproduction of what launchd sees: traverse and
+    write are permitted, listing is not. `chmod 100` is NOT — it also denies
+    unlink, which made the first version of this test report a false failure.
+
+    Retention must complete here using only the index and explicit paths.
     """
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    stamps = ["20260901-100000", "20260902-100000", "20260903-100000",
+              "20260904-100000", "20260905-100000"]
+    for st in stamps:
+        _gen(dest, st)
+    idx = _index(tmp_path, stamps)
+
+    dest.chmod(0o300)
+    try:
+        out = _run_idx(dest, "20260905-100000", idx)
+    finally:
+        dest.chmod(0o700)
+
+    assert "pruned generation 20260901-100000" in out
+    assert _stamps(dest) == {"20260903-100000", "20260904-100000", "20260905-100000"}
+
+
+def test_the_script_never_enumerates_the_destination_to_decide(tmp_path):
+    """An empty listing and a forbidden listing are indistinguishable, so an
+    empty one may never be read as "nothing to keep"."""
     src = PRUNE.read_text()
-    assert "while (( attempt <" in src, "the listing is still taken once and trusted"
-    assert "attempt(s)" in src, "the skip message does not say how long it waited"
+    assert "no generation index" in src, "the index is not the source of truth"
+    # The one glob that remains is a RECONCILIATION, and it must be guarded by a
+    # count check rather than used directly as the keep-list.
+    assert "if (( ${#seen} > 0 )); then" in src
 
 
-def test_the_retry_loop_does_not_kill_the_script_on_its_first_pass(tmp_path):
-    """WATCHED FAILING, 2026-09-05.
+def test_a_missing_index_prunes_nothing(tmp_path):
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    for st in ("20260901-100000", "20260902-100000"):
+        _gen(dest, st)
+    out = _run_idx(dest, "20260902-100000", str(tmp_path / "absent.txt"))
+    assert "skipped" in out
+    assert len(_stamps(dest)) == 2
 
-    The first version used `(( attempt++ ))`, which yields the value BEFORE the
-    increment. On the first pass that is 0, zsh treats an arithmetic 0 as a
-    failed command, and `set -e` exited the script — status 1, no output, both
-    the skip and refuse branches unreachable. The whole file exists because a
-    retention policy failing silently is indistinguishable from one with nothing
-    to do, and the retry loop reintroduced precisely that.
-    """
-    assert "(( ++attempt ))" in PRUNE.read_text(), "post-increment trips set -e at 0"
-    # Both branches must be REACHED, not merely present: _run asserts rc == 0.
-    out = _run(tmp_path, "20260901-080000")
-    assert "skipped" in out.lower()
-    for s in ("20260830-200000", "20260831-200000"):
-        _gen(tmp_path, s)
-    out = _run(tmp_path, "29990101-000000")
+
+def test_a_stamp_absent_from_the_index_refuses_to_delete(tmp_path):
+    """Same trust condition as before; only the source of the listing changed.
+    If the index does not describe this run, it cannot authorise deletes."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    stamps = ["20260901-100000", "20260902-100000", "20260903-100000",
+              "20260904-100000"]
+    for st in stamps:
+        _gen(dest, st)
+    idx = _index(tmp_path, stamps)
+    out = _run_idx(dest, "29990101-000000", idx)
     assert "SKIPPED" in out
-    assert len(_stamps(tmp_path)) == 2
+    assert len(_stamps(dest)) == 4
 
 
-def test_a_membership_test_on_a_miss_must_not_trip_set_u(tmp_path):
-    """`${bundles[(r)needle]}` raises "parameter not set" under `set -u` when
-    the needle is absent — on the refusal path, which is the path that protects
-    the backups. `(Ie)` yields an index or 0 and is the idiom already used for
-    the keep-day test lower in the same file."""
-    src = PRUNE.read_text()
-    assert "[(r)$DEST/repo-$STAMP.bundle]" not in src
-    assert "[(Ie)$DEST/repo-$STAMP.bundle]" in src
+def test_the_index_is_reconciled_when_listing_is_possible(tmp_path):
+    """A stale index must heal rather than delete the wrong set. Where the
+    directory CAN be read, reality wins over the index."""
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    for st in ("20260903-100000", "20260904-100000", "20260905-100000"):
+        _gen(dest, st)
+    # index claims a generation that no longer exists, and misses two that do
+    idx = _index(tmp_path, ["20260101-000000", "20260905-100000"])
+    _run_idx(dest, "20260905-100000", idx)
+    assert "20260101-000000" not in pathlib.Path(idx).read_text()

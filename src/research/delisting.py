@@ -48,7 +48,7 @@ from dataclasses import dataclass
 import duckdb
 
 from src.common.paths import SEED, research_db, warehouse_dir
-from src.research import confounds, measure, split
+from src.research import confounds, measure
 
 PIT_UNIVERSE = SEED / "pit_universe.parquet"
 
@@ -80,6 +80,13 @@ class Tier:
         cells = "  ".join(f"rf={f:.2f} {self.effects[f]:+.2%}" for f in RECOVERY_FACTORS)
         return (f"  {self.name:<14} base n={self.n_base:>5,} {self.effect_base:+.2%}"
                 f"   +{self.n_priced:>3} priced   {cells}")
+
+
+def _span(sessions: int) -> float:
+    """The one definition, imported rather than restated. See measure.max_span_days."""
+    from src.research import measure
+
+    return measure.max_span_days(sessions)
 
 
 def _classify_sql(spine: str, sessions: int, cutoff: str) -> str:
@@ -115,6 +122,7 @@ def _classify_sql(spine: str, sessions: int, cutoff: str) -> str:
         SELECT symbol, date,
                LEAD(open, 1) OVER w AS entry,
                LEAD(close, {sessions}) OVER w AS exit_px,
+               LEAD(date, {sessions}) OVER w AS exit_date,
                i
         FROM px WINDOW w AS (PARTITION BY symbol ORDER BY i)
     ),
@@ -122,7 +130,18 @@ def _classify_sql(spine: str, sessions: int, cutoff: str) -> str:
     SELECT ev.tdate, ev.symbol, f.entry, f.exit_px,
            l.n - f.i AS sessions_after, lp.last_close,
            CASE
-             WHEN l.n - f.i >= {sessions} THEN 'HORIZON'
+             -- THE SPAN GUARD, MATCHING measure._returns_sql. This module kept
+             -- a THIRD copy of the horizon rule and it was the unguarded one.
+             -- Once the shared engine started excluding suspension-spanning
+             -- windows from the market leg on 2026-09-05, this classifier was
+             -- still calling them HORIZON, so the event population and the
+             -- benchmark it was measured against disagreed about which events
+             -- exist. Same rule, one definition, three call sites.
+             WHEN l.n - f.i >= {sessions}
+                  AND date_diff('day', CAST(f.date AS DATE),
+                                CAST(f.exit_date AS DATE)) <= {_span(sessions)}
+               THEN 'HORIZON'
+             WHEN l.n - f.i >= {sessions} THEN 'SUSPENDED'
              WHEN CAST(l.last_date AS DATE)
                   >= CAST((SELECT e FROM spine_end) AS DATE) - {STILL_TRADING_SESSIONS}
                THEN 'CENSORED'
@@ -244,7 +263,7 @@ def main() -> int:
     census, tiers = run()
     total = sum(census.values())
     print("  exit reason census")
-    for reason in ("HORIZON", "STOPPED", "CENSORED", "NO_BENCHMARK"):
+    for reason in ("HORIZON", "STOPPED", "SUSPENDED", "CENSORED", "NO_BENCHMARK"):
         n = census.get(reason, 0)
         print(f"    {reason:<13} {n:>6,}  {n / total:6.1%}")
     print(f"    {'total':<13} {total:>6,}")
@@ -253,7 +272,9 @@ def main() -> int:
     print("  data, so there is no outcome to recover. Pricing them at any factor")
     print("  would invent a delisting. NO_BENCHMARK events are excluded too: the")
     print("  market leg is undefined inside 252 sessions of the cutoff, so there")
-    print("  is nothing to measure the stock against.")
+    print("  is nothing to measure the stock against. SUSPENDED events are")
+    print("  excluded as well (Plan 2 §3.4): the window spans a trading halt, so")
+    print("  a twelve-month label would describe a multi-year holding period.")
     print()
     for t in tiers:
         print(t.render())

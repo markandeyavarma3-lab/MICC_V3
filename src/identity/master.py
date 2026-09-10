@@ -310,7 +310,7 @@ def main() -> int:
         print(f"  {str(k):<12} {n:>8,}  {n / total:>6.2%}")
     unresolved = r["breakdown"].get("UNRESOLVED", 0)
     uncovered = r["breakdown"].get("UNCOVERED", 0)
-    print(f"\n  Phase 3 gate: unresolved rate < 5%")
+    print("\n  Phase 3 gate: unresolved rate < 5%")
     print(f"    unresolved (a symbol we simply cannot place) {unresolved / total:>7.2%}")
     print(f"    uncovered  (no price series either, 0032)    {uncovered / total:>7.2%}")
     return 0

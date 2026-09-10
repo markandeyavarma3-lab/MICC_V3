@@ -47,7 +47,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import duckdb
-
 import yaml
 
 from src.common.paths import CONFIGS, research_db, warehouse_dir
@@ -86,6 +85,9 @@ PRODUCED_BY = "src.mart.clean:build"
 class CleanReport:
     rows: int = 0
     eligible: int = 0
+    #: Outcome rows a rebuild invalidated. Reported, never silent — see build().
+    derived_invalidated: int = 0
+
     by_reason: dict[str, int] = field(default_factory=dict)
     by_identity: dict[str, int] = field(default_factory=dict)
     by_timing: dict[str, int] = field(default_factory=dict)
@@ -103,6 +105,11 @@ class CleanReport:
         out.append("\n  available_from confidence:")
         for k, v in sorted(self.by_timing.items(), key=lambda x: -x[1]):
             out.append(f"    {k:<34} {v:>8,}")
+        if self.derived_invalidated:
+            out.append(
+                f"\n  INVALIDATED {self.derived_invalidated:,} deal_forward_outcomes row(s): "
+                f"a rebuilt mart makes every derived outcome stale.\n"
+                f"  Rebuild with:  python -m src.research.outcomes")
         return "\n".join(out)
 
 
@@ -156,6 +163,27 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                 FROM csd GROUP BY 1)
             WHERE days >= {t.min_client_stock_days} AND ratio >= {t.roundtrip_ratio}
         """)
+
+        # DERIVED OUTCOMES ARE INVALIDATED BY A REBUILD, AND THE FK ENFORCES IT.
+        #
+        # `deal_forward_outcomes` references institutional_deals_clean(deal_id).
+        # While that table was empty the DELETE below succeeded; the moment step
+        # 6.3 populated it on 2026-09-05, EVERY scheduled mart rebuild failed
+        # with a foreign-key violation and the mart froze. The collector
+        # reported mart=1 three times a day for five days and 767 collected
+        # deals never reached the mart — the failure was loud and nothing acted
+        # on it, which is this project's standing pattern wearing a new hat.
+        #
+        # Cascading is the correct treatment rather than a workaround: an
+        # outcome is a forward return computed FROM a mart row, so a rebuilt
+        # mart makes every one of them stale by construction. They are deleted
+        # in FK order and the count is reported, because silently emptying a
+        # 52,000-row table would be worse than the breakage it replaces.
+        derived = con.execute(
+            "SELECT COUNT(*) FROM deal_forward_outcomes").fetchone()[0]
+        if derived:
+            con.execute("DELETE FROM outcome_benchmark_returns")
+            con.execute("DELETE FROM deal_forward_outcomes")
 
         con.execute("DELETE FROM institutional_deals_clean")
         con.execute(f"""
@@ -296,7 +324,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
         parents=parents,
         env=env,
     )
-    return CleanReport(rows, elig, by_reason, by_identity, by_timing)
+    return CleanReport(rows, elig, derived, by_reason, by_identity, by_timing)
 
 
 def main() -> int:

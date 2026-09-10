@@ -24,7 +24,6 @@ docs as the configs currently define them, and that superseded values do not.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 import yaml
@@ -44,11 +43,8 @@ def _plan_text() -> str:
     return "\n".join(p.read_text() for p in sorted(PLANS.glob("PLAN_*.md")))
 
 
-_ONES = (
-    "Zero One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve "
-    "Thirteen Fourteen Fifteen Sixteen Seventeen Eighteen Nineteen"
-).split()
-_TENS = "  Twenty Thirty Forty Fifty Sixty Seventy Eighty Ninety".split(" ")
+_ONES = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+_TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
 
 
 def _spell(n: int) -> str:

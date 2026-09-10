@@ -200,7 +200,12 @@ def test_an_acknowledged_gap_stops_paging_but_stays_visible(tmp_path, monkeypatc
     # source is stale anyway, `alerting` is True for that reason alone, and the
     # assertion below would pass with the acknowledgement logic deleted. That is
     # how the first version of this test was written and it proved nothing.
-    hole, before, after = _days_ago(3), _days_ago(4), _days_ago(2)
+    # THE LATEST SESSION IS TODAY, DELIBERATELY. This used `_days_ago(2)` as the
+    # latest, which is exactly STALE_SESSIONS, so `alerting` fired on staleness
+    # and the assertion below failed five days after it was written — a test
+    # that passes or fails depending on which weekday it runs. The fixture has
+    # to isolate the ONE condition it names.
+    hole, before, after = _days_ago(2), _days_ago(3), _days_ago(0)
     rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
              "fetched_at": datetime.now(UTC).isoformat()}
             for d in (before, hole, after)]
@@ -221,7 +226,9 @@ def test_an_acknowledged_gap_stops_paging_but_stays_visible(tmp_path, monkeypatc
 def test_an_unacknowledged_gap_still_pages(tmp_path, monkeypatch):
     """The default is to alert. Acknowledging is a deliberate act with a date
     and a reason in sources.yml, not a threshold that decays on its own."""
-    hole, before, after = _days_ago(3), _days_ago(4), _days_ago(2)
+    # Same recency as the test above, so the ONLY difference between them is
+    # whether the gap is written down.
+    hole, before, after = _days_ago(2), _days_ago(3), _days_ago(0)
     rows = [{"source_id": "nse_bhavcopy", "session_date": d, "status": "STORED",
              "fetched_at": datetime.now(UTC).isoformat()}
             for d in (before, hole, after)]

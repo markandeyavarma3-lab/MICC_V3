@@ -74,14 +74,26 @@ def test_the_twelve_month_figure_is_reproducible():
     # 13.2771% -> 13.2701% on 2026-09-01 when decision 0045 made the collector
     # EQ-only to match the seed, dropping six BE/BZ events from the tail.
     # Six events out of 4,772 and 0.007pp of MDE; the verdict is unchanged.
-    assert row.mde == pytest.approx(0.13270067, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0045 is "
-        f"13.2701%. If this changed legitimately, say so in a decision record."
+    # RE-MEASURED 2026-09-06, decision 0055. `_returns_sql` took the exit as
+    # LEAD(close, 252) over a ROW INDEX — 252 rows of this name's own history,
+    # not 252 sessions — so a name suspended for years and relisted supplied its
+    # 252nd row years later and the result was returned as a twelve-month
+    # figure. ATLASCYCLE spanned 3,506 days. Excluding windows wider than their
+    # own horizon: 13.2701% -> 11.5374% on 4,766 -> 4,673 events.
+    #
+    # This is the LARGEST single move this figure has made, and it moves in the
+    # project's favour, which is exactly why it needed a decision record rather
+    # than a quiet re-pin. The verdict is unchanged: 1.92x short instead of
+    # 2.21x, still nowhere near its bound.
+    assert row.mde == pytest.approx(0.11537426, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0055 is "
+        f"11.5374%. If this changed legitimately, say so in a decision record."
     )
-    assert row.n_events == 4_766
+    assert row.n_events == 4_673
     assert not row.powered, (
-        "12 months is 2.22x short of its bound once untradeable events are "
-        "excluded. If this ever passes again, the reason must be explained."
+        "12 months is 1.92x short of its bound once untradeable events and "
+        "suspension-spanning windows are excluded. If this ever passes again, "
+        "the reason must be explained."
     )
 
 
@@ -193,7 +205,7 @@ def test_the_pass_bar_is_read_from_config_not_restated():
     declared = yaml.safe_load(
         (CONFIGS / "research.yml").read_text()
     )["power"]["plausible_effect_bound_monthly"]
-    assert measure.BOUND_PER_MONTH == pytest.approx(float(declared)), (
+    assert pytest.approx(float(declared)) == measure.BOUND_PER_MONTH, (
         "the bound every verdict uses has drifted from the one research.yml "
         "declares"
     )
