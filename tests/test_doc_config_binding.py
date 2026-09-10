@@ -614,3 +614,75 @@ def test_report_has_no_appendices():
     """Removed at the owner's request 2026-08-18."""
     r = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
     assert "## Appendix" not in r, "an appendix has come back"
+
+
+# --- the verdict document ----------------------------------------------------
+
+
+class TestVerdictMatchesTheEvidence:
+    """VERDICT.md is the project's deliverable. Every structural claim in it is
+    bound to live data here, because a conclusion that quietly stops matching
+    the system it describes is the exact drift this file exists to prevent.
+
+    Row counts are NOT pinned — collection continues daily and the document
+    date-stamps them. What is pinned is everything that would have to change for
+    the verdict itself to be wrong.
+    """
+
+    @staticmethod
+    def _text() -> str:
+        return (DOCS / "reports" / "VERDICT.md").read_text()
+
+    @pytest.mark.unit
+    def test_it_exists_and_states_a_negative_verdict(self):
+        t = self._text()
+        assert "No answer is available from this data" in t
+        assert "Nothing is registrable" in t
+
+    @pytest.mark.needs_data
+    def test_no_horizon_is_registrable_as_the_verdict_claims(self):
+        from src.research import measure
+
+        rows = measure.grid("prod")
+        assert rows and not any(r.powered for r in rows), (
+            "a horizon now reaches its bound; VERDICT.md §4.1 says none does"
+        )
+
+    @pytest.mark.needs_data
+    def test_the_quoted_power_grid_is_the_one_the_code_produces(self):
+        """§4.1 quotes three MDEs. If the pipeline moves and the document does
+        not, the document is fiction."""
+        from src.research import measure
+
+        t = self._text()
+        by_sessions = {r.sessions: r for r in measure.grid("prod")}
+        for sessions, quoted in ((21, "2.13%"), (63, "4.67%"), (252, "11.54%")):
+            assert quoted in t, f"{quoted} is no longer quoted in VERDICT.md"
+            actual = f"{by_sessions[sessions].mde:.2%}"
+            assert actual == quoted, (
+                f"{sessions}s MDE is {actual}; VERDICT.md §4.1 says {quoted}"
+            )
+
+    @pytest.mark.needs_data
+    def test_the_liquidity_gradient_still_runs_the_wrong_way(self):
+        """§4.2's decisive confound. If the effect ever becomes strongest in
+        top100 rather than off500, the verdict's central argument is gone."""
+        from src.research import delisting
+
+        _census, tiers = delisting.run("prod")
+        t = {x.name: x for x in tiers}
+        assert t["off500"].effect_base < t["top500_ex100"].effect_base < \
+            t["top100"].effect_base, (
+                "the effect is no longer strongest in the least tradeable tier"
+            )
+
+    @pytest.mark.needs_data
+    def test_no_participant_is_supported_as_the_verdict_claims(self):
+        from src.research import nullcal
+
+        c = nullcal.run(252, permutations=50)
+        assert c.real_supported == 0
+        assert c.testable <= 3, (
+            f"{c.testable} participants are now testable; VERDICT.md §4.3 says "
+            f"the study cannot be run"
+        )
