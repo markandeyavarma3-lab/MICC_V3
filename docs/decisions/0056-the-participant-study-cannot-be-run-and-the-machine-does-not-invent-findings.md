@@ -137,6 +137,43 @@ written.
   immediately after the mart — 97 seconds — because a table that is empty
   between nightly runs while grading as BUILT is the worse failure.
 
+## Amendment, 2026-09-10 (same day, before any work rested on it)
+
+The owner asked whether I was sure. Three checks; the verdict is unchanged and
+stronger, and two figures above were overstated. Recorded here rather than
+edited away, and the original text is left standing.
+
+**1. "One participant in the entire dataset could support the specified test"
+is benchmark-specific, and I did not say so.** It is one under CHAR_MATCHED,
+which covers 74% of outcomes. Under EW_TOP500, which covers 100%, it is three.
+The benchmark-independent figure — the one that should have been quoted — is
+that **7 participants have ≥12 months of activity at all**, of which 3 also
+clear 30 events. The conclusion holds either way; the number I chose happened to
+be the most dramatic one available, which is not how a number should be chosen.
+
+**2. "The procedure is calibrated" is true at seven of nine horizons, not all
+nine.** Rates: 0.0%, 0.1%, 1.1%, 1.3%, 1.8%, 3.1%, **9.4%**, **11.3%**. Two
+horizons are roughly double the nominal 5%. The honest statement is that the
+correction is calibrated where participants have months and unreliable where
+they do not, which makes the miscalibration and the unrunnability the same
+phenomenon rather than two findings.
+
+**3. The 63s artefact is confirmed, and the mechanism is now explicit.** The
+"supported" participant is `ISHARES MSCI INDIA SMALL-CAP ETF` — a passive
+small-cap index tracker — with **223 events across TWO months**, adjusted
+p = 0.0039. Meanwhile `SOCIETE GENERALE`, the only name in the family with a
+usable history at **29 months**, sits at p = 0.539.
+
+Across all 33 testable (participant, horizon) pairs:
+
+    correlation(months present, FWER-adjusted p) = +0.337
+
+**Positive is backwards.** More evidence should mean a smaller p. Here the
+fewer months a participant has, the more significant it looks, because a
+studentised mean over two observations has no stable denominator. The
+leaderboard ranks sparsity, not skill, and the one apparent finding in nine
+horizons is the sparsest name in its family.
+
 ## What would reverse this
 
 A participant identity layer that resolves to beneficial owners rather than

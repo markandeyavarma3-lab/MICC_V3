@@ -212,3 +212,48 @@ def test_almost_no_eligible_participant_has_enough_months_to_be_tested(cal):
         f"in decision 0056 needs revisiting"
     )
     assert min(cal.months_present) == 1
+
+
+def test_the_ranking_tracks_sparsity_rather_than_evidence():
+    """THE MECHANISM BEHIND THE ONE APPARENT FINDING.
+
+    A skill test should reward evidence: more months, smaller p. Measured across
+    every testable (participant, horizon) pair, the correlation between months
+    present and FWER-adjusted p is POSITIVE — the fewer months a participant
+    has, the more significant it looks, because a studentised mean over two
+    observations has no stable denominator.
+
+    The 63s "supported" participant is a passive small-cap index ETF with 223
+    events across two months at p = 0.0039, while the only name in that family
+    with 29 months sits at p = 0.539. That is the whole finding: the leaderboard
+    ranks sparsity.
+
+    If this correlation ever turns materially negative the ranking has started
+    behaving like a test, and decision 0056 needs revisiting.
+    """
+    import statistics as st
+
+    import duckdb
+
+    from src.common.paths import research_db
+
+    con = duckdb.connect(str(research_db("prod")), read_only=True)
+    try:
+        months, ps = [], []
+        for s in (1, 21, 63, 252):
+            c = nullcal.run(s, permutations=1)
+            coh = nullcal._cohorts(
+                con.execute(nullcal.EVENTS_SQL.format(sessions=s)).fetchall())
+            for name, _n, _mean, p in c.leaderboard:
+                m = len(coh[name])
+                if m >= 2:            # a 1-month name scores 0 by construction
+                    months.append(m)
+                    ps.append(p)
+    finally:
+        con.close()
+
+    assert len(months) >= 15, "too few testable pairs to say anything"
+    assert st.correlation(months, ps) > 0.0, (
+        "adjusted p now falls as months rise, which is how a real test behaves; "
+        "0056 concluded the opposite and needs revisiting"
+    )
