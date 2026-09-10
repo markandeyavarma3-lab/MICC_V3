@@ -170,12 +170,20 @@ def test_status_predicates_cannot_be_satisfied_by_their_own_descriptions():
 
 @pytest.mark.unit
 def test_provides_reports_absent_symbols_as_absent():
-    """The grader must be able to say no. Romano-Wolf is specified by Plan 3
-    step 6.8 and multiplicity.py implements Sidak and a Gumbel-limit max-null-t
-    — not Romano-Wolf under any name."""
+    """The grader must be able to say no.
+
+    This used `multiplicity.romano_wolf` as its known-absent symbol, because
+    Plan 3 step 6.8 specified it and nothing implemented it. Step 6.8 was built
+    on 2026-09-10 to support the null calibration, so the example had to move to
+    a step that is still genuinely unbuilt — 6.6's CPCV and 7.7's Hansen SPA.
+
+    A test whose negative case quietly becomes true is a test that stops
+    checking anything, which is why the positive case sits beside it.
+    """
     c = status.Ctx()
     assert c.provides("src.research.power", "serial_inflation")
-    assert not c.provides("src.research.multiplicity", "romano_wolf")
+    assert c.provides("src.research.multiplicity", "romano_wolf")
+    assert not c.provides("src.research.walkforward", "cpcv_paths")
     assert not c.provides("src.research.seasonality", "hansen_spa")
     assert not c.provides("src.does.not.exist", "anything")
 
