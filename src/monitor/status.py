@@ -492,7 +492,12 @@ def steps() -> list[Step]:
         Step("3.7", "3 Identity", "Behavioural PROP_HFT classifier",
              built=lambda c: "roundtrip_ratio" in c.src_text.get("src/mart/eligibility.py", ""),
              wired=lambda c: c.consumed("eligibility", "src/mart/eligibility.py"),
-             verified=lambda c: c.tested(r"prop_hft|roundtrip")),
+             verified=lambda c: c.tested(r"prop_hft|roundtrip"),
+             note=lambda c: "tags 168 of 239,480 deals (0.07%). The exclusion "
+                            "credited to this classifier is done by the same-day "
+                            "round-trip flag — 147,116 deals, 61% — so Graviton, "
+                            "HRT, Tower and XTX survive it. VERIFIED describes "
+                            "the code, not the coverage (0056 amendment 2)"),
         Step("3.8", "3 Identity", "Name-pattern classifier for the residual",
              built=lambda c: "roundtrip_ratio" in c.src_text.get("src/mart/eligibility.py", ""),
              wired=lambda c: c.consumed("eligibility", "src/mart/eligibility.py"),
