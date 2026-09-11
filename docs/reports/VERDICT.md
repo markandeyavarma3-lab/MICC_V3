@@ -53,7 +53,7 @@ the structural findings in §4 do not, and a test binds them to live data.
 | Eligible research events | 5,944 after size, liquidity and round-trip filters |
 | Forward outcomes | 52,365 across 9 horizons |
 | Benchmarks | 5 of 6 specified (one is unbuildable — §7) |
-| Automated tests | 523 |
+| Automated tests | 540 |
 | Decision records | 56 |
 
 Raw and clean are equal by design: every ingested deal reaches the mart with an
