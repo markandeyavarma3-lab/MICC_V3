@@ -26,6 +26,7 @@ WHAT "CROSS-CHECKED" MEANS HERE. Three things, and they are different:
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 from datetime import date
 from dataclasses import dataclass
@@ -73,6 +74,36 @@ PARKED: dict[str, str] = {
     "fno_spine": "fno_institutional_positioning",
 }
 
+def _wired_tables() -> set[str]:
+    """Table names any module under src/ or scripts/ actually references.
+
+    WHY THIS IS A COLUMN AND NOT A NOTE. On 2026-09-10 I dismissed a request to
+    build three tables by pointing at their presence in the seed. Two of the
+    three — `regime_daily`, `sector_regime_daily` — plus `index_membership` are
+    referenced by NO code at all. Presence is not capability, and an inventory
+    that lists 124 seed tables without saying which are live invites exactly
+    that mistake. The same error, one layer up, as char_panel.
+    """
+    import re
+
+    # THIS FILE IS EXCLUDED FROM ITS OWN SCAN. The first version was not, and the
+    # comment above — which names index_membership, regime_daily and
+    # sector_regime_daily as UNWIRED — made all three match as wired. A detector
+    # that reads its own explanation of what it detects reports the opposite of
+    # the truth. Decision 0048 found exactly this in status.py, where a predicate
+    # matched the word it was searching for in its own source.
+    me = pathlib.Path(__file__).resolve()
+    text = []
+    for d in (ROOT / "src", ROOT / "scripts"):
+        for pat in ("*.py", "*.sh"):
+            for f in d.rglob(pat):
+                if f.resolve() == me:
+                    continue
+                text.append(f.read_text(errors="ignore"))
+    blob = "\n".join(text)
+    return {m for m in re.findall(r"[a-z][a-z0-9_]{3,}", blob)}
+
+
 #: Groups that are frozen by construction. The seed and the salvaged predecessor
 #: state will never advance again — flagging them stale would be noise that
 #: trains the reader to ignore the column that matters.
@@ -97,6 +128,14 @@ class Table:
     @property
     def last_date(self) -> str:
         return self.span.split("→")[-1].strip() if "→" in self.span else ""
+
+    def wired(self, referenced: set[str]) -> str:
+        """Whether any code reads this table. Blank for derived warehouse tables,
+        which exist only because something built them."""
+        if self.group.startswith("4. Built") or self.group.startswith("6.") \
+                or self.group.startswith("7."):
+            return ""
+        return "yes" if self.name in referenced else "**no**"
 
     def freshness(self, today: date) -> str:
         """PARKED, STALE + age, or blank. Never silent about an old live feed."""
@@ -205,6 +244,7 @@ def render(tables: list[Table]) -> str:
     from datetime import UTC, datetime
 
     today = datetime.now(UTC).date()
+    referenced = _wired_tables()
 
     lines = [
         "# Data inventory",
@@ -236,14 +276,15 @@ def render(tables: list[Table]) -> str:
 
     for g, ts in groups.items():
         lines += [f"## {g}", "", "| table | rows | cols | span | age | size | note |",
-                  "|---|---:|---:|---|---|---:|---|"]
+                  "|---|---:|---:|---|---|---|---:|---|"]
         for x in sorted(ts, key=lambda x: -x.rows):
             size = (f"{x.bytes/1e9:.2f} GB" if x.bytes >= 1e9
                     else f"{x.bytes/1e6:.1f} MB" if x.bytes >= 1e6
                     else f"{x.bytes/1e3:.0f} KB" if x.bytes else "—")
             rows = "UNREADABLE" if x.rows < 0 else f"{x.rows:,}"
             lines.append(f"| `{x.name}` | {rows} | {x.cols} | {x.span} | "
-                         f"{x.freshness(today)} | {size} | {x.note} |")
+                         f"{x.freshness(today)} | {x.wired(referenced)} | {size} | "
+                         f"{x.note} |")
         lines.append("")
     return "\n".join(lines) + "\n"
 

@@ -762,3 +762,28 @@ class TestNoFeedRotsInvisibly:
         assert "src.research.charmatch" in sh
         # and before outcomes, which consumes it
         assert sh.index("src.research.charmatch") < sh.index("src.research.outcomes")
+
+    @pytest.mark.unit
+    def test_the_wired_scan_does_not_read_its_own_source(self):
+        """WATCHED FAILING 2026-09-11.
+
+        `_wired_tables()` greps src/ and scripts/ for table names. Its own
+        comment names index_membership, regime_daily and sector_regime_daily as
+        UNWIRED — so the first version matched all three as wired and reported
+        the exact opposite of the truth. Decision 0048 found the same shape in
+        status.py: a predicate that matches the word it searches for in its own
+        source. The fix is to exclude the file from its own scan, and this
+        asserts the outcome rather than the mechanism.
+        """
+        from src.monitor import inventory
+
+        referenced = inventory._wired_tables()
+        for name in ("index_membership", "regime_daily", "sector_regime_daily"):
+            assert name not in referenced, (
+                f"{name} reports as wired. Either something now genuinely reads "
+                f"it — in which case give it an age alert — or the scan is "
+                f"matching its own source again"
+            )
+        # and the scan must still find the ones that ARE read
+        assert "pit_universe" in referenced
+        assert "global_indices_daily" in referenced

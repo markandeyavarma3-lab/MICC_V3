@@ -43,7 +43,7 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-10; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-10 17:04 UTC, 29 generation(s), 1 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-10 17:04 UTC, 29 generation(s), 2 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -74,7 +74,7 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 3.4 | Resolve the unmatched deal symbols | WIRED | unresolved 4.14% — under the <5% gate |
 | 3.5 | sector_history — point-in-time sectors | — | blocks the industry dimension of CHAR_MATCHED |
 | 3.6 | Participant normalisation | — | the behavioural classifier exists in src/mart/eligibility.py but does not persist |
-| 3.7 | Behavioural PROP_HFT classifier | WIRED | tags 168 of 239,480 deals (0.07%). The exclusion credited to this classifier is done by the same-day round-trip flag — 147,116 deals, 61% — so Graviton, HRT, Tower and XTX survive it. VERIFIED describes the code, not the coverage (0056 amendment 2) |
+| 3.7 | Behavioural PROP_HFT classifier | WIRED | 310 participants, 97,249 deal rows, 41.2% of the corpus. `ineligibility_reason` shows only 168 because it is a priority-ordered DISPLAY field and 'same-day round trip' outranks it — a membership question must not be answered from it (0056 amendment 3) |
 | 3.8 | Name-pattern classifier for the residual | WIRED | behavioural only; no name-pattern classifier exists |
 | 3.9 | Merge suggestions recorded, never applied | — | participant_aliases exists and holds 0 rows |
 | 3.12 | Manual fund-house mapping file | — |  |
@@ -148,4 +148,4 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `a2b10a1`.
+Derived at commit `8e29c0f`.
