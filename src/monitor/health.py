@@ -55,7 +55,15 @@ STALE_SESSIONS = 2
 
 #: The sources the collector is required to capture. FII/DII is not required —
 #: sources.yml marks it optional — but its silence is still worth reporting.
-REQUIRED = ("nse_bulk_deals", "nse_block_deals")
+REQUIRED = ("nse_bulk_deals", "nse_block_deals",
+            # Added 2026-09-11 when decision 0058 fired the
+            # `fno_institutional_positioning` trigger. They are REQUIRED rather
+            # than OPTIONAL on purpose: a feed that is parked and stale is
+            # honest, but a feed that is COLLECTING and stale is the char_panel
+            # failure, and the whole reason for firing the trigger was that
+            # participant_oi is now the best entity-attributable flow series in
+            # the warehouse. Silence about it is the thing to prevent.
+            "nse_participant_oi", "nse_fo_bhavcopy")
 OPTIONAL = ("fii_dii_cash",)
 
 
