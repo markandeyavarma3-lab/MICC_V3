@@ -43,7 +43,7 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-10; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-10 17:04 UTC, 29 generation(s), 3 commit(s) and 73 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-10 17:04 UTC, 29 generation(s), 4 commit(s) and 73 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -109,7 +109,7 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 1 of 4 registered |
+| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 2 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
 | 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 237,271 benchmark rows against FIVE benchmarks — NIFTY500_TR is unbuildable (warehouse.benchmark_n500tr does not exist) and it is the config's declared broad_market_headline |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
@@ -148,4 +148,4 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `3e9dad5`.
+Derived at commit `472dfa8`.
