@@ -167,6 +167,16 @@ deferred:
     trigger: "the mutual-fund participant category shows a supported effect"
   - id: fno_institutional_positioning
     trigger: "FII/DII cash history reaches 24 months, making Engine E researchable"
+    status: FIRED                    # 2026-09-11, decision 0058
+    fired_rationale: >-
+      The 24-month condition was written before 0056 measured that the deals
+      track bottoms out on month-sparsity for entity-level work — only 7
+      participants reach 12 months of activity under the §6.3 specification.
+      That makes participant-wise OI the best entity-attributable flow series in
+      the warehouse rather than a nice-to-have behind another study, so the
+      original condition is testing for something that no longer decides the
+      question. Collection resumed; ANALYSIS still deferred until the deals
+      verdict lands.
   - id: corporate_announcements
     trigger: "an event-study extension is registered; note the insider-cluster
       family was KILLED across 4 studies in the predecessor and is NOT newly promising"

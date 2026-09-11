@@ -88,6 +88,12 @@ mkdir -p "$REPO/logs"
   # A 30-day trailing window: filings are revised and back-dated, so re-reading
   # the recent past is how a revision is picked up. sha256 dedupe makes an
   # unchanged window a no-op.
+  # DERIVATIVES, decision 0058. participant-wise OI and the F&O bhavcopy, both
+  # unparked when the trigger was superseded. Collection only — nothing parses
+  # these into the warehouse and no study reads them, deliberately, so that
+  # Workstream 3's deals verdict does not acquire a second open front.
+  "$REPO/.venv/bin/python" -m src.archive.derivatives
+  note "derivatives" $?
   "$REPO/.venv/bin/python" -m src.archive.insider --start "$(date -v-30d +%Y-%m-%d)"
   note "insider" $?
   "$REPO/.venv/bin/python" -m src.ingest.insider

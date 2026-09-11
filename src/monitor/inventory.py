@@ -69,10 +69,16 @@ DATE_COLS = ("date", "trade_date", "TradDt", "session_date", "ex_date",
 #: a parked feed and a rotting one looked identical, which is precisely how a
 #: study gets built on data that stopped moving three months ago. PARKED says
 #: somebody decided; STALE says nobody noticed.
-PARKED: dict[str, str] = {
-    "participant_oi": "fno_institutional_positioning",
-    "fno_spine": "fno_institutional_positioning",
-}
+#: EMPTY SINCE 2026-09-11. Decision 0058 fired `fno_institutional_positioning`
+#: and both feeds collect daily again, so PARKED would now hide a real signal.
+#:
+#: The TABLES are still stale and should say so. The archive is current to
+#: 2026-09-10 while `participant_oi` stops at 2026-06-25 and `fno_spine` at
+#: 2026-08-14, because Workstream 2 resumed COLLECTION and deliberately not
+#: parsing — bytes are on disk, nothing loads them into the warehouse yet. STALE
+#: is the honest rendering of that gap and the thing that will nag until a parse
+#: step exists.
+PARKED: dict[str, str] = {}
 
 def _wired_tables() -> set[str]:
     """Table names any module under src/ or scripts/ actually references.

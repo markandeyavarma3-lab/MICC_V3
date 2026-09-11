@@ -250,7 +250,7 @@ and why V3 is designed the way it is.
 | Commits | 31 |
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
-| Tests | 513, all passing |
+| Tests | 523, all passing |
 | Decision records | 51 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
@@ -263,7 +263,7 @@ the rest of this report.
 | Duration | 11 days | 34 days | ongoing |
 | Commits | 67 | 107 | 30 |
 | Lines of Python | 23,172 | 35,762 | 6,243 |
-| Tests | — | 375 | 513 |
+| Tests | — | 375 | 523 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -414,7 +414,7 @@ gives 21 observations for any one pattern — total, ever. Split into training a
 testing, that leaves two to five. With two observations you could only detect an
 effect of about **50% a year**. Per-company calendar analysis is not difficult;
 it is arithmetically impossible. And the history is not there either: the median
-company has **5.5 years** of prices, and only 513 of 4,200 have twenty.
+company has **5.5 years** of prices, and only 523 of 4,200 have twenty.
 
 **Combining companies does not rescue it.** The obvious fix is to pool all 4,200
 together. But every company experiences a given calendar day *simultaneously*, so
@@ -821,7 +821,7 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 513 automated tests, all passing.
+This is the substantial achievement so far. 523 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
@@ -879,7 +879,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Fifty-seven decision records, each recording what was decided, by whom, why, **what
+Fifty-eight decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1088,7 +1088,7 @@ participants removed, with the serial-correlation fix of §7.6 applied:
 | horizon | detectable effect | scaled bound | verdict |
 |---|---:|---:|---|
 | 21 sessions (1 month) | 0.8403% | 0.50% | 1.68× short |
-| 63 sessions (3 months) | 1.8513% | 1.50% | 1.23× short |
+| 63 sessions (3 months) | 1.8523% | 1.50% | 1.23× short |
 | **252 sessions (12 months)** | **5.7273%** | **6.00%** | **within reach** |
 
 **Twelve months is now the primary horizon** (decision 0034); the session grid is
@@ -1337,9 +1337,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 513 tests that enforces honest research
+- A discipline framework with 523 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Fifty-seven decision records with reversal conditions
+- Fifty-eight decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history
