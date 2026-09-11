@@ -218,6 +218,51 @@ Y at 0.5/0.8/1.0 across the gross/base/pessimistic scenarios, participation read
 from config. Quoting 29.33 without saying "fees only" understated the cost model
 by leaving out the half that dominates above a few percent of ADV.
 
+## Third amendment, 2026-09-11 — amendment 2 was wrong about the classifier
+
+Amendment 2 claimed the PROP_HFT classifier "does almost nothing", tagging 168
+of 239,480 deals, and that Graviton, HRT, Tower and XTX "survive it". **That is
+false, and it was published for a day.**
+
+`institutional_deals_clean.ineligibility_reason` is a **priority-ordered display
+field**, and `src/mart/clean.py` says so in a comment directly above it: *"ONE
+reason per row, in priority order. A row excluded for three reasons is reported
+under the first that applies, so the exclusion table sums to the exclusion
+count."* `same-day round trip` is evaluated one line ABOVE `PROP_HFT
+participant`. The 168 is therefore the count of PROP_HFT deals that were **not
+also round trips** — a residual, not a coverage figure.
+
+Running the classifier directly (`python -m src.mart.eligibility`):
+
+| | |
+|---|---|
+| PROP_HFT participants | **310** |
+| their deal rows | **97,249** |
+| share of corpus | **41.2%** — against the ~44% the module docstring predicted |
+
+The classifier works, and has always worked. Graviton, HRT, Tower and XTX are
+caught by it *and* by the round-trip rule, which is why they appear under the
+round-trip label.
+
+**The original claim in the conversation — that resolving these entities changes
+nothing because the classifier already excludes them — was right. Amendment 2
+"corrected" a correct statement into a wrong one.**
+
+WHAT ACTUALLY WENT WRONG, because the mechanism matters more than the number. I
+answered a **membership** question ("how many deals belong to PROP_HFT
+participants?") by counting a **label** ("how many deals display PROP_HFT as
+their reason?"). Those differ by exactly the amount that any higher-priority rule
+absorbs — here, 97,081 rows. The field is not wrong; reading a priority-ordered
+CASE as a set membership test is.
+
+Amendment 2's other two points stand and are unaffected: the 119-entity
+directional population is real, and 29.33 bps is the statutory leg only.
+
+**Consequence for the entity study, measured rather than assumed:** none of the
+119 directional candidates is a PROP_HFT participant. The round-trip filter
+removes every one of them before the candidate list is formed, so the population
+for Workstream 3 is uncontaminated by market makers.
+
 ## What would reverse this
 
 A participant identity layer that resolves to beneficial owners rather than
