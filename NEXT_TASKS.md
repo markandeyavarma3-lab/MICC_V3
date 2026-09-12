@@ -75,6 +75,6 @@ Each task is executable by a coding agent without further design input.
 ## Explicitly NOT next, and why
 
 - **Any dashboard, API or multi-user surface.** Nothing is durable yet (task 1) and the suite does not pass its own CI (task 3).
-- **A BSE price collector.** Real and large (gap #9), but it multiplies the data that currently has no backup. After task 1-4.
+- **A BSE price collector.** Real and large (gap #9), but it multiplies the data that is already 73 sessions behind its backup. After tasks 1-4.
 - **Any new seasonality code.** `docs/reports/SEASONALITY_POWER.md` shows the full-scope scan is underpowered by 1-2 orders of magnitude, and that even at **m = 1 with zero multiplicity correction** a monthly cell needs 219 bps/month against published effects of 50-300 bps. Building the engine would spend weeks to measure its own blindness.
 - **Reviving the inert MICCV2 `recommendations` / `oms_orders` tables.** Quarantine them (AUDIT.md §10); do not wire them in.
