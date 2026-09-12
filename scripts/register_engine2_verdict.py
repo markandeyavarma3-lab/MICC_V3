@@ -24,56 +24,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.common.paths import governance_db  # noqa: E402
 from src.governance import provenance as prov  # noqa: E402
+from src.governance.ledger import LedgerRefused, require_populated_ledger  # noqa: E402
 
 MEMO = Path(__file__).resolve().parents[1] / "docs" / "reports" / "SEASONALITY_POWER.md"
 LOGICAL_NAME = "engine_2_seasonality_power_verdict"
 PRODUCED_BY = "scripts/register_engine2_verdict.py"
 
 
-def _refuse_an_empty_ledger() -> str | None:
-    """Registering into a ledger with no history is not registering.
-
-    MEASURED 2026-09-12, and this guard exists because of it. Run on a machine
-    with no warehouse, provenance._con() called migrate_sqlite() and CREATED a
-    governance database, then wrote this verdict into it as the only row. The
-    script printed a hash and exited 0. Nothing was wrong with the code and the
-    result was worthless: no prior artefacts, no trial counters, an empty
-    merkle_log, and therefore no append-only chain for the row to belong to.
-
-    A fresh ledger is indistinguishable from the real one at the moment of
-    insert, so the check has to be on CONTENT. If the project's own earlier
-    verdicts are absent, this is not the production ledger.
-    """
-    import sqlite3
-
-    db = governance_db(None)
-    if not Path(db).exists():
-        return f"{db} does not exist; this is not the production ledger"
-    con = sqlite3.connect(str(db))
-    try:
-        try:
-            arte = con.execute("SELECT COUNT(*) FROM artefact").fetchone()[0]
-            merkle = con.execute("SELECT COUNT(*) FROM merkle_log").fetchone()[0]
-        except sqlite3.OperationalError as e:
-            return f"{db} has no governance schema ({e})"
-    finally:
-        con.close()
-    if arte == 0 or merkle == 0:
-        return (f"{db} holds {arte} artefact(s) and {merkle} merkle row(s) — an "
-                f"empty ledger. The real one carries prop_hft_classifier_coverage "
-                f"and engine_1_deals_entity_verdict. Refusing to register a "
-                f"verdict into a database that has no history to append to.")
-    return None
-
-
 def main() -> int:
     if not MEMO.exists():
         print(f"FATAL: {MEMO} does not exist", file=sys.stderr)
         return 1
-    if (why := _refuse_an_empty_ledger()) is not None:
-        print(f"REFUSED: {why}", file=sys.stderr)
+    try:
+        require_populated_ledger(None)
+    except LedgerRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
         print("The memo stands; only its registration is outstanding.", file=sys.stderr)
         return 2
     commit = subprocess.run(["git", "rev-parse", "HEAD"],
