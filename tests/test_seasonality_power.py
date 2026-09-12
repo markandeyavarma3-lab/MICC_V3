@@ -159,68 +159,7 @@ class TestCosts:
         )
 
 
-class TestTheRegistrationRefusesAnEmptyLedger:
-    """WATCHED FAILING 2026-09-12, and it had already happened.
-
-    Run on a machine with no warehouse, the registration script's call into
-    provenance created a governance database, wrote the verdict as its only row,
-    printed a hash and exited 0. The verdict looked registered and was not: no
-    prior artefacts, no trial counters, an empty merkle_log.
-    """
-
-    @staticmethod
-    def _script():
-        import importlib.util
-        from pathlib import Path
-
-        p = Path(__file__).resolve().parents[1] / "scripts" / "register_engine2_verdict.py"
-        spec = importlib.util.spec_from_file_location("_reg_e2", p)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-    def test_a_missing_ledger_is_refused(self, tmp_path, monkeypatch):
-        mod = self._script()
-        monkeypatch.setattr(mod, "governance_db", lambda _e: tmp_path / "nope.sqlite")
-        assert "does not exist" in mod._refuse_an_empty_ledger()
-
-    def test_a_schemaless_file_is_refused(self, tmp_path, monkeypatch):
-        import sqlite3
-
-        db = tmp_path / "governance.sqlite"
-        sqlite3.connect(str(db)).close()
-        mod = self._script()
-        monkeypatch.setattr(mod, "governance_db", lambda _e: db)
-        assert "no governance schema" in mod._refuse_an_empty_ledger()
-
-    def test_a_freshly_migrated_but_empty_ledger_is_refused(self, tmp_path, monkeypatch):
-        """THE ACTUAL FAILURE. A valid, correctly-migrated, entirely empty
-        governance database — exactly what provenance creates on a machine
-        without one — must not accept a verdict."""
-        import sqlite3
-
-        db = tmp_path / "governance.sqlite"
-        con = sqlite3.connect(str(db))
-        con.execute("CREATE TABLE artefact (artefact_hash TEXT)")
-        con.execute("CREATE TABLE merkle_log (id INTEGER)")
-        con.commit()
-        con.close()
-        mod = self._script()
-        monkeypatch.setattr(mod, "governance_db", lambda _e: db)
-        why = mod._refuse_an_empty_ledger()
-        assert why is not None and "empty ledger" in why
-
-    def test_a_ledger_with_history_is_accepted(self, tmp_path, monkeypatch):
-        import sqlite3
-
-        db = tmp_path / "governance.sqlite"
-        con = sqlite3.connect(str(db))
-        con.execute("CREATE TABLE artefact (artefact_hash TEXT)")
-        con.execute("INSERT INTO artefact VALUES ('prop_hft_classifier_coverage')")
-        con.execute("CREATE TABLE merkle_log (id INTEGER)")
-        con.execute("INSERT INTO merkle_log VALUES (1)")
-        con.commit()
-        con.close()
-        mod = self._script()
-        monkeypatch.setattr(mod, "governance_db", lambda _e: db)
-        assert mod._refuse_an_empty_ledger() is None
+# The empty-ledger guard moved to src/governance/ledger.py when
+# scripts/register_exp002.py was found to have the same defect. Its tests moved
+# with it, to tests/test_ledger_guards.py, which covers the missing, schemaless,
+# empty and populated cases plus the INSERT OR REPLACE freeze bypass.

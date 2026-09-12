@@ -1337,7 +1337,7 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 581 tests that enforces honest research
+- A discipline framework with 589 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
 - Fifty-eight decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%

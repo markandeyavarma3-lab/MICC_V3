@@ -24,9 +24,12 @@ and is pinned by `tests/test_seasonality_power.py` (20 tests, no warehouse).
 > *appeared* to succeed: `provenance` created a governance database, wrote this
 > verdict as its only row, printed a hash and exited 0 — a registration into a
 > ledger with no prior artefacts, no trial counters and an empty `merkle_log`.
-> That database has been deleted and the script now **refuses** an empty ledger
-> (exit 2), pinned by four tests. Run it on the machine holding the real
-> `governance_prod.sqlite` to register the verdict for real.
+> That database has been deleted. Both registration scripts now refuse an empty
+> ledger (exit 2) via `src/governance/ledger.require_populated_ledger`, and
+> `migrations/0003` closes a related hole found the same day: `INSERT OR REPLACE`
+> bypassed **both** of the triggers that freeze a registered specification. See
+> `tests/test_ledger_guards.py` (12 tests). Run either script on the machine
+> holding the real `governance_prod.sqlite` to register for real.
 
 ---
 

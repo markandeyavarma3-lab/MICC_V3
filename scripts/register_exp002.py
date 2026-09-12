@@ -19,6 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.common.hashing import spec_hash  # noqa: E402
 from src.common.paths import governance_db  # noqa: E402
+from src.governance.ledger import (  # noqa: E402
+    LedgerRefused,
+    require_not_already_registered,
+)
 from src.research import families  # noqa: E402
 
 EXPERIMENT_ID = "exp_002_entity_persistence"
@@ -110,6 +114,16 @@ def main() -> int:
     import sqlite3
 
     sh = spec_hash(SPEC)
+    # PRECONDITIONS, ADDED 2026-09-12 AFTER BOTH FAILED SILENTLY. Run on a
+    # machine with no governance file, this script created one and wrote exp_002
+    # into it as the only row, with trials_before read from YAML rather than the
+    # ledger, and exited 0. And on the real ledger, `INSERT OR REPLACE` below
+    # bypassed both freeze triggers, so a re-run rewrote a frozen registration.
+    try:
+        require_not_already_registered(EXPERIMENT_ID, sh)
+    except LedgerRefused as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
     trials_before = families.persisted_counter("TRACK_D_DEALS")
     row = {**EXPERIMENT, **SPEC, "spec_hash": sh, "created_at": NOW,
            "created_by": "Markandeya Varma (owner) / Claude Opus 5",
@@ -120,8 +134,12 @@ def main() -> int:
     con = sqlite3.connect(str(governance_db(None)))
     cols = [r[1] for r in con.execute("PRAGMA table_info(experiment_registry)")]
     use = {k: v for k, v in row.items() if k in cols}
+    # Plain INSERT. `INSERT OR REPLACE` is delete-then-insert in SQLite, which
+    # fires neither the BEFORE UPDATE freeze trigger nor (without
+    # recursive_triggers) the BEFORE DELETE one. migrations/0003 now blocks that
+    # route at the schema level; this does not take it in the first place.
     con.execute(
-        f"INSERT OR REPLACE INTO experiment_registry ({','.join(use)}) "
+        f"INSERT INTO experiment_registry ({','.join(use)}) "
         f"VALUES ({','.join('?' * len(use))})", list(use.values()))
     con.commit()
     print(f"  experiment_id  : {EXPERIMENT_ID}")
