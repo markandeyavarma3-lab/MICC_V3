@@ -24,8 +24,10 @@ its own intermediate results:
 
   * `permutation_policy` registered a moving-block bootstrap; the code ran a
     two-sided NORMAL approximation instead. That is what produced the two
-    reported BH-FDR passes, on entities with two and five formation deals. See
-    `_p_form`.
+    reported BH-FDR passes, on entities with two and five formation deals. The
+    two-deal pass is definitely an artefact of it; the five-deal one is
+    uncomputable under the bootstrap only if those deals span three or fewer
+    distinct months, which needs the warehouse to settle. See `_p_form`.
   * `holding_period` registered "all 9 horizons reported"; `HORIZONS` was
     declared and never read, so eight of the nine were never computed.
   * Benjamini-Hochberg was computed as raw p*m/rank without the step-up running
