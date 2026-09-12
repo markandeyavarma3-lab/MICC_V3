@@ -47,6 +47,24 @@ class TestTheRegisteredBootstrapReplacesTheNormalApproximation:
             "the substituted test clears the BH rank-1 threshold on two deals"
         )
 
+    def test_computability_is_decided_by_month_span_not_deal_count(self):
+        """The correction's own claim, pinned. The bootstrap resamples WHOLE
+        MONTHS, so five deals inside three months is as uncomputable as two
+        deals — and five deals across five months is computable and may well be
+        significant. An earlier draft of the memo said both published passers
+        were uncomputable; only the n=2 one is known to be."""
+        five_in_three = ["2006-01-15", "2006-01-20", "2006-02-15",
+                         "2006-02-20", "2006-03-15"]
+        assert E._p_form(five_in_three, [-0.12] * 5) is None
+
+        five_in_five = [f"2006-0{i}-15" for i in range(1, 6)]
+        p = E._p_form(five_in_five, [-0.12] * 5)
+        assert p is not None, "five deals across five months IS computable"
+        assert p < 0.05 / 24, (
+            "and can still clear the BH rank-1 threshold — so the fix does not "
+            "automatically erase the five-deal pass"
+        )
+
     def test_a_long_series_is_testable(self):
         p = E._p_form(_months(36), [0.02] * 36)
         assert p is not None and 0.0 < p <= 1.0

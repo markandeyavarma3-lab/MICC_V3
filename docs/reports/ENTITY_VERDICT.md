@@ -35,9 +35,25 @@ clears the BH rank-1 threshold (*p* < 0.05/24 = 0.002083) at |*t*| ≥ **3.08**
 bootstrap is stricter still: it cannot run at all on two deals, because two
 monthly cohorts cannot fill a three-month block.
 
-So the two "passers" in the table below — **n = 2** and **n = 5** — were
-artefacts of the substituted test. Under the procedure this study actually
-registered, neither is testable or significant. The memo already argued these
+**How far this goes, stated precisely — an earlier draft of this correction
+overstated it.** The registered bootstrap resamples *whole months* and needs
+more than three monthly cohorts, so what decides computability is the number of
+distinct months an entity's formation deals span, not the deal count:
+
+| case | under the registered bootstrap |
+|---|---|
+| n = 2 (SUNDARAM), 2 months | **uncomputable** — cannot fill a three-month block |
+| n = 5 (FRANKLIN TEMPLETON), ≤ 3 distinct months | **uncomputable** |
+| n = 5, ≥ 4 distinct months | **computable, and may still be significant** |
+
+Which case Franklin Templeton falls into **is not known from this environment**
+— it needs the warehouse. So the honest statement is: SUNDARAM's pass is
+definitely an artefact of the substituted test; Franklin Templeton's may or may
+not survive, and if it survives it remains a *significantly negative* result in
+the BOTTOM tier. **The verdict is unaffected either way**, because the
+registered bar requires a passer in the **TOP** tier and both sit in BOTTOM.
+
+The memo already argued these
 passes were meaningless *on sample-size grounds*; the stronger and more
 uncomfortable statement is that **they were never passes under the registered
 design at all.**
