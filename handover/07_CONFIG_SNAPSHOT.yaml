@@ -1,0 +1,153 @@
+# 07 — Config snapshot
+#
+# A structured summary of the load-bearing values across all 10 files in
+# configs/, as of commit 45fe5b0. NOT a copy of the files themselves (they
+# are already in the repo at configs/*.yml, with full rationale comments that
+# are worth reading in full before changing anything — this snapshot exists
+# so another session can see the shape of every decision at a glance).
+#
+# PARSED-BY-CODE STATUS (from AUDIT_README.md, 2026-09-02, commit f79ac5d —
+# re-verify against current src/ before trusting): sources.yml and scan.yml
+# were confirmed UNPARSED by any code. The rest had at least partial live
+# bindings — see each block's `parsed_by` field below.
+
+research_yml:
+  parsed_by: src/research/design.py
+  primary_horizon_months: 12
+  horizons_months: [3, 6, 12]
+  horizons_sessions: [1, 2, 3, 5, 10, 21]   # all underpowered, robustness only
+  power:
+    alpha: 0.05
+    target_power: 0.80
+    plausible_effect_bound_monthly: 0.005    # 0.5%/month = 6%/yr
+    bound_scales_with_horizon: true          # decision 0028: bound(h) = 0.005 * h/21
+    estimator: monthly_cohort_mean
+    bootstrap_draws: 10000
+  portfolio_gate:
+    required_for_every_study: true
+    construction: { universe: top500_pit, weighting: equal, rebalance: month_end, min_names: 30 }
+    note: "added after Finding 001 passed event gate (t=-3.93) but failed portfolio gate (t=-0.25) — dilution was 1.2% of book"
+  room_2b_slices: [side, deal_type, liquidity_tier, participant_category, regime, deal_size]
+  room_2b_crossed: false
+  corrections:
+    participant_ranking: romano_wolf
+    seasonality_primary: benjamini_yekutieli
+    best_of_family: hansen_spa
+  project_kill_criterion:
+    fail_fraction_threshold: 0.75
+    deadline: "2027-02-28"
+    checkpoint: "2026-11-30"
+    verdict_path: docs/reports/FINAL_VERDICT.md
+    status_note: "docs/reports/VERDICT.md (2026-09-10) reads as the delivered verdict, superseding the FINAL_VERDICT.md placeholder path"
+
+costs_yml:
+  parsed_by: src/research/costs.py (historically only 'participation' key confirmed read by src/mart/clean.py — re-verify)
+  statutory:
+    STT: { rate: 0.0010, side: BOTH, effective_from: "2006-01-01" }
+    TXN_NSE: { rate: 0.0000307, side: BOTH, effective_from: "2026-03-01" }
+    TXN_BSE: { rate: 0.0000375, side: BOTH, effective_from: "2026-03-01" }
+    SEBI: { rate_per_crore: 10.0, effective_from: "2006-01-01" }
+    GST: { rate: 0.18, applies_to: [BROKERAGE, SEBI, TXN], effective_from: "2017-07-01" }
+    STAMP: { rate: 0.00015, side: BUY, effective_from: "2020-07-01" }
+  brokerage: { headline_rate: 0.0003, floor_rate: 0.0 }
+  round_trip_bps_nse: { headline: 29.33, floor: 22.25 }
+  spread: { estimators: [corwin_schultz, abdi_ranaldo], rolling_window_sessions: 21 }
+  impact: { model: sqrt, y_constant: 0.8, y_alternates: [0.5, 1.0], adv_window_sessions: 20 }
+  participation:
+    base_cap_pct_adv: 0.10
+    conservative_cap_pct_adv: 0.05
+    max_sessions_to_build: 5     # beyond this, event is TOO_LARGE and excluded (killed the 12mo POWERED verdict, decision 0038)
+  reporting_levels: [gross, base, pessimistic]
+
+participants_yml:
+  parsed_by: src/mart/eligibility.py (partially — see src/mart/clean.py for a second, divergent implementation)
+  classification_order: [behavioural, name_pattern, unknown]
+  prop_hft_threshold: { roundtrip_ratio: 0.95, min_client_stock_days: 20 }
+  name_patterns: [MUTUAL_FUND, INSURANCE, PENSION_SOVEREIGN, BANK, FPI_OFFSHORE, BROKER_SEC, INDIVIDUAL]
+  normalisation: { method: exact_after_cleaning, fuzzy_auto_merge: false, suggest_merges: true }
+  eligibility:
+    exclude_categories: [PROP_HFT]
+    exclude_same_day_roundtrip: true
+    min_deal_value_inr: 10000000        # Rs 1 crore
+    min_deal_value_to_adv20: 0.005
+  measured_coverage_2026_08_16:
+    PROP_HFT_pct: 44.0
+    UNKNOWN_pct: 22.2
+    manual_review_queue_size: 1515
+
+split_yml:
+  parsed_by: src/research/split.py
+  version: 1
+  frozen_at: "2026-08-17"
+  strata:
+    EXPLORE: { fraction: 0.30, charges_trial_counter: false }
+    SELECT:  { fraction: 0.20, charges_trial_counter: true }
+    CONFIRM: { fraction: 0.50, charges_trial_counter: true }
+  key: { primary: isin, fallback: "SYM:{symbol}", max_fallback_fraction: 0.15 }
+  assignment: { algorithm: sha256_modulo, buckets: 1000, ranges: { EXPLORE: [0,300], SELECT: [300,500], CONFIRM: [500,1000] } }
+  enforcement: { guard_required: true, confirm_access_requires: registered_experiment_with_frozen_spec, max_confirm_touches_per_experiment: 1 }
+  scan_split:  # Track S — different partition, time-based (mandatory) + index-based (secondary)
+    temporal: { explore_end: "2015-12-31", confirm_start: "2016-01-01", embargo_sessions: 21 }
+    entity:   { explore_fraction: 0.40, confirm_fraction: 0.60, verdict_role: corroborating_only }
+
+trials_yml:
+  parsed_by: src/research/families.py
+  scheme: hierarchical
+  families:
+    TRACK_D_DEALS:      { carried: 171, estimator: monthly_cohort_mean, typical_dof: 246 }
+    TRACK_S_CALENDAR:   { carried: 0, estimator: cross_sectional_rank_ic, typical_dof: 20, prior_external_search: 31893556 }
+    TRACK_S_SIGNALS:    { carried: 0, estimator: cross_sectional_rank_ic, typical_dof: 500 }
+    TRACK_S_PROCEDURE:  { carried: 0, estimator: out_of_sample_hit_rate, fixed_family_size: 3, width_does_not_charge: true }
+  rules: { declare_before_search: true, family_immutable_after_registration: true, counters_never_reset: true, applies_to_incumbents: true }
+
+universe_yml:
+  parsed_by: src/warehouse/reconcile.py
+  tiers: { top100: [1,100], top250: [1,250], top500: [1,500] }
+  rank_by: med_turnover
+  reconciliation_targets:   # tolerance: 0 — exact match required
+    expect_price_rows: 7749148
+    expect_symbols: 4200
+    expect_dead_symbols: 1497
+    expect_date_min: "2005-01-03"
+    expect_date_max: "2026-08-14"
+    expect_fno_rows: 174272768
+    expect_bulk_deals: 223450
+    expect_block_deals: 12430
+
+benchmarks_yml:
+  parsed_by: src/research/charmatch.py
+  six_benchmarks: [NIFTY50_TR, NIFTY500_TR, NIFTY_MIDCAP100, SMALLCAP_SYNTH, EW_TOP500, CHAR_MATCHED]
+  primary_for_skill: CHAR_MATCHED
+  headline_index: NIFTY500_TR      # KNOWN UNBUILDABLE — no source table exists
+  char_matched_dimensions: [size, momentum, volatility, industry]
+  char_matched_note: "size-quintile match alone cut cohort SD 8.55% -> 5.91%, MDE 1.52% -> 1.05% (a 31% power gain from ONE dimension)"
+
+confounds_yml:
+  parsed_by: src/research/design.py
+  core_confounds: [microstructure, volatility, size, momentum_reversal, liquidity, time_concentration, sector_concentration, survivorship, same_day_roundtrip, dilution]
+  track_s_confounds: [multiple_testing_declared, null_is_measured_not_assumed, fold_independence, bid_ask_bounce, prior_search_of_this_space]
+  skip_policy: { allowed: true, requires: written_reason, recorded_as: NOT_APPLICABLE }
+
+sources_yml:
+  parsed_by: NONE CONFIRMED — audit found this file unparsed by any code as of 2026-09-02
+  status_summary:
+    nse_bulk_deals: CONFIRMED_FORWARD_ONLY   # rolling current-day only; historical endpoint 503s
+    nse_block_deals: CONFIRMED_FORWARD_ONLY
+    bse_bulk_deals: UNPROVEN                 # 301 -> error page
+    bse_block_deals: UNPROVEN
+    fii_dii_cash: CONFIRMED
+    participant_oi: HAVE                     # ported from seed, 15,359 rows as of file writing
+    shp_filings: UNPROVEN
+  fno_institutional_positioning_trigger: FIRED   # 2026-09-11, decision 0058
+  acknowledged_permanent_gaps:
+    - { source: nse_bulk_deals, session: "2026-08-19" }
+    - { source: nse_bulk_deals, session: "2026-08-27" }
+    - { source: nse_block_deals, session: "2026-08-19" }
+    - { source: fii_dii_cash, session: "2026-08-19" }
+
+scan_yml:
+  parsed_by: NONE CONFIRMED — audit found this file unparsed by any code as of 2026-09-02
+  status_note: "MOOT as of 2026-09-12 — Engine 2/Track S killed on pure power arithmetic before any of this machinery was needed; see docs/reports/SEASONALITY_POWER.md"
+  basis: { primary: MARKET_RELATIVE, pooled_average_of_market_relative: FORBIDDEN_IDENTICALLY_ZERO }
+  cross_sectional: { statistic: rank_ic, measured_mde_mean_ic: 0.0140, unit_of_evidence: date }
+  procedure_test: { top_n: [1, 10, 100], null_hit_rate: 0.50 }
