@@ -100,6 +100,16 @@ sources:
     automated_use_permitted: "yes"
     existing_rows: 0                 # NEVER collected
     note: "New. No BSE deal data has ever been collected in this project."
+    probed_2026_09_15: >-
+      The site is now an Angular SPA. Its service map (assets/includenew/js/
+      chunk-UWCBCSDR.js) names /BulkDealData_ng/w, /BlockDealData_ng/w,
+      /BulknBlockBETADwnld/w, /BulkblockDeal/w, /BulkblockDownload/w and
+      /HomeBulkblockDealNew/w. Only the last answers JSON on api.bseindia.com
+      (200, {"Table":[]} at 12:30 IST — today's deals not yet published; retest
+      after 19:15). Every other path, with or without the old query string,
+      returns 200 + the "page has been moved" HTML. The API base for the
+      report pages (BSE_Domain_APIUrl) is injected at runtime from a config this
+      probe could not locate. Still UNPROVEN; leads recorded, not guessed.
 
   - id: bse_block_deals
     exchange: BSE
@@ -147,12 +157,63 @@ sources:
   - id: shp_filings
     exchange: NSE
     report_type: SHP
-    status: UNPROVEN
+    status: CONFIRMED                # 2026-09-15: 200, 22 filings for RELIANCE; XBRL 200, 57 named holders
     cadence: quarterly
     licence: public_disclosure
     automated_use_permitted: "yes"
+    routes_to_try:
+      # 1. filing master, per symbol. JSON list; each row carries an `xbrl` URL.
+      #    Needs the Akamai cookies from a GET of the public SHP page first —
+      #    the same warmup fii_dii_cash already does. NOT a login.
+      - "https://www.nseindia.com/api/corporate-share-holdings-master?index=equities&symbol={SYMBOL}"
+      # 2. the filing itself, on the static host, no cookies. This is where the
+      #    promoter-group entity NAMES are (in-bse-shp:NameOfTheShareholder).
+      - "https://nsearchives.nseindia.com/corporate/xbrl/SHP_{id}_{stamp}_WEB.xml"
+    warmup_page: "https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern"
+    existing_rows: 0                 # 2 proof files archived under SHP/ and SHP_XBRL/; nothing parsed
     purpose: "Promoter-group entity names, for the point-in-time
       promoter_related_flag. No promoter list exists today."
+    note: "Per-symbol, not a bulk file: ~2,000 symbols x 2s = ~1.1 h per full
+      sweep; quarterly cadence makes that fine. Probe only, decision pending."
+
+  - id: nifty500_tri
+    exchange: NSE
+    report_type: INDEX_TRI
+    status: CONFIRMED                # 2026-09-15: 200, 246 daily rows for 15-Sep-2025 -> 10-Sep-2026
+    cadence: daily
+    licence: public_disclosure
+    route: "https://www.niftyindices.com/BackPage/getTotalReturnIndexString"
+    route_kind: dated_range          # BACKFILL-CAPABLE: startDate/endDate, max 1 year per request
+    request: "POST, JSON body {cinfo: \"{'name':'NIFTY 500','startDate':'DD-Mon-YYYY','endDate':'DD-Mon-YYYY','indexName':'NIFTY 500'}\"}"
+    required_headers: { Origin: "https://www.niftyindices.com", Referer: "https://www.niftyindices.com/reports/historical-data", X-Requested-With: XMLHttpRequest }
+    fields: [Index Name, Date, TotalReturnsIndex, NTR_Value]
+    existing_rows: 0                 # 1 proof file archived under INDEX_TRI/; nothing parsed
+    note: "The benchmark hole. NOT the Backpage.aspx path (that returns the
+      HTML page with a 200); the JS posts to /BackPage/. Probe only."
+
+  - id: nse_index_close_all
+    exchange: NSE
+    report_type: INDEX_CLOSE
+    status: CONFIRMED                # 2026-09-15: 200, 17,359 B, every NSE index's OHLC/PE/PB/DY for 10-09-2026
+    cadence: daily
+    licence: public_disclosure
+    route: "https://nsearchives.nseindia.com/content/indices/ind_close_all_{DDMMYYYY}.csv"
+    route_kind: dated_archive        # same host and shape as the price bhavcopy: dated, backfillable
+    existing_rows: 0                 # 1 proof file archived under INDEX_CLOSE/; nothing parsed
+    note: "Price indices only (no TRI column). Probe only."
+
+  - id: nifty500_constituents
+    exchange: NSE
+    report_type: INDEX_CONSTITUENTS
+    status: CONFIRMED                # 2026-09-15: 200, 32,819 B, 500 rows: Company Name, Industry, Symbol, Series, ISIN Code
+    cadence: daily
+    licence: public_disclosure
+    route: "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
+    route_kind: rolling_current_day  # a SNAPSHOT: archive it daily and sector_history accrues forward
+    existing_rows: 0                 # 1 proof file archived under INDEX_CONSTITUENTS/; nothing parsed
+    purpose: "Industry per ISIN for sector_history (0 rows today). Point-in-time
+      only from the day archiving starts; no history route found."
+    note: "Also served at niftyindices.com/IndexConstituent/ (same bytes). Probe only."
 
 # Owner plan §4.2 — deferred sources, each with a NAMED TRIGGER so "later" is a
 # decision rather than a drift.
