@@ -239,3 +239,34 @@ acknowledged_gaps:
       same launchd gap as the deal feeds on the same session. This one never
       paged because fii_dii_cash is OPTIONAL, so it was invisible in the
       terminal until the flag and the count were separated on 2026-09-05.
+  - source_id: nse_bulk_deals
+    session: 2026-09-11
+    acknowledged: 2026-09-15
+    reason: >-
+      machine shut down Fri 17:19 IST, before NSE's ~19:00 publish; both the
+      evening slots and the Sat 08:00 catch-up were missed because launchd does
+      not replay StartCalendarInterval across a shutdown (only across sleep).
+      Rolling endpoint had advanced by the Tue 09:33 boot; historical route 503.
+      Decision 0059.
+  - source_id: nse_block_deals
+    session: 2026-09-11
+    acknowledged: 2026-09-15
+    reason: same shutdown gap as nse_bulk_deals on the same session.
+  - source_id: fii_dii_cash
+    session: 2026-09-11
+    acknowledged: 2026-09-15
+    reason: same shutdown gap as the deal feeds on the same session.
+  - source_id: nse_bulk_deals
+    session: 2026-09-14
+    acknowledged: 2026-09-15
+    reason: >-
+      same shutdown (Fri 17:19 to Tue 09:33 IST); Monday's publish and all three
+      of its slots fell inside the powered-off window. Decision 0059.
+  - source_id: nse_block_deals
+    session: 2026-09-14
+    acknowledged: 2026-09-15
+    reason: same shutdown gap as nse_bulk_deals on the same session.
+  - source_id: fii_dii_cash
+    session: 2026-09-14
+    acknowledged: 2026-09-15
+    reason: same shutdown gap as the deal feeds on the same session.
