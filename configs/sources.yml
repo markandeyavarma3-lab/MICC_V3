@@ -157,7 +157,7 @@ sources:
   - id: shp_filings
     exchange: NSE
     report_type: SHP
-    status: CONFIRMED                # 2026-09-15: 200, 22 filings for RELIANCE; XBRL 200, 57 named holders
+    status: CONFIRMED_PROOF_ONLY     # 2026-09-15: 200, 22 filings for RELIANCE; XBRL 200, 57 named holders; one symbol, no sweep
     cadence: quarterly
     licence: public_disclosure
     automated_use_permitted: "yes"
@@ -179,33 +179,38 @@ sources:
   - id: nifty500_tri
     exchange: NSE
     report_type: INDEX_TRI
-    status: CONFIRMED                # 2026-09-15: 200, 246 daily rows for 15-Sep-2025 -> 10-Sep-2026
+    status: CONFIRMED_BACKFILLED     # 2026-09-15: 32 annual slices, 7,855 daily rows, 1995-01-01 (base 1000.0) -> 2026-09-10
     cadence: daily
     licence: public_disclosure
     route: "https://www.niftyindices.com/BackPage/getTotalReturnIndexString"
     route_kind: dated_range          # BACKFILL-CAPABLE: startDate/endDate, max 1 year per request
+    coverage: "1995-01-01 -> 2026-09-10"   # archived; windows before 1995 return []
+    archived_bytes_only: true        # 32 files under INDEX_TRI/; no warehouse table yet
     request: "POST, JSON body {cinfo: \"{'name':'NIFTY 500','startDate':'DD-Mon-YYYY','endDate':'DD-Mon-YYYY','indexName':'NIFTY 500'}\"}"
     required_headers: { Origin: "https://www.niftyindices.com", Referer: "https://www.niftyindices.com/reports/historical-data", X-Requested-With: XMLHttpRequest }
     fields: [Index Name, Date, TotalReturnsIndex, NTR_Value]
-    existing_rows: 0                 # 1 proof file archived under INDEX_TRI/; nothing parsed
-    note: "The benchmark hole. NOT the Backpage.aspx path (that returns the
-      HTML page with a 200); the JS posts to /BackPage/. Probe only."
+    existing_rows: 0                 # nothing parsed; benchmarks.yml still points NIFTY500_TR at a table that does not exist
+    note: "The benchmark hole, now filled at the byte level. NOT the
+      Backpage.aspx path (that returns the HTML page with a 200); the JS posts
+      to /BackPage/. benchmarks.yml's note that this series 'is not
+      free-fetchable' is falsified as of 2026-09-15."
 
   - id: nse_index_close_all
     exchange: NSE
     report_type: INDEX_CLOSE
-    status: CONFIRMED                # 2026-09-15: 200, 17,359 B, every NSE index's OHLC/PE/PB/DY for 10-09-2026
+    status: CONFIRMED_DATED          # 2026-09-15: 200 for 2026-09-10, 2025-09-10, 2024-09-10, 2023-09-11; 404 for 2021-09-10
     cadence: daily
     licence: public_disclosure
     route: "https://nsearchives.nseindia.com/content/indices/ind_close_all_{DDMMYYYY}.csv"
     route_kind: dated_archive        # same host and shape as the price bhavcopy: dated, backfillable
-    existing_rows: 0                 # 1 proof file archived under INDEX_CLOSE/; nothing parsed
+    backfill_reach: "at least 2023-09-11; 2021-09-10 is 404 — the edge is between, not measured"
+    existing_rows: 0                 # 4 proof files archived under INDEX_CLOSE/; nothing parsed
     note: "Price indices only (no TRI column). Probe only."
 
   - id: nifty500_constituents
     exchange: NSE
     report_type: INDEX_CONSTITUENTS
-    status: CONFIRMED                # 2026-09-15: 200, 32,819 B, 500 rows: Company Name, Industry, Symbol, Series, ISIN Code
+    status: CONFIRMED_SNAPSHOT_ONLY  # 2026-09-15: 200, 32,819 B, 500 rows: Company Name, Industry, Symbol, Series, ISIN Code; no dated history route
     cadence: daily
     licence: public_disclosure
     route: "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"
