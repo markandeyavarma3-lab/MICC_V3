@@ -57,7 +57,10 @@ sources:
     publish_time_ist: "~19:00"       # ASSUMED — still must be measured
     publish_time_verified: false
     route: "https://nsearchives.nseindia.com/content/equities/bulk.csv"
-    route_kind: rolling_current_day  # NOT an archive — today's file only
+    route_kind: rolling_current_day  # NOT an archive — the LAST PUBLISHED session's file.
+                                     # It rolls on publish, not on the calendar: on Tue
+                                     # 2026-09-15 20:31 it still served Fri 09-11 (Mon was
+                                     # a holiday, Tue's not yet out) — decision 0063.
     backfill_status: UNPROVEN
     backfill_routes_to_try:
       - "https://www.nseindia.com/api/historical/bulk-deals?from={DD-MM-YYYY}&to={DD-MM-YYYY}"  # 503
@@ -75,7 +78,7 @@ sources:
     publish_time_ist: "~19:00"
     publish_time_verified: false
     route: "https://nsearchives.nseindia.com/content/equities/block.csv"
-    route_kind: rolling_current_day
+    route_kind: rolling_current_day  # rolls on publish, not on the calendar — see bulk, 0063
     backfill_status: UNPROVEN
     empty_day_sentinel: "NO RECORDS"  # distinguishable from a fetch failure —
                                       # exactly what ingestion_status needs
@@ -305,34 +308,12 @@ acknowledged_gaps:
       same launchd gap as the deal feeds on the same session. This one never
       paged because fii_dii_cash is OPTIONAL, so it was invisible in the
       terminal until the flag and the count were separated on 2026-09-05.
-  - source_id: nse_bulk_deals
-    session: 2026-09-11
-    acknowledged: 2026-09-15
-    reason: >-
-      machine shut down Fri 17:19 IST, before NSE's ~19:00 publish; both the
-      evening slots and the Sat 08:00 catch-up were missed because launchd does
-      not replay StartCalendarInterval across a shutdown (only across sleep).
-      Rolling endpoint had advanced by the Tue 09:33 boot; historical route 503.
-      Decision 0059.
-  - source_id: nse_block_deals
-    session: 2026-09-11
-    acknowledged: 2026-09-15
-    reason: same shutdown gap as nse_bulk_deals on the same session.
   - source_id: fii_dii_cash
     session: 2026-09-11
     acknowledged: 2026-09-15
-    reason: same shutdown gap as the deal feeds on the same session.
-  - source_id: nse_bulk_deals
-    session: 2026-09-14
-    acknowledged: 2026-09-15
     reason: >-
-      same shutdown (Fri 17:19 to Tue 09:33 IST); Monday's publish and all three
-      of its slots fell inside the powered-off window. Decision 0059.
-  - source_id: nse_block_deals
-    session: 2026-09-14
-    acknowledged: 2026-09-15
-    reason: same shutdown gap as nse_bulk_deals on the same session.
-  - source_id: fii_dii_cash
-    session: 2026-09-14
-    acknowledged: 2026-09-15
-    reason: same shutdown gap as the deal feeds on the same session.
+      machine shut down Fri 17:19 IST, before publish; not recovered on 09-15
+      because /api/fiidiiTradeReact serves the current day only. The deal
+      feeds for the same session WERE recovered from the rolling file on
+      2026-09-15 20:31 (their entries were removed); 2026-09-14 was a holiday.
+      Decision 0063.

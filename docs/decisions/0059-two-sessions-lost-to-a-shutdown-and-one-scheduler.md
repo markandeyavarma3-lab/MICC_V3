@@ -4,7 +4,7 @@
 **Decided by:** Owner, on a handover audit's findings (`handover_delta2/`,
 `handover_delta3/`). The gap acknowledgement is a record of fact; the
 scheduler change is the owner's call, executed 2026-09-15 10:27 IST.
-**Status:** accepted
+**Status:** PARTLY SUPERSEDED by [0063](0063-one-session-recovered-one-was-a-holiday.md) — the gap half of this record was wrong: 2026-09-11 bulk and block deals were recovered from the rolling file on 2026-09-15 20:31 (NSE had not yet published Tuesday's file, and Monday was a holiday), and 2026-09-14 was NO_SESSION. Only `fii_dii_cash` 2026-09-11 stays lost. The scheduler half — cron retired, launchd sole trigger — stands.
 **Supersedes:** the "CRON IS DELIBERATELY LEFT IN PLACE" rationale in the
 header comment of `scripts/com.institutional-research.collect.plist`. The
 plist itself is unchanged; only the crontab was emptied.
