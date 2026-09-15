@@ -79,14 +79,17 @@ def archive_path(report_type: str, exchange: str, session: date, digest: str,
 def probe(*, source_id: str, exchange: str, report_type: str, url: str,
           session: date, validate: Callable[[bytes], str | None],
           suffix: str = ".csv.gz", headers: dict | None = None,
-          data: bytes | None = None, dry_run: bool = False) -> dict:
+          data: bytes | None = None, dry_run: bool = False,
+          extra: dict | None = None) -> dict:
     """Fetch `url`; if `validate(body)` returns None the bytes are archived and
     a STORED record appended to the manifest. `validate` returns a short reason
     string when the payload is not real. With `dry_run` nothing is written or
-    recorded; the dict is still returned."""
+    recorded; the dict is still returned. `extra` is merged into the record —
+    a POST's body, or the date range a dated-range route was asked for — so the
+    manifest can say what was requested, not only where."""
     base = {"source_id": source_id, "exchange": exchange, "report_type": report_type,
             "session_date": session.isoformat(), "url": url,
-            "fetched_at": datetime.now(UTC).isoformat()}
+            "fetched_at": datetime.now(UTC).isoformat(), **(extra or {})}
     status, body, err = fetch(url, headers=headers, data=data)
     head = body[:80].decode("utf-8", "replace") if body else ""
     if status != 200:
