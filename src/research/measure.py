@@ -147,26 +147,70 @@ def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
     multi-year return under a one-year label. It is NULL rather than dropped
     because callers count rows: 0052 already established that COUNT(*) and
     avg() disagreeing is how these events hide.
+
+    THE PARTITION IS THE SECURITY, NOT THE TICKER, SINCE 2026-09-15.
+
+    Until then every window ran `PARTITION BY symbol` and every study joined
+    `r.symbol = UPPER(TRIM(raw.symbol_raw))`. A ticker is not an identity:
+    331 spine symbols were held by more than one security over time and 275
+    securities traded under more than one symbol. On a recycled ticker the
+    window ran one company's last rows into the next company's first rows; on
+    a rename it broke at the old ticker and the event vanished. The identity
+    layer had already resolved every deal to a `security_id` and the mart had
+    already stored it; the studies threw that away and re-derived identity
+    from the string. Every row here now carries `security_id`; `symbol` is
+    retained only for the sibling modules that have not yet moved their event
+    side off the string (confounds, insider_power, delisting).
+
+    The market benchmark callers build from this view is therefore the mean
+    over IDENTIFIED securities — 94.68% of spine rows on 2026-09-15 — not over
+    every string in the spine. The 1,008 unmapped symbols are the ones the
+    universe already excludes as unresolved.
     """
     # An AND clause, not a WHERE: the read below already has one.
     cut = f" AND date <= '{cutoff}'" if cutoff else ""
     return f"""
     WITH px AS (
-        SELECT symbol, date, open, close, volume,
-               ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) AS i
+        SELECT UPPER(TRIM(symbol)) AS symbol, date, open, close, volume
         FROM read_parquet('{spine}') WHERE close > 0 AND open > 0{cut}
     ),
+    -- IDENTITY, BY THE IDENTITY LAYER'S OWN RULE (src/identity/master.py
+    -- RESOLVE_SQL): a symbol_history window that covers the date wins; else the
+    -- nearest window; ties to the lowest security_id. The same ordering the
+    -- mart used to stamp security_id on every deal, so deal and price row
+    -- agree on the trade date by construction. A spine symbol with no
+    -- symbol_history row has no identity and produces no return: its deals
+    -- are UNRESOLVED and excluded by every caller, not matched by string.
+    ident AS (
+        SELECT p.symbol, p.date, p.open, p.close, p.volume, h.security_id,
+               CASE WHEN CAST(p.date AS DATE) >= h.valid_from
+                     AND (h.valid_to IS NULL OR CAST(p.date AS DATE) <= h.valid_to)
+                    THEN 0
+                    WHEN CAST(p.date AS DATE) < h.valid_from
+                    THEN date_diff('day', CAST(p.date AS DATE), h.valid_from)
+                    ELSE date_diff('day', h.valid_to, CAST(p.date AS DATE)) END AS gap_days
+        FROM px p JOIN symbol_history h ON h.symbol = p.symbol
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.symbol, p.date
+                                   ORDER BY gap_days, h.security_id) = 1
+    ),
+    -- One row per security-session. On a rename day both tickers can trade;
+    -- keep the one whose window covers the date, then the more liquid one.
+    sec AS (
+        SELECT * FROM ident
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY security_id, date
+                                   ORDER BY gap_days, volume DESC, symbol) = 1
+    ),
     f AS (
-        SELECT a.symbol, a.date,
+        SELECT a.security_id, a.symbol, a.date,
                LEAD(a.open, 1) OVER w AS entry,
                LEAD(a.close, {sessions}) OVER w AS exit_px,
                LEAD(a.date, {sessions}) OVER w AS exit_date,
                median(a.close * a.volume) OVER (
-                   PARTITION BY a.symbol ORDER BY a.i ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+                   PARTITION BY a.security_id ORDER BY a.date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
                ) AS adv20
-        FROM px a WINDOW w AS (PARTITION BY a.symbol ORDER BY a.i)
+        FROM sec a WINDOW w AS (PARTITION BY a.security_id ORDER BY a.date)
     )
-    SELECT symbol, date, adv20,
+    SELECT security_id, symbol, date, adv20,
            CASE WHEN date_diff('day', CAST(date AS DATE), CAST(exit_date AS DATE))
                      <= {max_span_days(sessions)}
                 THEN exit_px / entry - 1 END AS ret
@@ -187,6 +231,40 @@ def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
 #: Raising this is a deliberate act that changes what the quoted figures mean,
 #: and it belongs in a decision record alongside the re-measured values.
 REPRODUCIBILITY_HORIZON = "2026-08-31"
+
+
+#: The deal-to-price join. BY SECURITY, NOT BY STRING. `institutional_deals_raw`
+#: is not read at all: the identity layer resolved every deal to a security_id
+#: at mart build, and `rets` carries the same security_id on every price row.
+#: A deal whose identity could not be resolved is excluded here with the
+#: reason `unresolved_identity`, counted by UNRESOLVED_SQL, never matched by
+#: guessing which company its ticker meant that day.
+EVENT_JOIN_SQL = (
+    "SELECT cl.trade_date AS tdate, r.ret - m.m AS ab"
+    " FROM institutional_deals_clean cl"
+    " JOIN rets r ON r.security_id = cl.security_id"
+    "            AND r.date = cl.trade_date"
+    " JOIN mkt m ON m.date = cl.trade_date"
+    " WHERE cl.eligible_for_research"
+    "   AND cl.security_id IS NOT NULL"
+)
+
+#: Rows the study would otherwise have counted, excluded for unresolved_identity.
+#: Structurally 0 today — the mart's unresolved/uncovered exclusions run before
+#: eligibility — and reported so that it stays a decision rather than a coincidence.
+UNRESOLVED_SQL = (
+    "SELECT COUNT(*) FROM institutional_deals_clean"
+    " WHERE eligible_for_research AND security_id IS NULL"
+)
+
+
+def unresolved(env: str | None = None) -> int:
+    """Eligible rows excluded from every return here for unresolved_identity."""
+    con = duckdb.connect(str(research_db(env)), read_only=True)
+    try:
+        return con.execute(UNRESOLVED_SQL).fetchone()[0]
+    finally:
+        con.close()
 
 
 def grid(env: str | None = None, cutoff: str | None = REPRODUCIBILITY_HORIZON) -> list[Row]:
@@ -227,15 +305,7 @@ def grid(env: str | None = None, cutoff: str | None = REPRODUCIBILITY_HORIZON) -
         # The size and round-trip filters already live in the mart's
         # eligible_for_research, applied once where they can be counted, rather
         # than re-implemented in every study that needs them.
-        df = con.execute(
-            "SELECT cl.trade_date AS tdate, r.ret - m.m AS ab"
-            " FROM institutional_deals_clean cl"
-            " JOIN institutional_deals_raw raw USING (raw_deal_id)"
-            " JOIN rets r ON r.symbol = UPPER(TRIM(raw.symbol_raw))"
-            "            AND r.date = cl.trade_date"
-            " JOIN mkt m ON m.date = cl.trade_date"
-            " WHERE cl.eligible_for_research"
-        ).df().dropna(subset=["ab"])
+        df = con.execute(EVENT_JOIN_SQL).df().dropna(subset=["ab"])
 
         cohorts = power.cohort_collapse(df["tdate"], df["ab"], freq="M")
         # THE LAG MUST COVER THE LABEL OVERLAP (decision 0033). A 12-month label
@@ -261,6 +331,7 @@ def main() -> int:
     rows = grid()
     for r in rows:
         print(r.render())
+    print(f"\n  excluded, unresolved_identity: {unresolved():,} eligible row(s) with no security_id")
     powered = [r for r in rows if r.powered]
     print(f"\n  {len(powered)} of {len(rows)} horizons reach their bound"
           + (f": {', '.join(r.horizon for r in powered)}" if powered else ""))

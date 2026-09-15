@@ -80,10 +80,14 @@ class Row:
 #: `institutional_deals_clean` already holds the size floor, the ADV floor and
 #: the participation ceiling, applied once where they can be counted. The only
 #: difference from `measure.grid` is the side.
+#: BY SECURITY, NOT BY STRING (2026-09-15). The event carries the mart's
+#: resolved security_id and nothing from institutional_deals_raw; the price
+#: join below matches it to a `rets` row stamped with the same identity by the
+#: same rule. A sell whose identity is unresolved is excluded, counted by
+#: UNRESOLVED_SQL, and never matched by guessing a ticker.
 EVENT_SQL = """
-    SELECT cl.trade_date AS tdate, UPPER(TRIM(raw.symbol_raw)) AS symbol
+    SELECT cl.trade_date AS tdate, cl.security_id
     FROM institutional_deals_clean cl
-    JOIN institutional_deals_raw raw USING (raw_deal_id)
     WHERE cl.side = 'SELL'
       AND NOT cl.same_day_round_trip_flag
       AND cl.ineligibility_reason IS DISTINCT FROM 'PROP_HFT participant'
@@ -91,7 +95,33 @@ EVENT_SQL = """
       AND cl.gross_deal_value >= 1e7
       AND NOT cl.unresolved_symbol_flag
       AND NOT cl.uncovered_symbol_flag
+      AND cl.security_id IS NOT NULL
 """
+
+RETURNS_JOIN_SQL = (
+    "SELECT ev.tdate, r.ret - m.m AS ab FROM ev"
+    " JOIN rets r ON r.security_id = ev.security_id AND r.date = ev.tdate"
+    " JOIN mkt m ON m.date = ev.tdate"
+)
+
+#: Sells that pass every filter above except identity: excluded, unresolved_identity.
+UNRESOLVED_SQL = """
+    SELECT COUNT(*) FROM institutional_deals_clean cl
+    WHERE cl.side = 'SELL'
+      AND NOT cl.same_day_round_trip_flag
+      AND cl.ineligibility_reason IS DISTINCT FROM 'PROP_HFT participant'
+      AND cl.deal_value_to_adv20 BETWEEN 0.005 AND 0.50
+      AND cl.gross_deal_value >= 1e7
+      AND cl.security_id IS NULL
+"""
+
+
+def unresolved(env: str | None = None) -> int:
+    con = duckdb.connect(str(research_db(env)), read_only=True)
+    try:
+        return con.execute(UNRESOLVED_SQL).fetchone()[0]
+    finally:
+        con.close()
 
 
 def grid(env: str | None = None) -> list[Row]:
@@ -104,11 +134,7 @@ def grid(env: str | None = None) -> list[Row]:
             con.execute(f"CREATE OR REPLACE TEMP VIEW rets AS {measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
             con.execute("CREATE OR REPLACE TEMP VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
             con.execute(f"CREATE OR REPLACE TEMP VIEW ev AS {EVENT_SQL}")
-            df = con.execute(
-                "SELECT ev.tdate, r.ret - m.m AS ab FROM ev"
-                " JOIN rets r ON r.symbol = ev.symbol AND r.date = ev.tdate"
-                " JOIN mkt m ON m.date = ev.tdate"
-            ).df().dropna(subset=["ab"])
+            df = con.execute(RETURNS_JOIN_SQL).df().dropna(subset=["ab"])
             if df.empty:
                 continue
             cohorts = power.cohort_collapse(df["tdate"], df["ab"], freq="M")
@@ -132,6 +158,7 @@ def main() -> int:
     rows = grid()
     for r in rows:
         print(r.render())
+    print(f"\n  excluded, unresolved_identity: {unresolved():,} sell(s) with no security_id")
     powered = [r for r in rows if r.powered]
     print(f"\n  {len(powered)} of {len(rows)} horizons reach their bound"
           + (f": {', '.join(r.horizon for r in powered)}" if powered else ""))

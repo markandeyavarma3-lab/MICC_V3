@@ -90,14 +90,8 @@ class Verdict:
                 f"{self.bound:>9.2%}{verdict:>15}")
 
 
-def _events_sql(strict: bool) -> str:
-    """Consensus events under one basis. Returns (symbol, date).
-
-    The window is 21 TRADING SESSIONS, not 21 days: a calendar window would
-    silently widen across holidays, and `common/calendar.py` exists because the
-    observed calendar has three Saturday sessions no generated one would hold.
-    """
-    eligibility = (
+def _eligibility(strict: bool) -> str:
+    return (
         "cl.eligible_for_research"
         if strict else
         # PERMISSIVE still removes the two things that are not conviction at all:
@@ -106,44 +100,86 @@ def _events_sql(strict: bool) -> str:
         "cl.side = 'BUY' AND NOT cl.same_day_round_trip_flag"
         " AND cl.ineligibility_reason IS DISTINCT FROM 'PROP_HFT participant'"
     )
+
+
+def _events_sql(strict: bool) -> str:
+    """Consensus events under one basis. Returns (security_id, date).
+
+    The window is 21 TRADING SESSIONS, not 21 days: a calendar window would
+    silently widen across holidays, and `common/calendar.py` exists because the
+    observed calendar has three Saturday sessions no generated one would hold.
+    """
+    eligibility = _eligibility(strict)
     return f"""
     WITH cal AS (
         SELECT date, ROW_NUMBER() OVER (ORDER BY date) AS i
         FROM (SELECT DISTINCT date FROM px)
     ),
+    -- THE THING CONVERGED ON IS A SECURITY, NOT A TICKER (2026-09-15). Three
+    -- institutions buying one company across a rename are one convergence; two
+    -- companies that shared a ticker years apart are not. `security_id` is the
+    -- mart's resolved identity; the raw table is read only for the client name.
+    -- A buy with no resolved identity is excluded, counted by UNRESOLVED_SQL,
+    -- never matched by guessing.
     buys AS (
         SELECT DISTINCT
-            UPPER(TRIM(raw.symbol_raw))      AS symbol,
+            cl.security_id,
             cl.trade_date                    AS date,
             UPPER(TRIM(raw.client_name_raw)) AS participant
         FROM institutional_deals_clean cl
         JOIN institutional_deals_raw raw USING (raw_deal_id)
         WHERE {eligibility}
+          AND cl.security_id IS NOT NULL
           AND raw.client_name_raw IS NOT NULL
     ),
-    idx AS (SELECT b.symbol, b.participant, c.i FROM buys b JOIN cal c USING (date)),
+    idx AS (SELECT b.security_id, b.participant, c.i FROM buys b JOIN cal c USING (date)),
     -- Distinct participants in the trailing window, evaluated on every session a
     -- buy occurs. A stock with no buys cannot cross a threshold, so sessions
     -- without one are not evaluated.
     counted AS (
-        SELECT s.symbol, s.i,
+        SELECT s.security_id, s.i,
                (SELECT COUNT(DISTINCT t.participant) FROM idx t
-                WHERE t.symbol = s.symbol AND t.i BETWEEN s.i - {WINDOW_SESSIONS - 1} AND s.i)
+                WHERE t.security_id = s.security_id AND t.i BETWEEN s.i - {WINDOW_SESSIONS - 1} AND s.i)
                AS n_inst
-        FROM (SELECT DISTINCT symbol, i FROM idx) s
+        FROM (SELECT DISTINCT security_id, i FROM idx) s
     ),
-    -- The crossing, not the state. LAG over the symbol's own evaluated sessions:
-    -- an event fires when the count reaches the threshold having been below it,
-    -- so one convergence is one event rather than one per session it persists.
+    -- The crossing, not the state. LAG over the security's own evaluated
+    -- sessions: an event fires when the count reaches the threshold having been
+    -- below it, so one convergence is one event rather than one per session.
     crossings AS (
-        SELECT symbol, i, n_inst,
-               LAG(n_inst) OVER (PARTITION BY symbol ORDER BY i) AS prev
+        SELECT security_id, i, n_inst,
+               LAG(n_inst) OVER (PARTITION BY security_id ORDER BY i) AS prev
         FROM counted
     )
-    SELECT c.symbol, cal.date
+    SELECT c.security_id, cal.date
     FROM crossings c JOIN cal ON cal.i = c.i
     WHERE c.n_inst >= {THRESHOLD} AND (c.prev IS NULL OR c.prev < {THRESHOLD})
     """
+
+
+RETURNS_JOIN_SQL = (
+    "SELECT ev.date AS tdate, r.ret - m.m AS ab"
+    " FROM ev JOIN rets r ON r.security_id = ev.security_id AND r.date = ev.date"
+    "         JOIN mkt m ON m.date = ev.date"
+)
+
+
+def _unresolved_sql(strict: bool) -> str:
+    """Buys that would have counted toward a convergence but carry no identity."""
+    eligibility = _eligibility(strict)
+    return f"""
+    SELECT COUNT(*) FROM institutional_deals_clean cl
+    JOIN institutional_deals_raw raw USING (raw_deal_id)
+    WHERE {eligibility} AND cl.security_id IS NULL AND raw.client_name_raw IS NOT NULL
+    """
+
+
+def unresolved(env: str | None = None, strict: bool = True) -> int:
+    con = duckdb.connect(str(research_db(env)), read_only=True)
+    try:
+        return con.execute(_unresolved_sql(strict)).fetchone()[0]
+    finally:
+        con.close()
 
 
 def measure_basis(con, spine: str, strict: bool) -> list[Verdict]:
@@ -154,11 +190,7 @@ def measure_basis(con, spine: str, strict: bool) -> list[Verdict]:
         con.execute(f"CREATE OR REPLACE TEMP VIEW rets AS {measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
         con.execute("CREATE OR REPLACE TEMP VIEW mkt AS SELECT date, avg(ret) m FROM rets GROUP BY 1")
         con.execute(f"CREATE OR REPLACE TEMP VIEW ev AS {_events_sql(strict)}")
-        df = con.execute(
-            "SELECT ev.date AS tdate, r.ret - m.m AS ab"
-            " FROM ev JOIN rets r ON r.symbol = ev.symbol AND r.date = ev.date"
-            "         JOIN mkt m ON m.date = ev.date"
-        ).df().dropna(subset=["ab"])
+        df = con.execute(RETURNS_JOIN_SQL).df().dropna(subset=["ab"])
         if df.empty:
             continue
         cohorts = power.cohort_collapse(df["tdate"], df["ab"], freq="M")
@@ -193,6 +225,8 @@ def main() -> int:
     rows = grid()
     for r in rows:
         print(r.render())
+    print(f"\n  excluded, unresolved_identity: STRICT {unresolved(strict=True):,}"
+          f" / PERMISSIVE {unresolved(strict=False):,} buy(s) with no security_id")
     powered = [r for r in rows if r.powered]
     print(f"\n  {len(powered)} of {len(rows)} (basis, horizon) pairs reach their bound"
           + (f": {', '.join(f'{r.basis}/{r.horizon}' for r in powered)}" if powered else ""))

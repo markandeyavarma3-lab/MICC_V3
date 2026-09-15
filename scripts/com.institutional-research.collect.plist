@@ -24,10 +24,16 @@
   Plan 3 Phase 2.9 specified launchd from day one. The implementation used cron,
   and this is the day that cost a session.
 
-  CRON IS DELIBERATELY LEFT IN PLACE. The stopgap dedupes on sha256, so a
-  duplicate run costs exactly one HTTP request and writes nothing. Two independent
-  schedulers that both no-op on success is the correct trade when the failure mode
-  is permanent data loss.
+  CRON WAS DELIBERATELY LEFT IN PLACE, AND THEN RETIRED (decision 0059,
+  2026-09-15). The trade was correct while the script only archived: sha256
+  dedupe made a duplicate run a free HTTP request. It stopped being correct
+  when land -> identity -> mart -> outcomes and the spine rebuild joined the
+  script (0055): those take DuckDB's exclusive write lock, and two runs
+  starting seconds apart collided every slot. This file is now the ONLY
+  trigger. Install / reload with:
+      cp scripts/com.institutional-research.collect.plist ~/Library/LaunchAgents/
+      launchctl bootout gui/$UID/com.institutional-research.collect
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.institutional-research.collect.plist
 -->
 <plist version="1.0">
 <dict>
@@ -40,35 +46,39 @@
     </array>
 
     <!--
-      Three slots per session, mirroring the cron entries.
+      Two slots per session, every calendar day (owner request 2026-09-15,
+      decision 0060). Previously three slots Mon-Fri/Sat mirrored from cron;
+      cron is retired (0059) and this file is the only trigger.
 
-      NSE publishes around 19:00 IST and does not republish, so at 08:00 the
-      endpoint is STILL serving the prior session. The morning slot is a genuine
-      catch-up for a missed evening, not a repeat.
+      20:30 — same-day file. NSE publishes around 19:00 IST and does not
+              republish; 20:30 leaves headroom for a late publish.
+      08:30 — catch-up. At 08:30 the endpoint is STILL serving the prior
+              session, so a missed or failed evening is recovered here, not
+              repeated. sha256 dedupe makes a redundant morning run a no-op.
 
-      Weekday: 1=Monday .. 6=Saturday. 20:00 and 22:30 run Mon-Fri; 08:00 runs
-      Mon-Sat so a Friday evening miss is still caught on Saturday morning.
+      Every day INCLUDING Sat/Sun: a Friday evening miss is caught Saturday
+      08:30; a weekend run finds nothing new and costs one HTTP request.
+
+      Weekday: 0=Sunday .. 6=Saturday (man launchd.plist: "0 and 7 are
+      Sunday"). 14 intervals: 7 days x 2 slots.
     -->
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
 
-        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
-        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
-
-        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
     </array>
 
     <!--
