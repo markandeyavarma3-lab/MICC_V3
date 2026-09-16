@@ -122,6 +122,51 @@ def max_span_days(sessions: int) -> float:
     return sessions * 365.0 / SESSIONS_PER_YEAR * 1.5 + 10.0
 
 
+
+def identified_px_ctes(spine: str, cutoff: str | None = None) -> str:
+    """The `px -> ident -> sec` chain, as CTE text for a WITH clause.
+
+    ONE DEFINITION OF "WHICH SECURITY IS THIS PRICE ROW". Decision 0061 moved
+    `_returns_sql` to PARTITION BY security_id and left delisting.py with its
+    own symbol-partitioned window, so from 2026-09-15 the two modules disagreed
+    about how many EXPLORE events exist (1,115 vs 1,080). Extracted 2026-09-16
+    so every window in the project resolves identity by the same rule the mart
+    used to stamp security_id on the deal — and so the next module cannot start
+    a fourth copy.
+    """
+    cut = f" AND date <= '{cutoff}'" if cutoff else ""
+    return f"""px AS (
+        SELECT UPPER(TRIM(symbol)) AS symbol, date, open, close, volume
+        FROM read_parquet('{spine}') WHERE close > 0 AND open > 0{cut}
+    ),
+    -- IDENTITY, BY THE IDENTITY LAYER'S OWN RULE (src/identity/master.py
+    -- RESOLVE_SQL): a symbol_history window that covers the date wins; else the
+    -- nearest window; ties to the lowest security_id. The same ordering the
+    -- mart used to stamp security_id on every deal, so deal and price row
+    -- agree on the trade date by construction. A spine symbol with no
+    -- symbol_history row has no identity and produces no return: its deals
+    -- are UNRESOLVED and excluded by every caller, not matched by string.
+    ident AS (
+        SELECT p.symbol, p.date, p.open, p.close, p.volume, h.security_id,
+               CASE WHEN CAST(p.date AS DATE) >= h.valid_from
+                     AND (h.valid_to IS NULL OR CAST(p.date AS DATE) <= h.valid_to)
+                    THEN 0
+                    WHEN CAST(p.date AS DATE) < h.valid_from
+                    THEN date_diff('day', CAST(p.date AS DATE), h.valid_from)
+                    ELSE date_diff('day', h.valid_to, CAST(p.date AS DATE)) END AS gap_days
+        FROM px p JOIN symbol_history h ON h.symbol = p.symbol
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.symbol, p.date
+                                   ORDER BY gap_days, h.security_id) = 1
+    ),
+    -- One row per security-session. On a rename day both tickers can trade;
+    -- keep the one whose window covers the date, then the more liquid one.
+    sec AS (
+        SELECT * FROM ident
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY security_id, date
+                                   ORDER BY gap_days, volume DESC, symbol) = 1
+    )"""
+
+
 def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
     """Forward return over `sessions`, entered at the OPEN of the session AFTER
     the trade date — never the same session's close, because the disclosure is
@@ -167,39 +212,8 @@ def _returns_sql(spine: str, sessions: int, cutoff: str | None = None) -> str:
     every string in the spine. The 1,008 unmapped symbols are the ones the
     universe already excludes as unresolved.
     """
-    # An AND clause, not a WHERE: the read below already has one.
-    cut = f" AND date <= '{cutoff}'" if cutoff else ""
     return f"""
-    WITH px AS (
-        SELECT UPPER(TRIM(symbol)) AS symbol, date, open, close, volume
-        FROM read_parquet('{spine}') WHERE close > 0 AND open > 0{cut}
-    ),
-    -- IDENTITY, BY THE IDENTITY LAYER'S OWN RULE (src/identity/master.py
-    -- RESOLVE_SQL): a symbol_history window that covers the date wins; else the
-    -- nearest window; ties to the lowest security_id. The same ordering the
-    -- mart used to stamp security_id on every deal, so deal and price row
-    -- agree on the trade date by construction. A spine symbol with no
-    -- symbol_history row has no identity and produces no return: its deals
-    -- are UNRESOLVED and excluded by every caller, not matched by string.
-    ident AS (
-        SELECT p.symbol, p.date, p.open, p.close, p.volume, h.security_id,
-               CASE WHEN CAST(p.date AS DATE) >= h.valid_from
-                     AND (h.valid_to IS NULL OR CAST(p.date AS DATE) <= h.valid_to)
-                    THEN 0
-                    WHEN CAST(p.date AS DATE) < h.valid_from
-                    THEN date_diff('day', CAST(p.date AS DATE), h.valid_from)
-                    ELSE date_diff('day', h.valid_to, CAST(p.date AS DATE)) END AS gap_days
-        FROM px p JOIN symbol_history h ON h.symbol = p.symbol
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY p.symbol, p.date
-                                   ORDER BY gap_days, h.security_id) = 1
-    ),
-    -- One row per security-session. On a rename day both tickers can trade;
-    -- keep the one whose window covers the date, then the more liquid one.
-    sec AS (
-        SELECT * FROM ident
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY security_id, date
-                                   ORDER BY gap_days, volume DESC, symbol) = 1
-    ),
+    WITH {identified_px_ctes(spine, cutoff)},
     f AS (
         SELECT a.security_id, a.symbol, a.date,
                LEAD(a.open, 1) OVER w AS entry,

@@ -92,51 +92,45 @@ def _span(sessions: int) -> float:
 def _classify_sql(spine: str, sessions: int, cutoff: str) -> str:
     """Every EXPLORE sell event, with its exit reason and both exit prices.
 
+    ON THE SHARED IDENTITY CHAIN SINCE 2026-09-16. This function carried its own
+    `px` partitioned by symbol — the third copy of the horizon window in the
+    project — while its market leg came from `measure._returns_sql`, which 0061
+    had moved to security_id. The population it classified (1,115) and the
+    population confounds measured (1,080) disagreed by 35 events for a day.
+    `measure.identified_px_ctes` is now the only definition of which security a
+    price row belongs to; `last`, `lastpx` and the leads all partition on it.
+
     `sessions_after` is the count of tradable sessions strictly following the
     event's own session. `LEAD(close, N)` needs row i+N to exist, so an exit
-    lands exactly when `sessions_after >= N` — the off-by-one here is the
-    difference between 1,144 and 1,145 events and was worth checking against
-    the pre-existing count rather than reasoning about.
+    lands exactly when `sessions_after >= N`.
     """
+    from src.research import measure
+
     return f"""
-    WITH px AS (
-        SELECT symbol, date, open, close,
-               ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) AS i
-        FROM read_parquet('{spine}')
-        WHERE close > 0 AND open > 0 AND date <= '{cutoff}'
+    WITH {measure.identified_px_ctes(spine, cutoff)},
+    px_i AS (
+        SELECT security_id, symbol, date, open, close,
+               ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY date) AS i
+        FROM sec
     ),
-    last AS (SELECT symbol, MAX(date) AS last_date, MAX(i) AS n FROM px GROUP BY 1),
-    -- The last price the name ever printed, which is what a delisted holder
-    -- marks against. Taken from px so it obeys the same close>0 filter.
+    last AS (SELECT security_id, MAX(date) AS last_date, MAX(i) AS n FROM px_i GROUP BY 1),
     lastpx AS (
-        SELECT p.symbol, p.close AS last_close
-        FROM px p JOIN last l ON l.symbol = p.symbol AND l.n = p.i
+        SELECT p.security_id, p.close AS last_close
+        FROM px_i p JOIN last l ON l.security_id = p.security_id AND l.n = p.i
     ),
-    spine_end AS (SELECT MAX(date) AS e FROM px),
-    -- THE LEADS ARE COMPUTED OVER THE WHOLE PRICE SERIES, BEFORE ANY JOIN TO
-    -- EVENTS. Joining first and windowing after partitions over event rows
-    -- only, so LEAD(open,1) returns the next EVENT's open rather than the next
-    -- session's. That drew 984 events out of 1,255 on the first run, which is
-    -- how it was caught; measure.py has always had this ordering right.
+    spine_end AS (SELECT MAX(date) AS e FROM px_i),
     f AS (
-        SELECT symbol, date,
+        SELECT security_id, symbol, date,
                LEAD(open, 1) OVER w AS entry,
                LEAD(close, {sessions}) OVER w AS exit_px,
                LEAD(date, {sessions}) OVER w AS exit_date,
                i
-        FROM px WINDOW w AS (PARTITION BY symbol ORDER BY i)
+        FROM px_i WINDOW w AS (PARTITION BY security_id ORDER BY i)
     ),
-    ev AS (SELECT e.* FROM ({confounds.SELL_EVENTS}) e JOIN ex_syms u USING (symbol))
-    SELECT ev.tdate, ev.symbol, f.entry, f.exit_px,
+    ev AS (SELECT e.* FROM ({confounds.SELL_EVENTS}) e JOIN ex_ids u USING (security_id))
+    SELECT ev.tdate, f.symbol, ev.security_id, f.entry, f.exit_px,
            l.n - f.i AS sessions_after, lp.last_close,
            CASE
-             -- THE SPAN GUARD, MATCHING measure._returns_sql. This module kept
-             -- a THIRD copy of the horizon rule and it was the unguarded one.
-             -- Once the shared engine started excluding suspension-spanning
-             -- windows from the market leg on 2026-09-05, this classifier was
-             -- still calling them HORIZON, so the event population and the
-             -- benchmark it was measured against disagreed about which events
-             -- exist. Same rule, one definition, three call sites.
              WHEN l.n - f.i >= {sessions}
                   AND date_diff('day', CAST(f.date AS DATE),
                                 CAST(f.exit_date AS DATE)) <= {_span(sessions)}
@@ -148,9 +142,9 @@ def _classify_sql(spine: str, sessions: int, cutoff: str) -> str:
              ELSE 'STOPPED'
            END AS exit_reason
     FROM ev
-    JOIN f ON f.symbol = ev.symbol AND CAST(f.date AS VARCHAR) = ev.tdate
-    JOIN last l ON l.symbol = ev.symbol
-    JOIN lastpx lp ON lp.symbol = ev.symbol
+    JOIN f ON f.security_id = ev.security_id AND CAST(f.date AS VARCHAR) = ev.tdate
+    JOIN last l ON l.security_id = ev.security_id
+    JOIN lastpx lp ON lp.security_id = ev.security_id
     WHERE f.entry > 0
     """
 
@@ -165,9 +159,9 @@ def run(env: str | None = None, sessions: int = 252) -> tuple[dict, list[Tier]]:
                     f"{measure._returns_sql(spine, sessions, cutoff)}")
         con.execute("CREATE OR REPLACE TEMP VIEW mkt AS "
                     "SELECT date, avg(ret) m FROM rets GROUP BY 1")
-        explore = confounds._explore_symbols(con)
-        con.execute("CREATE OR REPLACE TEMP TABLE ex_syms (symbol VARCHAR)")
-        con.executemany("INSERT INTO ex_syms VALUES (?)", [(s,) for s in explore])
+        explore = confounds._explore_securities(con)
+        con.execute("CREATE OR REPLACE TEMP TABLE ex_ids (security_id BIGINT)")
+        con.executemany("INSERT INTO ex_ids VALUES (?)", [(i,) for i in explore])
         con.execute(f"CREATE OR REPLACE TEMP VIEW cls AS "
                     f"{_classify_sql(spine, sessions, cutoff)}")
 

@@ -93,15 +93,38 @@ POPULATIONS: tuple[tuple[str, str], ...] = (
 
 
 def _events_sql(txn_filter: str) -> str:
+    """Promoter filings resolved to a security_id at the FILING date.
+
+    The insider seed carries a symbol and no ISIN. Until 2026-09-16 this joined
+    prices on that string; 0061 moved the price side to security_id and left
+    this module on the ticker. Resolution here uses the identity layer's own
+    rule (src/identity/master.py RESOLVE_SQL, the same one measure.py uses for
+    price rows): a symbol_history window covering the date wins, else the
+    nearest window, ties to the lowest security_id. A filing whose symbol has
+    no history row has no identity and produces no event.
+    """
     cats = ", ".join(f"'{c}'" for c in PROMOTER_CATEGORIES)
     return f"""
-    SELECT CAST(filing_date AS VARCHAR) AS tdate,
-           UPPER(TRIM(symbol)) AS symbol
-    FROM read_parquet('{INSIDER_SEED}')
-    WHERE category IN ({cats})
-      AND {txn_filter}
-      AND value > 0
-      AND CAST(filing_date AS VARCHAR) <= '{measure.REPRODUCIBILITY_HORIZON}'
+    WITH raw AS (
+        SELECT CAST(filing_date AS VARCHAR) AS tdate,
+               UPPER(TRIM(symbol)) AS symbol
+        FROM read_parquet('{INSIDER_SEED}')
+        WHERE category IN ({cats})
+          AND {txn_filter}
+          AND value > 0
+          AND CAST(filing_date AS VARCHAR) <= '{measure.REPRODUCIBILITY_HORIZON}'
+    )
+    SELECT r.tdate, r.symbol, h.security_id
+    FROM raw r JOIN symbol_history h ON h.symbol = r.symbol
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY r.tdate, r.symbol
+        ORDER BY CASE WHEN CAST(r.tdate AS DATE) >= h.valid_from
+                       AND (h.valid_to IS NULL OR CAST(r.tdate AS DATE) <= h.valid_to)
+                      THEN 0
+                      WHEN CAST(r.tdate AS DATE) < h.valid_from
+                      THEN date_diff('day', CAST(r.tdate AS DATE), h.valid_from)
+                      ELSE date_diff('day', h.valid_to, CAST(r.tdate AS DATE)) END,
+                 h.security_id) = 1
     """
 
 
@@ -122,7 +145,8 @@ def grid(env: str | None = None) -> list[Row]:
                 con.execute(f"CREATE OR REPLACE TEMP VIEW ev AS {_events_sql(txn_filter)}")
                 df = con.execute(
                     "SELECT ev.tdate, r.ret - m.m AS ab FROM ev"
-                    " JOIN rets r ON r.symbol = ev.symbol AND CAST(r.date AS VARCHAR) = ev.tdate"
+                    " JOIN rets r ON r.security_id = ev.security_id"
+                    "            AND CAST(r.date AS VARCHAR) = ev.tdate"
                     " JOIN mkt m ON m.date = r.date"
                 ).df().dropna(subset=["ab"])
                 if len(df) < 30:

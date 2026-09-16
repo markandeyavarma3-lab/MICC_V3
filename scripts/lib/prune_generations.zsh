@@ -109,8 +109,20 @@ for s in $stamps; do
   fi
   # Never remove the generation just written, whatever the arithmetic says.
   if [[ "$s" == "$STAMP" ]]; then kept+=("$s"); continue; fi
-  rm -f "$DEST/repo-$s.bundle" "$DEST/state-$s.tar.gz" "$DEST/MANIFEST-$s.txt"
-  echo "  pruned generation $s"
+  # ONE DENIED rm MUST NOT ABORT RETENTION. On 2026-09-16 the fifth delete of
+  # a run returned "Operation not permitted" — an iCloud file the launchd
+  # context could stat but not unlink — and `set -e` ended the script there,
+  # leaving four pruned, twenty-three untouched, and the index five entries
+  # ahead of the disk. rm is allowed to fail per file; what decides the index
+  # is whether the file is STILL THERE afterwards, which stat can answer under
+  # TCC even when unlink cannot.
+  rm -f "$DEST/repo-$s.bundle" "$DEST/state-$s.tar.gz" "$DEST/MANIFEST-$s.txt" 2>/dev/null || true
+  if [[ -e "$DEST/repo-$s.bundle" ]]; then
+    echo "  prune: could NOT remove $s (still present) — kept in index, retry next run"
+    kept+=("$s")
+  else
+    echo "  pruned generation $s"
+  fi
 done
 
 print -l -- ${(on)kept} > "$INDEX"

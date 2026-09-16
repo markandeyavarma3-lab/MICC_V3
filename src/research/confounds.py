@@ -41,16 +41,27 @@ CONFOUNDS_YML = CONFIGS / "confounds.yml"
 PIT_UNIVERSE = SEED / "pit_universe.parquet"
 
 #: The population under test. Sells, same filters every other study used.
+#: EVENTS CARRY security_id AND isin SINCE 2026-09-16. Decision 0061 moved the
+#: price side of `measure._returns_sql` to PARTITION BY security_id and left
+#: this module's event side on the ticker string, so from 2026-09-15 to
+#: 2026-09-16 the population here (1,080) and delisting.py's (1,115) disagreed
+#: by 35 events — the mixed state 0055 had already fixed once. The join below
+#: now attaches on identity, and the EXPLORE partition keys on ISIN as split.yml
+#: always intended rather than falling back to the symbol.
 SELL_EVENTS = """
-    SELECT CAST(cl.trade_date AS VARCHAR) AS tdate, UPPER(TRIM(r.symbol_raw)) AS symbol
+    SELECT CAST(cl.trade_date AS VARCHAR) AS tdate,
+           UPPER(TRIM(r.symbol_raw)) AS symbol,
+           cl.security_id, sm.isin
     FROM institutional_deals_clean cl
     JOIN institutional_deals_raw r USING (raw_deal_id)
+    LEFT JOIN security_master sm USING (security_id)
     WHERE cl.side = 'SELL'
       AND NOT cl.same_day_round_trip_flag
       AND cl.deal_value_to_adv20 BETWEEN 0.005 AND 0.50
       AND cl.gross_deal_value >= 1e7
       AND NOT cl.unresolved_symbol_flag
       AND NOT cl.uncovered_symbol_flag
+      AND cl.security_id IS NOT NULL
 """
 
 
@@ -75,13 +86,28 @@ class Result:
         return "\n".join(out)
 
 
+def _explore_securities(con) -> set[int]:
+    """security_ids in the EXPLORE stratum. Computed in Python because
+    `split.assign` is the single source of truth for the partition and must not
+    be reimplemented in SQL — a second implementation is a second answer.
+
+    Keyed on ISIN where the master carries one, which is what split.yml
+    specifies; the symbol fallback inside `split.assign` only fires for the few
+    securities with no ISIN."""
+    rows = con.execute(
+        f"SELECT DISTINCT security_id, symbol, isin FROM ({SELL_EVENTS})").fetchall()
+    return {sid for sid, sym, isin in rows if split.assign(sym, isin)[0] == "EXPLORE"}
+
+
+# Kept for the sibling modules that still call it by the old name.
 def _explore_symbols(con) -> set[str]:
-    """Names in the EXPLORE stratum. Computed in Python because `split.assign`
-    is the single source of truth for the partition and must not be reimplemented
-    in SQL — a second implementation is a second answer."""
-    syms = [r[0] for r in con.execute(
-        f"SELECT DISTINCT symbol FROM ({SELL_EVENTS})").fetchall()]
-    return {s for s in syms if split.assign(s)[0] == "EXPLORE"}
+    ids = _explore_securities(con)
+    if not ids:
+        return set()
+    rows = con.execute(
+        f"SELECT DISTINCT symbol FROM ({SELL_EVENTS}) WHERE security_id IN "
+        f"({','.join(str(i) for i in ids)})").fetchall()
+    return {r[0] for r in rows}
 
 
 def run(env: str | None = None, sessions: int = 252) -> list[Result]:
@@ -94,14 +120,18 @@ def run(env: str | None = None, sessions: int = 252) -> list[Result]:
                     f"{measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON)}")
         con.execute("CREATE OR REPLACE TEMP VIEW mkt AS "
                     "SELECT date, avg(ret) m FROM rets GROUP BY 1")
-        explore = _explore_symbols(con)
-        con.execute("CREATE OR REPLACE TEMP TABLE ex_syms (symbol VARCHAR)")
-        con.executemany("INSERT INTO ex_syms VALUES (?)", [(s,) for s in explore])
+        explore = _explore_securities(con)
+        con.execute("CREATE OR REPLACE TEMP TABLE ex_ids (security_id BIGINT)")
+        con.executemany("INSERT INTO ex_ids VALUES (?)", [(i,) for i in explore])
         con.execute(f"""CREATE OR REPLACE TEMP VIEW ev AS
-            SELECT e.* FROM ({SELL_EVENTS}) e JOIN ex_syms u USING (symbol)""")
+            SELECT e.* FROM ({SELL_EVENTS}) e JOIN ex_ids u USING (security_id)""")
+        # `symbol` is kept on `ab` because pit_universe and char_panel are
+        # spine-derived and keyed on the ticker; it comes from the PRICE row,
+        # which is the ticker the security actually traded under that day.
         con.execute("""CREATE OR REPLACE TEMP VIEW ab AS
-            SELECT ev.tdate, ev.symbol, r.ret - m.m AS ab, r.adv20
-            FROM ev JOIN rets r ON r.symbol = ev.symbol AND CAST(r.date AS VARCHAR) = ev.tdate
+            SELECT ev.tdate, r.symbol, ev.security_id, r.ret - m.m AS ab, r.adv20
+            FROM ev JOIN rets r ON r.security_id = ev.security_id
+                                AND CAST(r.date AS VARCHAR) = ev.tdate
                     JOIN mkt m ON m.date = r.date""")
 
         # COUNT(*) COUNTS NULLS AND avg() DOES NOT. Until 2026-09-03 this line
