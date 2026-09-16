@@ -106,6 +106,10 @@ FNO = SpineSpec(
     # not identify it. Futures carry NULL strike and option_typ, which GROUP BY
     # treats as equal, so they still collapse correctly.
     unique_key=("date", "instrument", "symbol", "expiry", "strike", "option_typ"),
+    # Sessions after the last MICCV2 increment, parsed from the archived UDiFF
+    # bhavcopy by src/ingest/fno.py (decision 0065). Same relationship as
+    # prices -> collected/prices.
+    collected_glob="fno/**/*.parquet",
 )
 
 
@@ -541,7 +545,7 @@ def build_adjusted(env: str | None = None,
 #: containing stock_data AND fo_data.
 def _parent_dirs(spec: SpineSpec) -> tuple[Path, ...]:
     if spec is FNO:
-        return (SEED, SEED_INCREMENTS / "fno")
+        return (SEED, SEED_INCREMENTS / "fno", COLLECTED / "fno")
     return (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices")
 
 
