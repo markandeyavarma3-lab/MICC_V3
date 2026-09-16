@@ -212,6 +212,27 @@ def build_panel(env: str | None = None, buckets: int = 5) -> PanelResult:
             con, spine, ("symbol", "date", "open", "high", "low", "close", "volume", "_y"))
     except Exception:  # noqa: BLE001 - a missing parent must not block the build
         pass
+    # REGISTER THE PARENT BEFORE THE CHILD, EVERY TIME.
+    #
+    # The spine rebuilds daily and its content checksum changes with it. The
+    # spine build registers its own artefact under a file-level hash, which is
+    # NOT the data_checksum computed here, so the edge below pointed at a hash
+    # that was never in the DAG and the FOREIGN KEY failed — on every scheduled
+    # run from 2026-09-11 to 2026-09-16, flooding launchd_collect.err with
+    # "one or more stages FAILED" while the panel silently froze again, 27 days
+    # after 0055 fixed exactly that staleness. `register` is idempotent, so a
+    # parent already present costs nothing and a parent missing is created here
+    # rather than assumed.
+    if spine_hash:
+        prov.register(
+            prov.Artefact(spine_hash, "TABLE", "warehouse:price_spine_adj:data",
+                          "src.warehouse.spine:build",
+                          params={"addressing": "data_checksum",
+                                  "note": "content hash of the adjusted spine as read "
+                                          "by charmatch; registered by the consumer "
+                                          "so the parent edge always resolves"}),
+            env=env,
+        )
     prov.register(
         prov.Artefact(digest, "FEATURE", "warehouse:char_panel", PRODUCED_BY,
                       params={"buckets": buckets, "dimensions": list(LIVE_DIMENSIONS),

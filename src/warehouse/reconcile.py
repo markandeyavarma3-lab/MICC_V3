@@ -131,7 +131,11 @@ def run(env: str | None = None) -> list[Check]:
         ),
         Check(
             "fno_rows", s["expect_fno_rows"],
-            c.execute(f"SELECT COUNT(*) FROM read_parquet('{fno}')").fetchone()[0],
+            # Bounded to the MICCV2 horizon since 2026-09-16, when collected
+            # UDiFF F&O was first landed and the unbounded count stopped being
+            # the seed reconciliation it claims to be.
+            c.execute(f"SELECT COUNT(*) FROM read_parquet('{fno}')"
+                      f" WHERE date <= '{horizon}'").fetchone()[0],
             "distinct rows after resolving the ten-date seed/increment overlap "
             "(decision 0029); the predecessor's 174,616,363 was a naive sum",
         ),

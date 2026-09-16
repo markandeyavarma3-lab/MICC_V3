@@ -85,13 +85,15 @@ def test_the_twelve_month_figure_is_reproducible():
     # project's favour, which is exactly why it needed a decision record rather
     # than a quiet re-pin. The verdict is unchanged: 1.92x short instead of
     # 2.21x, still nowhere near its bound.
-    assert row.mde == pytest.approx(0.11537426, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0055 is "
-        f"11.5374%. If this changed legitimately, say so in a decision record."
+    # RE-MEASURED 2026-09-16, decision 0068: PARTITION BY security_id (0061).
+    # 11.5374% on 4,673 -> 10.8496% on 4,630. Still 1.81x short of the bound.
+    assert row.mde == pytest.approx(0.108496, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0068 is "
+        f"10.8496%. If this changed legitimately, say so in a decision record."
     )
-    assert row.n_events == 4_673
+    assert row.n_events == 4_630
     assert not row.powered, (
-        "12 months is 1.92x short of its bound once untradeable events and "
+        "12 months is 1.81x short of its bound once untradeable events and "
         "suspension-spanning windows are excluded. If this ever passes again, "
         "the reason must be explained."
     )

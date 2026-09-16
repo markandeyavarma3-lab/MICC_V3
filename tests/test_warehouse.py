@@ -177,7 +177,12 @@ def test_spine_row_counts(name, expected):
     refusal in `spine._collected_part`, not by these constants.
     """
     con = duckdb.connect()
-    where = "" if name == "fno_spine" else f" WHERE date <= '{reconcile.MICCV2_HORIZON}'"
+    # fno_spine was exempt from the bound until 2026-09-16 because nothing had
+    # ever appended collected F&O to it. Commit 891a905 did, and the unbounded
+    # count moved 174,272,768 -> 174,973,029 the same night. Same rule for all
+    # three spines now: the frozen figure measures what MICCV2 supplied, and the
+    # collected sessions are verified separately, not by moving this constant.
+    where = f" WHERE date <= '{reconcile.MICCV2_HORIZON}'"
     got = con.execute(
         f"SELECT COUNT(*) FROM read_parquet('{warehouse_dir('prod') / name}/**/*.parquet')"
         + where

@@ -121,8 +121,10 @@ def test_confounds_no_longer_reports_a_count_from_a_different_population():
     r = {x.confound_id: x for x in confounds.run("prod")}["_baseline"]
     # 1,145 -> 1,115 on 2026-09-06: the horizon rule now excludes 30 windows
     # that spanned a trading suspension (0055).
-    assert "n=1,115" in r.headline
-    assert any("140" in d and "no 252-session exit" in d for d in r.detail)
+    # 1,115 -> 1,080 on 2026-09-16: the market leg is security-partitioned (0061)
+    # while this module's event join is still on the string — see 0068 §6.
+    assert "n=1,080" in r.headline
+    assert any("173" in d and "no 252-session exit" in d for d in r.detail)
 
 
 def test_the_merged_case_is_declared_rather_than_silently_priced():

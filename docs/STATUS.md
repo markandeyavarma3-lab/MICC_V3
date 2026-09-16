@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -37,13 +37,13 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.1 | Freeze MICCV2 — agents unloaded, plists moved, tag | WIRED | verified manually 2026-08-22: no micc agents loaded, tag frozen-2026-08-16 exists |
 | 1.2 | Repo scaffold, pyproject, CI | WIRED | unit tier only — a runner has no data/ or db/, so the data and research tiers stay a local gate |
 | 1.3 | src/common — paths, hashing, migrations, config, logging | **VERIFIED** | no structured logging and no central config loader; six modules load their own YAML |
-| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5358 observed sessions; 3 of them are Saturdays a generated calendar would drop |
+| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5360 observed sessions; 3 of them are Saturdays a generated calendar would drop |
 | 1.5 | Migration runner, forward-only and checksummed | **VERIFIED** |  |
 | 1.6 | Schema — every table in Plan 1 §5-§7 | **VERIFIED** |  |
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
-| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-10; PIT universe still missing |
+| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-15; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-10 17:04 UTC, 29 generation(s), 4 commit(s) and 73 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-16 03:06 UTC, 27 generation(s), 4 commit(s) and 0 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -56,10 +56,10 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 2.5 | Backfill the full NSE history | **IMPOSSIBLE** | Same 503. Twenty years cannot be re-fetched; the V1 export is the only copy and is why decision 0027 carries it. |
 | 2.6 | BSE bulk and block | BUILT | sources.yml marks both BSE routes UNPROVEN — 301 to an error page |
 | 2.7 | FII/DII cash collector | **VERIFIED** |  |
-| 2.8 | participant_oi ported as the FII/DII proxy | **VERIFIED** | 15,359 rows, 2014-01-01 .. 2026-06-25; positioning, not cash flow (sources.yml) |
+| 2.8 | participant_oi ported as the FII/DII proxy | **VERIFIED** | 15,639 rows, 2014-01-01 .. 2026-06-25; positioning, not cash flow (sources.yml) |
 | 2.9 | Scheduled collection running | **VERIFIED** | launchd added 2026-08-22 after cron silently lost the 19 Aug session |
-| 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-09-10; MICCV2 stopped at 2026-08-14 |
-| 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 41 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
+| 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-09-15; MICCV2 stopped at 2026-08-14 |
+| 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 43 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
 | 2.10 | Measure available_from empirically | **VERIFIED** | brackets are 10.7h at best; nothing consumes the measurement yet |
 | 2.11 | Revision detection | **VERIFIED** |  |
 | 2.13 | Alert when collection goes stale | **VERIFIED** | 19 Aug lost, 28 Aug recovered two days late by hand — detection always worked, nothing carried it anywhere |
@@ -109,7 +109,7 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 2 of 4 registered |
+| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 3 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
 | 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 237,271 benchmark rows against FIVE benchmarks — NIFTY500_TR is unbuildable (warehouse.benchmark_n500tr does not exist) and it is the config's declared broad_market_headline |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
@@ -148,4 +148,4 @@ VERIFIED: 32  WIRED: 11  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `472dfa8`.
+Derived at commit `fbeed7e`.
