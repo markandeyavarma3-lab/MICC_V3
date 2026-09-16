@@ -596,6 +596,98 @@ def register_spine(spec: SpineSpec, r: BuildResult, env: str | None = None,
     return digest
 
 
+def append_sessions(spec: SpineSpec, env: str | None = None,
+                    con: duckdb.DuckDBPyConnection | None = None,
+                    register: bool = True) -> BuildResult:
+    """Append collected sessions newer than the spine's last date, rewriting
+    only the year partition(s) they fall in. Decision 0066.
+
+    WHY NOT `build`. `fno_spine` is 175M rows; a full union-and-rewrite is a
+    minute of disk and CPU every night to reproduce 174.3M rows that did not
+    change, which is why collect_daily.sh declined to rebuild F&O daily and
+    why the spine went stale the day after 0065 landed history by hand. The
+    spine is partitioned by `_y`, one file per year, and the sessions arriving
+    nightly all fall in the current year — so the append reads one partition,
+    adds the new sessions, checks the key, and writes that one partition back.
+
+    THE SAME GUARANTEES AS A FULL BUILD, OR IT REFUSES.
+      - one build per spine at a time (`_exclusive`);
+      - collected sessions ON OR BEFORE the spine's last date are not
+        appended — and if any such session is absent from the spine, this
+        raises rather than leave a hole only a full build would fill;
+      - the spine's unique key is checked over the merged partition (the key
+        contains `date`, so no duplicate can span partitions);
+      - the partition file is written to a temp name and renamed;
+      - the whole spine is re-registered by data checksum (0064), so the
+        artefact the DAG points at is the one on disk.
+    A spine with no collected source, or no new sessions, is a no-op.
+    """
+    if not spec.collected_glob:
+        raise SpineError(f"{spec.name}: no collected source; nothing to append")
+    out = warehouse_dir(env) / spec.name
+    if not out.is_dir():
+        raise SpineError(f"{spec.name}: no spine at {out}; run a full build first")
+    c = con or duckdb.connect()
+    coll_glob = str(COLLECTED / spec.collected_glob)
+    spine_glob = f"{out}/**/*.parquet"
+
+    with _exclusive(spec.name):
+        if not list(COLLECTED.glob(spec.collected_glob)):
+            return BuildResult(spec.name, _count(c, spine_glob), 0, 0, 0, out)
+        last = c.execute(f"SELECT MAX(date) FROM read_parquet('{spine_glob}')").fetchone()[0]
+        missing = c.execute(
+            f"SELECT COUNT(*) FROM ("
+            f"  SELECT DISTINCT date FROM read_parquet('{coll_glob}') WHERE date <= '{last}'"
+            f"  EXCEPT SELECT DISTINCT date FROM read_parquet('{spine_glob}') WHERE date <= '{last}')"
+        ).fetchone()[0]
+        if missing:
+            raise SpineError(
+                f"{spec.name}: {missing} collected session(s) on or before {last} are "
+                f"not in the spine; an append would leave the hole. Run the full build."
+            )
+        new_dates = [r[0] for r in c.execute(
+            f"SELECT DISTINCT date FROM read_parquet('{coll_glob}') WHERE date > '{last}' ORDER BY 1"
+        ).fetchall()]
+        before = _count(c, spine_glob)
+        if not new_dates:
+            r = BuildResult(spec.name, before, 0, 0, 0, out)
+            if register:
+                register_spine(spec, r, env=env, con=c)
+            return r
+
+        added = 0
+        for year in sorted({d[:4] for d in new_dates}):
+            part_dir = out / f"_y={year}"
+            part_glob = f"{part_dir}/*.parquet"
+            existing = _select(part_glob, spec, derive_year=False) if part_dir.is_dir() else None
+            incoming = (_select(coll_glob, spec, derive_year=True)
+                        + f" WHERE date > '{last}' AND CAST(SUBSTR(date, 1, 4) AS BIGINT) = {year}")
+            union = f"{existing}\nUNION ALL\n{incoming}" if existing else incoming
+            key = ", ".join(spec.unique_key)
+            dupes = c.execute(
+                f"SELECT COUNT(*) FROM (SELECT {key}, COUNT(*) n FROM ({union}) GROUP BY {key} HAVING n > 1)"
+            ).fetchone()[0]
+            if dupes:
+                raise SpineError(f"{spec.name} _y={year}: {dupes} duplicate key(s) after append; refusing")
+            part_dir.mkdir(parents=True, exist_ok=True)
+            tmp = part_dir / "data_0.parquet.partial"
+            c.execute(f"COPY ({union}) TO '{tmp}' (FORMAT PARQUET)")
+            tmp.replace(part_dir / "data_0.parquet")
+            added += c.execute(f"SELECT COUNT(*) FROM ({incoming})").fetchone()[0]
+
+        after = _count(c, spine_glob)
+        if after != before + added:
+            raise SpineError(f"{spec.name}: expected {before + added:,} rows after append, found {after:,}")
+        r = BuildResult(spec.name, after, before, added, 0, out)
+        if register:
+            register_spine(spec, r, env=env, con=c)
+        return r
+
+
+def _count(c: duckdb.DuckDBPyConnection, glob: str) -> int:
+    return c.execute(f"SELECT COUNT(*) FROM read_parquet('{glob}')").fetchone()[0]
+
+
 def build_all(env: str | None = None) -> list[BuildResult]:
     """Build every spine. Each `build` registers itself in the provenance DAG
     (see `register_spine`), with edges to the SOURCE artefacts it was built
