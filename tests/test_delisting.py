@@ -31,7 +31,10 @@ def test_the_census_accounts_for_every_event(run):
     comment.
     """
     census, _ = run
-    assert sum(census.values()) == 1255
+    # 1,255 -> 1,196 on 2026-09-16 (decision 0069): the EXPLORE partition is
+    # keyed on ISIN as split.yml specifies, not on the ticker. Only 84 of ~280
+    # securities are in both partitions, so this is a different random 30%.
+    assert sum(census.values()) == 1196
     # SUSPENDED joined the census on 2026-09-06 (0055): windows that complete on
     # a row count but span a trading halt. Plan 2 §3.4 named the case from the
     # start and nothing could detect it until the span guard landed.
@@ -63,7 +66,7 @@ def test_censored_events_are_excluded_not_priced(run):
     # Only STOPPED events are added on top of the base population.
     assert by_name["ALL"].n_priced == census["STOPPED"]
     assert (by_name["ALL"].n_base + census["STOPPED"] + census["CENSORED"]
-            + census["NO_BENCHMARK"] + census["SUSPENDED"]) == 1255
+            + census["NO_BENCHMARK"] + census["SUSPENDED"]) == 1196
     # AND THE MEAN IS TAKEN OVER EXACTLY THOSE ROWS. The first version of this
     # test asserted only the counts above, so deleting the CENSORED filter
     # entirely left it green while 76 live companies were priced at -100%.
@@ -111,8 +114,17 @@ def test_pricing_widens_the_liquidity_gradient(run):
     base_span = abs(t["off500"].effect_base - t["top100"].effect_base)
     priced_span = abs(t["off500"].effects[0.0] - t["top100"].effects[0.0])
     assert priced_span > base_span
-    # and the ordering itself is unchanged: off500 worst, top100 mildest
-    assert t["off500"].effects[0.0] < t["top500_ex100"].effects[0.0] < t["top100"].effects[0.0]
+    # RE-PINNED 2026-09-16 (decision 0069). This asserted a strict three-tier
+    # order off500 < top500_ex100 < top100. On the ISIN-keyed partition the two
+    # TRADEABLE tiers are -7.51% and -8.88% on n=335 and n=445 — indistinguishable
+    # — and their order flipped. That order was never the finding. The finding is
+    # that off500 is several times worse than anything you could actually buy,
+    # and that is what is pinned: worst tier is off500, by a wide margin.
+    tradeable = min(t["top100"].effects[0.0], t["top500_ex100"].effects[0.0])
+    assert t["off500"].effects[0.0] < tradeable, "off500 is no longer the worst tier"
+    assert t["off500"].effects[0.0] < 2 * tradeable, (
+        "off500 is no longer materially worse than the tradeable tiers"
+    )
 
 
 def test_confounds_no_longer_reports_a_count_from_a_different_population():
@@ -123,8 +135,10 @@ def test_confounds_no_longer_reports_a_count_from_a_different_population():
     # that spanned a trading suspension (0055).
     # 1,115 -> 1,080 on 2026-09-16: the market leg is security-partitioned (0061)
     # while this module's event join is still on the string — see 0068 §6.
-    assert "n=1,080" in r.headline
-    assert any("173" in d and "no 252-session exit" in d for d in r.detail)
+    # 1,080 -> 1,025 on 2026-09-16: ISIN-keyed partition AND security_id event
+    # join, so confounds and delisting agree again (decision 0069).
+    assert "n=1,025" in r.headline
+    assert any("171" in d and "no 252-session exit" in d for d in r.detail)
 
 
 def test_the_merged_case_is_declared_rather_than_silently_priced():

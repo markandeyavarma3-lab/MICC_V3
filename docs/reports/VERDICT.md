@@ -53,7 +53,7 @@ the structural findings in §4 do not, and a test binds them to live data.
 | Eligible research events | 5,944 after size, liquidity and round-trip filters |
 | Forward outcomes | 52,365 across 9 horizons |
 | Benchmarks | 5 of 6 specified (one is unbuildable — §7) |
-| Automated tests | 636 |
+| Automated tests | 637 |
 | Decision records | 56 |
 
 Raw and clean are equal by design: every ingested deal reaches the mart with an
@@ -96,8 +96,10 @@ estimator creates more disclosures than actually occurred.
 
 ### 4.2 The one effect that looked real
 
-Sells showed a −22.7% twelve-month abnormal return — roughly four times the
-plausible bound. That is either a large real effect or a confound. The standing
+Sells showed a −9.4% twelve-month abnormal return on the registered partition
+— 1.6× the plausible bound, and sign-unstable across eras (decision 0069; the
+−22.7% quoted in earlier records was measured on a symbol-keyed stratum the
+design forbids). That is either a large real effect or a confound. The standing
 nine-item checklist was run against it
 ([0051](../decisions/0051-the-sell-effect-is-confounded-not-a-miscalibrated-bound.md),
 [0052](../decisions/0052-delisting-is-not-the-load-bearing-assumption-here.md)):
@@ -105,10 +107,11 @@ nine-item checklist was run against it
 - **Microstructure** — control stocks on identical dates: −0.00%. Explains none.
 - **Volatility** — vol-matched peers: −0.06%. Explains none.
 - **Momentum reversal** — correlation −0.006, non-monotonic. Rejected.
-- **Time concentration** — sign consistent across four eras.
-- **Liquidity — fails.** top100 −17.1%, top500_ex100 −25.1%, off500 **−54.7%**.
-  The effect is *strongest where it cannot be traded*, and the gradient widens
-  once delistings are priced honestly.
+- **Time concentration — fails.** 2006–10 is **+4.9%**; the other three eras negative.
+- **Liquidity — fails.** top100 −8.9%, top500_ex100 −7.5%, off500 **−34.1%**.
+  The effect is *four times stronger where it cannot be traded*; the two
+  tradeable tiers are within noise of each other. (Restated on the ISIN-keyed
+  partition, decision 0069.)
 - **Survivorship — fails.** 31% of events sit on names that later stopped
   trading.
 - **Sector — unmeasurable.** Point-in-time sector data does not exist (§7).

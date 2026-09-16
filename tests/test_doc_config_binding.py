@@ -671,10 +671,14 @@ class TestVerdictMatchesTheEvidence:
 
         _census, tiers = delisting.run("prod")
         t = {x.name: x for x in tiers}
-        assert t["off500"].effect_base < t["top500_ex100"].effect_base < \
-            t["top100"].effect_base, (
-                "the effect is no longer strongest in the least tradeable tier"
-            )
+        # The verdict's claim is that the effect lives where it cannot be traded.
+        # That is off500 being far worse than EITHER tradeable tier — not a
+        # strict order between the two tradeable tiers, which are within noise
+        # of each other on the ISIN-keyed partition (0069).
+        tradeable = min(t["top100"].effect_base, t["top500_ex100"].effect_base)
+        assert t["off500"].effect_base < 2 * tradeable, (
+            "the effect is no longer concentrated in the least tradeable tier"
+        )
 
     @pytest.mark.needs_data
     def test_no_participant_is_supported_as_the_verdict_claims(self):

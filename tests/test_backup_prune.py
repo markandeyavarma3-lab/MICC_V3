@@ -239,3 +239,42 @@ def test_the_index_is_reconciled_when_listing_is_possible(tmp_path):
     idx = _index(tmp_path, ["20260101-000000", "20260905-100000"])
     _run_idx(dest, "20260905-100000", idx)
     assert "20260101-000000" not in pathlib.Path(idx).read_text()
+
+
+def test_one_undeletable_file_does_not_abort_retention(tmp_path):
+    """WATCHED FAILING 2026-09-16.
+
+    Under launchd, `rm` on certain iCloud files returns "Operation not
+    permitted" while stat still works. The fifth delete of the morning run hit
+    one and `set -e` ended the script: four pruned, twenty-three untouched,
+    index five ahead of disk. `chflags uchg` reproduces exactly that error.
+
+    Retention must keep going past the denied file, delete everything else it
+    was going to, and keep the undeletable one in the index so the next run
+    tries again.
+    """
+    import os
+    import subprocess as sp
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    stamps = ["20260901-100000", "20260902-100000", "20260903-100000",
+              "20260904-100000", "20260905-100000", "20260906-100000"]
+    for st in stamps:
+        _gen(dest, st)
+    idx = _index(tmp_path, stamps)
+    locked = dest / "repo-20260902-100000.bundle"
+    sp.run(["chflags", "uchg", str(locked)], check=True)
+    try:
+        out = _run_idx(dest, "20260906-100000", idx)
+    finally:
+        sp.run(["chflags", "nouchg", str(locked)], check=False)
+
+    # 09-01 and 09-03 must still have been pruned despite 09-02 being locked
+    assert "pruned generation 20260901-100000" in out
+    assert "pruned generation 20260903-100000" in out
+    assert "could NOT remove 20260902-100000" in out
+    assert _stamps(dest) == {"20260902-100000", "20260904-100000",
+                             "20260905-100000", "20260906-100000"}
+    # and the locked one stays in the index for the next attempt
+    assert "20260902-100000" in pathlib.Path(idx).read_text()

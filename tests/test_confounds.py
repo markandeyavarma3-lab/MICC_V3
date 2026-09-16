@@ -8,6 +8,8 @@ miscalibrated or the result is confounded. This is the module that answers it.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from src.research import confounds
@@ -49,10 +51,13 @@ def test_the_checklist_runs_on_explore_not_confirm():
     import inspect
 
     src = inspect.getsource(confounds)
-    assert '"EXPLORE"' in src
-    assert "CONFIRM" not in src.replace(
-        "Reading\nCONFIRM to make the numbers bigger", ""
-    ) or "split.assign(s)[0] == \"EXPLORE\"" in src
+    # The partition filter must admit EXPLORE and nothing else. Grepping for the
+    # word CONFIRM was brittle — the docstring says it twice explaining why the
+    # stratum is not read — so this pins the actual filter expression instead.
+    assert re.search(r'split\.assign\([^)]*\)\[0\] == "EXPLORE"', src), (
+        "the partition filter no longer selects EXPLORE by split.assign"
+    )
+    assert '== "CONFIRM"' not in src and '== "SELECT"' not in src
 
 
 def test_the_liquidity_gradient_runs_the_wrong_way(results):
