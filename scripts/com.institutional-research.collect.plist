@@ -46,12 +46,19 @@
     </array>
 
     <!--
-      Two slots per session, every calendar day (owner request 2026-09-15,
-      decision 0060). Previously three slots Mon-Fri/Sat mirrored from cron;
-      cron is retired (0059) and this file is the only trigger.
+      THREE slots per session, every calendar day (owner request 2026-09-17,
+      decision 0072 — reverses 0060's two-slot schedule, which was itself the
+      owner's own request on 2026-09-15). 0060 is not wrong to have existed;
+      this is a second owner decision, not a correction of the first.
 
       20:30 — same-day file. NSE publishes around 19:00 IST and does not
-              republish; 20:30 leaves headroom for a late publish.
+              republish; 20:30 leaves headroom for an on-time publish.
+      22:30 — same-day catch-up. Measured (0068): a same-day hit rises from
+              ~82% at 20:30 to ~93% by 22:30 for a late NSE publish. This is
+              the slot 0060 removed; putting it back trades a little more
+              runtime for a meaningfully higher same-day capture rate on the
+              two rolling feeds that cannot be re-fetched once tomorrow's file
+              replaces today's.
       08:30 — catch-up. At 08:30 the endpoint is STILL serving the prior
               session, so a missed or failed evening is recovered here, not
               repeated. sha256 dedupe makes a redundant morning run a no-op.
@@ -60,7 +67,7 @@
       08:30; a weekend run finds nothing new and costs one HTTP request.
 
       Weekday: 0=Sunday .. 6=Saturday (man launchd.plist: "0 and 7 are
-      Sunday"). 14 intervals: 7 days x 2 slots.
+      Sunday"). 21 intervals: 7 days x 3 slots.
     -->
     <key>StartCalendarInterval</key>
     <array>
@@ -79,6 +86,14 @@
         <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
         <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
         <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
+
+        <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>30</integer></dict>
     </array>
 
     <!--

@@ -24,7 +24,7 @@ how much they matter:
   4. NOTHING DESTRUCTIVE IS EXPOSED. No command deletes, rewrites, force-pushes,
      rebuilds a ledger, or touches the governance database. The worst an
      authorized operator can do from a phone is start the collector, which is
-     the same job launchd starts twice a day unattended.
+     the same job launchd already starts three times a day unattended.
 
 The token itself never appears in a reply: `telegram._scrub` strips it from
 every error string, because a bot that pastes its own credential into a chat on
