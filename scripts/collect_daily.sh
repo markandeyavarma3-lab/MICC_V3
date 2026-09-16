@@ -6,13 +6,15 @@
 # collector that silently does nothing is worse than no collector — it looks like
 # a covered day in every downstream count.
 #
-# Runs twice a day, every day (20:30, 08:30 next morning — decision 0060; was
-# 20:00/22:30/08:00 under 0059 and earlier). That is not belt-and-braces
-# paranoia: NSE publishes around 19:00 IST and does not republish, so at 08:30
-# the endpoint is STILL serving the previous session's file. The morning slot
-# is therefore a genuine catch-up for a missed evening, not a repeat. sha256
-# dedupe makes every extra run a no-op that costs one HTTP request. The only
-# trigger is the launchd agent; cron was retired in 0059.
+# Runs three times a day, every day (20:30, 22:30, 08:30 next morning —
+# decision 0072, reversing 0060's two-slot schedule of 2026-09-15). That is
+# not belt-and-braces paranoia: NSE publishes around 19:00 IST and does not
+# republish, so a late publish missed at 20:30 is still recoverable at 22:30
+# (measured same-day hit rate: ~82% -> ~93%), and at 08:30 the endpoint is
+# STILL serving the previous session's file, so the morning slot is a genuine
+# catch-up for a missed evening, not a repeat. sha256 dedupe makes every extra
+# run a no-op that costs one HTTP request. The only trigger is the launchd
+# agent; cron was retired in 0059.
 
 set -u
 REPO="$HOME/Workspace/institutional-research"
