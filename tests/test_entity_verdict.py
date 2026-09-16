@@ -58,12 +58,22 @@ def test_the_pass_bar_requires_the_passer_to_be_in_the_top_tier(v):
 
 def test_the_verdict_is_dead(v):
     """The recorded outcome. If this ever flips, something real changed and the
-    memo needs rewriting rather than amending."""
+    memo needs rewriting rather than amending.
+
+    RE-PINNED 2026-09-16. Under the substituted normal approximation this
+    asserted passed_fdr == 2 and no TOP-tier passer: the bar failed on condition
+    (a). Under the REGISTERED moving-block bootstrap (b2a6b77) four entities
+    pass — all at the bootstrap floor p = 1/(B+1) on four or five deals — and
+    one of them, SBI Life, is in TOP. Condition (a) is therefore MET, and the
+    verdict now rests on condition (b): TOP is net-negative out-of-sample.
+    Dead either way; the leg it died on is what changed.
+    """
     assert not v.alive
-    assert v.passed_fdr == 2
-    assert sum(1 for s in v.entities
-               if s.tier == "TOP" and s.q_form is not None
-               and s.q_form < E.FDR_ALPHA) == 0
+    assert v.passed_fdr == 4
+    in_top = sum(1 for s in v.entities
+                 if s.tier == "TOP" and s.q_form is not None and s.q_form < E.FDR_ALPHA)
+    assert in_top == 1, "condition (a) is met by exactly one TOP-tier passer"
+    assert v.tier_eval["TOP"] < 0, "condition (b) fails: TOP loses net of costs OOS"
 
 
 def test_the_formation_window_is_too_thin_to_tier_on(v):
@@ -77,13 +87,23 @@ def test_the_formation_window_is_too_thin_to_tier_on(v):
 
 
 def test_significance_on_a_handful_of_deals_is_reported_not_hidden(v):
-    """Both FDR passers cleared 5% on n=2 and n=5 formation deals. The screen is
-    doing what it was told; the sample is what makes the result meaningless, and
-    that has to be visible in the output rather than inferred."""
+    """Every FDR passer cleared 5% on four or five formation deals, and every one
+    reports EXACTLY the bootstrap floor 1/(B+1). With that few values to
+    resample the block bootstrap never produces a mean that crosses zero, so p
+    saturates at its own resolution. Four identical floor p-values are not four
+    discoveries; they are the bootstrap reporting it cannot describe a null.
+
+    RE-PINNED 2026-09-16: the original asserted all passers were negative in
+    formation, which was true of the two the substituted test produced. Under
+    the registered bootstrap three of four are positive — and none of it
+    predicts evaluation (rank IC -0.049).
+    """
     passers = [s for s in v.entities
                if s.q_form is not None and s.q_form < E.FDR_ALPHA]
-    assert passers
-    assert min(s.n_form for s in passers) <= 5
-    assert all(s.mean_excess_form < 0 for s in passers), (
-        "the FDR passers are no longer negative in formation; re-read the verdict"
+    assert len(passers) == 4
+    assert max(s.n_form for s in passers) <= 5
+    floor = 1 / (10_000 + 1)
+    assert all(abs(s.p_form - floor) < 1e-6 for s in passers), (
+        "a passer no longer sits at the bootstrap floor; the sample has grown"
     )
+    assert abs(v.rank_ic) < 0.15, "formation ranking has started to predict evaluation"
