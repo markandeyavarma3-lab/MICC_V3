@@ -4,10 +4,12 @@
 
 **Experiment:** `exp_002_entity_persistence` · **spec hash:** `8e7436d7aa9e9186…`
 **Registered:** 2026-09-11, before any return was computed · **Status:** REJECTED
-**Artefact:** `engine_1_deals_entity_verdict` (`92ae0987f83e869d`)
+**Artefact:** `engine_1_deals_entity_verdict` — `aed486f7bf5e3009` (re-run); supersedes `92ae0987f83e869d`
 **Date:** 2026-09-11 · Every number below comes from a query, not recollection.
-**Corrected:** 2026-09-12 — see *Correction* immediately below before reading
-any count in this memo.
+**Corrected:** 2026-09-12 — see *Correction* below.
+**Re-run:** 2026-09-16 on the warehouse, under the registered bootstrap and
+`security_id` partitioning (0061). **See *Re-run* below for every live figure;
+counts tagged ⚠ are the superseded originals, kept as published.**
 
 ---
 
@@ -77,6 +79,74 @@ refuse. The re-run must use the unchanged `spec_hash`
 code did.
 
 ---
+
+## Re-run, 2026-09-16 — the registered procedure, on the data
+
+The correction above was made without the warehouse and left every count
+tagged ⚠. This is the re-run it asked for: same `spec_hash 8e7436d7aa9e9186…`,
+`_p_form` running the registered moving-block bootstrap (block 63 sessions,
+10,000 draws, seed 20260911), BH as a step-up, all nine horizons, and — because
+[0061](../decisions/0061-studies-join-prices-on-security-id.md) landed in
+between — prices attached by `security_id` rather than ticker.
+
+**VERDICT: DEAD. Unchanged. But on the other leg of the bar.**
+
+| | 2026-09-11 (superseded) | **2026-09-16 (registered procedure)** |
+|---|---|---|
+| passed BH-FDR 5% anywhere | ⚠ 2 | **4** |
+| passed BH-FDR 5% in the TOP tier | 0 | **1** (SBI Life Insurance) |
+| TOP tier, out-of-sample, net of costs | +1.11% | **−0.88%** |
+| MID / BOTTOM, out-of-sample | −1.46% / +0.13% | **−1.02% / +1.54%** |
+| cross-entity rank IC (formation → evaluation) | not computed | **−0.049** |
+| entities with zero formation deals | 12 | 12 |
+| entities untestable (too few months for the block) | not distinguished | **5** |
+
+Under the substituted normal approximation, condition (a) failed and the memo
+argued from there. Under the registered bootstrap, **condition (a) is met** —
+SBI Life Insurance sits in TOP and clears FDR — **and condition (b) fails**: the
+TOP tier loses 0.88% net of costs out-of-sample. The bar requires both. Dead
+either way, and the corrected reading is the harder one for the hypothesis: the
+tiers are now **fully inverted** (BOTTOM +1.54% is the best-performing tier) and
+the rank IC is indistinguishable from zero.
+
+### The four passes, and what "p = 0.0001" means on five deals
+
+| entity | formation deals | formation excess | *p* | *q* | tier |
+|---|---:|---:|---:|---:|---|
+| SBI LIFE INSURANCE | **4** | +12.78% | 0.0001 | 0.0006 | **TOP** |
+| SBI MUTUAL FUND | 5 | +7.67% | 0.0001 | 0.0006 | MID |
+| ICICI PRUDENTIAL MUTUAL FUND | 5 | +6.99% | 0.0001 | 0.0006 | MID |
+| FRANKLIN TEMPLETON MUTUAL FUND | 5 | −11.92% | 0.0001 | 0.0006 | BOTTOM |
+
+Every one of them reports **exactly *p* = 0.0001 — the floor of a 10,000-draw
+bootstrap** (1/(B+1)). With four or five values to resample, the block bootstrap
+never produces a resampled mean that crosses zero, so the *p*-value saturates at
+its own resolution. Four "significant" entities with identical *p* at the floor
+is not four discoveries; it is the bootstrap reporting that it has too few
+observations to describe a null. Two of them are significantly *positive* and
+one significantly *negative* in formation, and none of it predicts evaluation:
+SBI Life +3.42%, ICICI Pru MF −2.83%, SBI MF +0.74%, Franklin +0.86%.
+
+The two entities the original memo called passes: **Sundaram** (2 deals, 2
+months) is **uncomputable** under the registered block — two monthly cohorts
+cannot fill a 63-session block — and is confirmed an artefact of the substituted
+test. **Franklin Templeton** (5 deals across ≥4 months) is computable and
+**does** pass, which the correction of 2026-09-12 was right to leave open. It
+sits in BOTTOM on −11.92%. A pass in the wrong direction.
+
+### All nine horizons, as registered
+
+Pooled excess return across the 24 tested entities, net of the full cost stack:
+
+| 1s | 2s | 3s | 5s | 10s | 21s | **63s** | 126s | 252s |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| −0.76% | −1.03% | −0.95% | −0.44% | −0.61% | +0.17% | **−0.68%** | +1.27% | +4.24% |
+
+Negative at every horizon out to three months; positive at six and twelve. The
+registered primary is 63 sessions, and it is negative. The 252-session figure is
+pooled across all 24 names, is not the registered metric, and is reported
+because the registration said all nine would be — not because it changes
+anything.
 
 ## The answer
 
