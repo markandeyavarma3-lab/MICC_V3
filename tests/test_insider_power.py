@@ -76,10 +76,11 @@ def test_the_grid_reproduces_0046_exactly():
     # 12,829 -> 12,231. Promoter sell is the only figure in the project that got
     # WORSE (1.25x -> 1.30x short) and it was the closest to its bound, so it is
     # worth stating plainly rather than reporting only the improvements.
-    assert buy.n_events == 24_169
-    assert buy.mde == pytest.approx(0.080590, abs=1e-4)
-    assert sell.n_events == 12_231
-    assert sell.mde == pytest.approx(0.078089, abs=1e-4)
+    # RE-MEASURED 2026-09-16 under security_id partitioning (0061, 0068).
+    assert buy.n_events == 23_616
+    assert buy.mde == pytest.approx(0.079214, abs=1e-4)
+    assert sell.n_events == 11_972
+    assert sell.mde == pytest.approx(0.079486, abs=1e-4)
 
 
 def test_pledge_invoke_does_not_open_a_new_path():

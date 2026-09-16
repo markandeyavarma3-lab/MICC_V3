@@ -317,3 +317,20 @@ acknowledged_gaps:
       feeds for the same session WERE recovered from the rolling file on
       2026-09-15 20:31 (their entries were removed); 2026-09-14 was a holiday.
       Decision 0063.
+  - source_id: nse_block_deals
+    session: 2026-09-08
+    acknowledged: 2026-09-16
+    reason: >-
+      Every fetch that day returned the identical empty file (sha ec820a0b,
+      rows=0). 94 of 226 trading days in the trailing year had zero block deals
+      (42%), so an empty day is ordinary, not a source failure. The file carried
+      no session date, so health could not count it as "asked and got nothing"
+      and reported a gap. Empty block files are dated from 2026-09-15 onward.
+  - source_id: nse_block_deals
+    session: 2026-09-09
+    acknowledged: 2026-09-16
+    reason: same as 2026-09-08 — identical empty file, ordinary zero-block day.
+  - source_id: nse_block_deals
+    session: 2026-09-10
+    acknowledged: 2026-09-16
+    reason: same as 2026-09-08 — identical empty file, ordinary zero-block day.
