@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.institutional-research.bot.plist — the Telegram command listener.
+
+  KeepAlive, NOT a calendar interval. This job has no schedule: it should be
+  running whenever the Mac is, so that /status answers in a second rather than
+  at the next poll. launchd restarts it when it exits for any reason — a dropped
+  socket on sleep, a killed process, a crash.
+
+  ThrottleInterval 30 is the guard against the one bad case: if the token is
+  missing the listener exits immediately, and without a throttle launchd would
+  restart it in a tight loop forever. Thirty seconds makes a misconfiguration
+  two log lines a minute instead of thousands.
+
+  RunAtLoad is TRUE here, unlike the collector. Loading the collector is not a
+  session boundary and firing it on load would collect twice; loading a listener
+  IS the event that should start it listening.
+
+  Install / reload:
+      cp scripts/com.institutional-research.bot.plist ~/Library/LaunchAgents/
+      launchctl bootout   gui/$UID/com.institutional-research.bot 2>/dev/null
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.institutional-research.bot.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.institutional-research.bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/satya_03/Workspace/institutional-research/scripts/telegram_bot.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/bot.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/bot.err</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/satya_03/Workspace/institutional-research</string>
+</dict>
+</plist>

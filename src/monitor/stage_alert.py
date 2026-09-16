@@ -20,11 +20,11 @@ Both were LOUD in a log and SILENT everywhere a person looks. That is this
 project's standing pattern — the signal existed and nothing carried it — and the
 fix is the same each time: carry it to where somebody is.
 
-WHAT THIS DELIBERATELY DOES NOT DO. It does not add a channel. It reuses
-`health.notify_desktop` and `health.notify_email`, which are already configured,
-already tested, and already fail soft when credentials are absent. A second
-notification path would be a second thing to configure and a second thing to go
-quietly missing.
+WHAT THIS DELIBERATELY DOES NOT DO. It does not own a channel. It calls
+`health.broadcast`, which fans out to every configured one and fails soft on
+each. This file said "it does not ADD a channel" until 0071 added Telegram —
+and the reason that edit touched only `health.py` is that the fan-out lives
+there rather than being spelled out at each alert site.
 """
 
 from __future__ import annotations
@@ -81,14 +81,14 @@ def send(stages: list[str], log: str) -> str:
     if not body:
         return "clean run; nothing sent"
     subject = f"institutional-research: {len(stages)} stage(s) FAILED"
-    out = []
-    for name, fn, args in (("desktop", health.notify_desktop, (subject, body)),
-                           ("email", health.notify_email, (subject, body))):
-        try:
-            out.append(f"{name}={fn(*args)}")
-        except Exception as exc:  # noqa: BLE001 - the message is the deliverable
-            out.append(f"{name}=ERROR {type(exc).__name__}")
-    return "; ".join(out)
+    # `broadcast` (0071) is the single fan-out. This used to name desktop and
+    # email itself, which meant the Telegram channel had to be added here too —
+    # and a site that is missed goes on alerting to two channels while its
+    # neighbour alerts to three.
+    try:
+        return "; ".join(f"{k}={v}" for k, v in health.broadcast(subject, body).items())
+    except Exception as exc:  # noqa: BLE001 - the message is the deliverable
+        return f"ERROR {type(exc).__name__}: {exc}"
 
 
 def main() -> int:

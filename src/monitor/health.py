@@ -388,6 +388,43 @@ def notify_email(subject: str, body: str) -> str:
     return f"email FAILED: {last}"
 
 
+def notify_telegram(subject: str, body: str) -> str:
+    """Best-effort Telegram. Returns what happened, and never raises.
+
+    ADDED 0071, AFTER 0070 ARGUED AGAINST A THIRD CHANNEL. The argument was that
+    each new channel is another thing to configure and another thing to go
+    quietly missing, and it was correct — the email leg had been quietly missing
+    since the day it was written. What it got wrong is that neither existing
+    channel REACHES anyone: a desktop notification needs the operator at this
+    Mac, and every scheduled run happens when they are not.
+
+    Imported inside the function so `health` keeps working unchanged on a
+    machine where the Telegram module or its config is absent.
+    """
+    try:
+        from src.monitor import telegram
+
+        return telegram.send(f"{subject}\n\n{body}")
+    except Exception as exc:  # noqa: BLE001 - an alert must never crash the caller
+        return f"telegram FAILED: {type(exc).__name__}: {exc}"
+
+
+def broadcast(title: str, body: str) -> dict[str, str]:
+    """Every channel, one call. The ONE place a channel is added or removed.
+
+    Previously each alert site called `notify_desktop` and then `notify_email`
+    by hand, so adding a third channel meant finding every pair — and missing
+    one would leave an alert that reaches two channels while its neighbour
+    reaches three, which is the silent-divergence failure this project keeps
+    finding in its own docs. Fanning out here makes that impossible.
+    """
+    return {
+        "desktop": str(notify_desktop(title, body)),
+        "email": notify_email(title, body),
+        "telegram": notify_telegram(title, body),
+    }
+
+
 def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
     rows = read()
     backup = backup_state.read()
@@ -398,9 +435,8 @@ def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
         # Separate from the collection alert on purpose. They fail for unrelated
         # reasons and need unrelated fixes, and a combined message trains the
         # reader to skim the one that is actually novel.
-        notify_desktop("institutional-research: BACKUP AT RISK", backup.summary)
-        notify_email(
-            "institutional-research: backup is stale",
+        broadcast(
+            "institutional-research: BACKUP AT RISK",
             f"{backup.summary}\n\nArchived sessions outside a backup cannot be "
             f"re-fetched — the historical endpoint answers 503.\n\nFix with:\n"
             f"  cd {ROOT} && ./scripts/backup.sh\n",
@@ -413,9 +449,8 @@ def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
             f"{r.source_id} last {r.last_session or 'never'} ({r.sessions_stale} sessions)"
             for r in alerting
         )
-        notify_desktop("institutional-research: COLLECTION STALE", detail)
-        notify_email(
-            "institutional-research: collection is stale",
+        broadcast(
+            "institutional-research: COLLECTION STALE",
             f"{detail}\n\nEvery missed session is permanent — the historical "
             f"endpoint answers 503.\n\nRecover with:\n"
             f"  cd {ROOT} && ./scripts/collect_daily.sh\n\n"
