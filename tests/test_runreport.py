@@ -148,3 +148,31 @@ def test_marking_never_raises_when_the_stamp_cannot_be_written(tmp_path):
     d = tmp_path / "stamp"
     d.mkdir()
     digest.mark(date(2026, 9, 16), d)  # must not raise
+
+
+# --- a real defect, found from an actual Telegram reply ----------------------
+
+
+def test_the_at_risk_flag_never_runs_into_the_word_backup(tmp_path, monkeypatch):
+    """A live /status reply read "AT RISKbackup" with nothing between them.
+
+    `f"{flag:<6}{'backup':<22}"` relies on padding INSIDE the width to supply
+    the separator, and "AT RISK" is 7 characters — one past that width. When a
+    field's content is already at or past its width, str.format adds no
+    padding at all, so two adjacent format fields with no literal character
+    between them can fuse with zero separation. "ok    " (6 chars, hand-padded)
+    happened to fit; "AT RISK" did not.
+    """
+    from src.monitor import backup_state
+
+    monkeypatch.setattr(runreport, "RUN_TSV",
+                        _tsv(tmp_path, rows=[("exit", 0, 3)]))
+    monkeypatch.setattr(runreport, "ARCHIVE", tmp_path)
+    at_risk = backup_state.BackupState(
+        destination=tmp_path, bundle=None, taken_at=None,
+        commits_behind=0, sessions_at_risk=3, generations=0,
+    )
+    monkeypatch.setattr(backup_state, "read", lambda: at_risk)
+    text = runreport.render()
+    assert "AT RISKbackup" not in text
+    assert "AT RISK  backup" in text or "AT RISK backup" in text
