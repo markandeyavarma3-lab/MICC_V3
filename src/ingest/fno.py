@@ -171,8 +171,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dry-run", action="store_true", help="parse and count; write nothing")
     ap.add_argument("--build-spine", action="store_true",
-                    help="after landing, rebuild fno_spine (minutes; 174M rows)")
+                    help="after landing, rebuild fno_spine from zero (0065: the one-off history land)")
+    ap.add_argument("--append", action="store_true",
+                    help="after landing, append the new sessions to fno_spine, rewriting only their "
+                         "year partition (0066: the nightly path collect_daily.sh calls)")
     a = ap.parse_args(argv)
+    if a.build_spine and a.append:
+        ap.error("--build-spine and --append are different decisions; pick one")
 
     print("F&O LAND (decision 0065)" + ("  [DRY RUN]" if a.dry_run else ""))
     fo_rows = land_fo(dry_run=a.dry_run)
@@ -195,6 +200,10 @@ def main(argv: list[str] | None = None) -> int:
         from src.warehouse import spine
         print("  rebuilding fno_spine ...")
         print(" ", spine.build(spine.FNO).render())
+    if a.append:
+        from src.warehouse import spine
+        r = spine.append_sessions(spine.FNO)
+        print(f"  fno_spine  {r.rows:>12,} rows  (+{r.increment_rows:,} appended)  artefact {r.artefact_hash[:16]}")
     return 0
 
 

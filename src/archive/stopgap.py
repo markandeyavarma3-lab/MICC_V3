@@ -195,7 +195,20 @@ def record(entry: dict) -> None:
         fh.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
-def capture(src: Source) -> dict:
+def capture(src: Source, session_hint: str | None = None) -> dict:
+    """Fetch one source and archive it. `session_hint` is the session a DATED
+    source in the same run resolved to (bulk.csv, which always carries its
+    date); an undated empty-day sentinel is credited to that session.
+
+    AN EMPTY DAY IS DATED AND IS NEVER A DUPLICATE (decision 0066). NSE's
+    "NO RECORDS" file has no date and identical bytes every empty day, so the
+    sha256 dedupe used to record the second and every later empty day as
+    DUPLICATE with session=None — and health.py, which credits an empty answer
+    only from an EMPTY_DAY row, counted those sessions as never asked.
+    nse_block_deals read STALE for a week of days that simply had no block
+    deals. The bytes are still written once; the manifest row is what must be
+    dated, and it is.
+    """
     fetched = datetime.now(UTC)
     base = {
         "source_id": src.id,
@@ -224,11 +237,17 @@ def capture(src: Source) -> dict:
     }
     if is_empty:
         # Stored anyway. An empty day is evidence that we asked and the answer was
-        # "none", which is a different fact from never having asked.
+        # "none", which is a different fact from never having asked. The file
+        # cannot say which day; the run's dated sibling can.
         entry["status"] = "EMPTY_DAY"
+        entry["session_date"] = session_hint
+        if session_hint:
+            entry["note"] = "undated sentinel; session credited from the run's dated source"
 
     prior = already_have(digest)
     if prior is not None:
+        if is_empty:
+            return {**entry, "path": str(prior)}
         return {**entry, "status": "DUPLICATE", "path": str(prior),
                 "note": "identical bytes already archived; endpoint served a stale file"}
 
@@ -256,10 +275,15 @@ def main() -> int:
         print(f"  warmup failed (continuing, archive host may not need it): {exc}")
 
     results = []
+    hint: str | None = None
     for src in SOURCES:
-        entry = capture(src)
+        entry = capture(src, session_hint=hint)
         record(entry)
         results.append((src, entry))
+        # The first dated source in the run (bulk.csv) tells the undated ones
+        # which session the exchange is currently serving.
+        if entry.get("session_date") and entry.get("status") in {"STORED", "DUPLICATE"}:
+            hint = entry["session_date"]
         status = entry["status"]
         detail = (
             entry["error"][:80]

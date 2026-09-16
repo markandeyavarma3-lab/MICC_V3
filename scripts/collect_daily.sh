@@ -96,6 +96,14 @@ mkdir -p "$REPO/logs"
   # Workstream 3's deals verdict does not acquire a second open front.
   "$REPO/.venv/bin/python" -m src.archive.derivatives
   note "derivatives" $?
+  # LAND WHAT DERIVATIVES JUST ARCHIVED (0066). 0065 landed the history once by
+  # hand and the spine was stale again the next morning: archiving without a
+  # land step is the 0058 boundary wearing a new hat. --append rewrites only
+  # the year partition the new sessions fall in (not a 175M-row rebuild),
+  # refuses if it would leave a hole or a duplicate key, and re-registers the
+  # spine. participant_oi rows land in the same call with their own source.
+  "$REPO/.venv/bin/python" -m src.ingest.fno --append
+  note "fno_land" $?
   "$REPO/.venv/bin/python" -m src.archive.insider --start "$(date -v-30d +%Y-%m-%d)"
   note "insider" $?
   "$REPO/.venv/bin/python" -m src.ingest.insider
