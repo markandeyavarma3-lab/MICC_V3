@@ -21,9 +21,16 @@ import re
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from src.common.paths import ARCHIVE, DOCS, ROOT
+from src.common.paths import ARCHIVE, DOCS, LOGS, ROOT
 from src.monitor import backup_state, health
+
+#: The digest's day is the OWNER's day. Under UTC the 20:30 IST run
+#: falls on 15:00 UTC the same date, but a late-evening run after
+#: 05:30 IST-equivalent rollover would stamp tomorrow and silently
+#: skip a day. The reader lives in IST; the calendar should too.
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def _runs(days: int = 3) -> list[tuple[str, list[str]]]:
@@ -74,18 +81,58 @@ def _sessions_held(since_days: int = 7) -> dict[str, tuple[int, str]]:
     return {k: (len(v), max(v)) for k, v in sorted(held.items())}
 
 
+#: Records the date the digest was last delivered. One line, one date.
+STAMP = LOGS / ".digest_sent"
+
+
+def due(today: date | None = None, stamp: Path | None = None) -> bool:
+    """Has today's digest gone out yet?
+
+    WHY THIS REPLACED A CLOCK CHECK. Until 2026-09-16 the collector sent the
+    digest from `if [ "$(date +%H)" -lt 12 ]` — the 08:30 slot, and only it.
+    That is a schedule masquerading as a policy, and it fails in exactly the
+    case the digest exists for: if the Mac is asleep through the morning slot,
+    launchd replays the run on wake, the replay lands after noon, and the day
+    that most needed a report is the one day that gets none.
+
+    The question is not "is it morning" but "has today been reported". Asking
+    the second one means the digest goes out on the first run of the day at
+    whatever hour that turns out to be, and still exactly once.
+
+    A missing or unreadable stamp means DUE. Erring toward a duplicate digest
+    costs one message; erring the other way costs the day's only report.
+    """
+    today = today or datetime.now(IST).date()
+    stamp = stamp or STAMP  # resolved here, not in the signature — see read_run
+    try:
+        return stamp.read_text().strip() != today.isoformat()
+    except OSError:
+        return True
+
+
+def mark(today: date | None = None, stamp: Path | None = None) -> None:
+    """Record delivery. Never raises — a digest that was SENT must not be
+    reported as failed because a stamp file could not be written."""
+    stamp = stamp or STAMP
+    try:
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text((today or datetime.now(IST).date()).isoformat())
+    except OSError:
+        pass
+
+
 def render() -> str:
-    today = datetime.now(UTC).date()
+    today = datetime.now(IST).date()
     out = [f"INSTITUTIONAL RESEARCH — {today.isoformat()}", ""]
 
     out.append("LAST RUNS")
     runs = _runs()
     if not runs:
         out.append("  no collector log found")
-    for stamp, failed in runs[-4:]:
-        mark = "ok  " if not failed else "FAIL"
+    for when, failed in runs[-4:]:
+        flag = "ok  " if not failed else "FAIL"
         detail = "all stages clean" if not failed else f"failed: {', '.join(failed)}"
-        out.append(f"  {mark}  {stamp:<28} {detail}")
+        out.append(f"  {flag}  {when:<28} {detail}")
     out.append("")
 
     out.append("FEEDS — sessions held in the last 7 days")
@@ -105,8 +152,8 @@ def render() -> str:
                 bits.append(f"{len(r.open_gaps)} MISSING")
             elif r.gaps:
                 bits.append(f"{len(r.gaps)} lost (acknowledged)")
-            mark = "STALE  " if r.alerting else "ok     "
-            out.append(f"  {mark}{r.source_id:<22} last {last}  {', '.join(bits)}")
+            flag = "STALE  " if r.alerting else "ok     "
+            out.append(f"  {flag}{r.source_id:<22} last {last}  {', '.join(bits)}")
     except Exception as exc:  # noqa: BLE001 - a digest must not die on one section
         out.append(f"  unavailable: {type(exc).__name__}")
     try:
@@ -125,13 +172,39 @@ def render() -> str:
 
 
 def main() -> int:
+    """`--once-daily` makes the caller's schedule irrelevant.
+
+    The collector calls this on EVERY run. The first run of any given day
+    delivers and stamps; every later run that day is a no-op. So the digest
+    follows the machine rather than the clock — 08:30 if the Mac was awake,
+    20:30 if it was not, 15:00 on a day it was opened once at three in the
+    afternoon — and never twice.
+    """
     import sys
+
+    once = "--once-daily" in sys.argv
+    if once and not due():
+        print("digest: already delivered today; nothing sent")
+        return 0
 
     text = render()
     print(text)
+    subject = f"institutional-research digest {datetime.now(IST).date().isoformat()}"
+    delivered = False
     if "--email" in sys.argv:
-        print("\n  " + health.notify_email(
-            f"institutional-research digest {date.today().isoformat()}", text))
+        result = health.notify_email(subject, text)
+        print("\n  " + result)
+        delivered |= result.startswith("email sent")
+    if "--telegram" in sys.argv:
+        from src.monitor import telegram
+        result = telegram.send(text)
+        print("  " + result)
+        delivered |= result.startswith("telegram sent")
+    # STAMP ONLY ON PROVEN DELIVERY. Stamping on attempt would mean a day when
+    # the network was down is a day that is recorded as reported and never
+    # retried — the same shape as the email leg that failed silently for weeks.
+    if once and delivered:
+        mark()
     return 0
 
 

@@ -49,10 +49,25 @@ export RESEARCH_ENV=prod
 # `FAILED_STAGES` was added 2026-09-16 (decision 0070). RC=1 said something
 # broke; it never said WHAT. charmatch failed on twenty consecutive scheduled
 # runs and the only signal was one line in a file with no reader.
+#
+# `last_run.tsv` was added 2026-09-16 (decision 0071). digest.py recovered stage
+# results by regexing `stage=code` out of this log's prose, which worked and had
+# already needed a dedupe when a stage echoed twice and read as two failures.
+# Timing and exit codes are now written as DATA next to the line that prints
+# them, so the report reads a record instead of reconstructing one.
 RC=0
 FAILED_STAGES=""
+RUN_TSV="$REPO/logs/last_run.tsv"
+mkdir -p "$REPO/logs"
+# Truncated at the START of each run, not appended: the file describes THIS run.
+# A partial file left by a run that died mid-stage is the most useful state it
+# can be in — it names the stage that never returned.
+printf '# started %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" > "$RUN_TSV"
+STAGE_T0=$SECONDS
 note() {  # note <stage> <code>
   echo "$1=$2"
+  printf '%s\t%s\t%s\n' "$1" "$2" "$(( SECONDS - STAGE_T0 ))" >> "$RUN_TSV"
+  STAGE_T0=$SECONDS
   if [ "$2" -ne 0 ]; then
     RC=1
     FAILED_STAGES="$FAILED_STAGES $1"
@@ -178,13 +193,18 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "outcomes" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
   note "health" $?
-  # THE MORNING DIGEST. One screen answering "did last night work, and is
-  # anything rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md
-  # each answer a piece of and none answers whole. Emailed from the 08:30 slot
-  # only: a digest that arrives twice a day is a digest that gets filtered.
-  if [ "$(date +%H)" -lt 12 ]; then
-    "$REPO/.venv/bin/python" -m src.monitor.digest --email || true
-  fi
+  # THE DAILY DIGEST. One screen answering "did last night work, and is anything
+  # rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md each
+  # answer a piece of and none answers whole.
+  #
+  # ONCE A DAY, NOT AT A TIME (0071). This was `if [ "$(date +%H)" -lt 12 ]` —
+  # the 08:30 slot and only it. That is a clock pretending to be a policy, and
+  # it drops the report on precisely the days it is most wanted: if the Mac
+  # sleeps through the morning, launchd replays the run on wake, the replay
+  # lands after noon, and the day gets no digest at all. `--once-daily` asks
+  # "has today been reported" instead, so the first run of the day delivers
+  # whenever it happens and later runs are no-ops.
+  "$REPO/.venv/bin/python" -m src.monitor.digest --once-daily --email --telegram || true
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
   # days without running once; a session archived but not backed up sits on one
   # disk, and the endpoint that could re-serve it answers 503. The script is a
@@ -192,6 +212,18 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   "$REPO/scripts/backup.sh"
   note "backup" $?
 } >> "$LOG" 2>&1
+
+# THE RUN REPORT, ON EVERY RUN INCLUDING THE CLEAN ONES.
+#
+# Outside the redirection block on purpose: it reads the log and the manifest
+# this run just wrote, so it must run after the block closes.
+#
+# A clean run used to produce no output anywhere a person looks, which sounds
+# efficient and is the failure this project keeps rediscovering: an operator who
+# only hears from a system when it breaks cannot tell a healthy silence from a
+# dead scheduler. Both real losses — 19 Aug and 10-15 Sep — looked exactly like
+# a quiet, working collector.
+"$REPO/.venv/bin/python" -m src.monitor.runreport --telegram >> "$LOG" 2>&1 || true
 
 # The whole point: a failed stage makes the RUN fail.
 if [ "$RC" -ne 0 ]; then
