@@ -1,0 +1,139 @@
+"""digest.py — one screen that answers "what is going on". Decision 0070.
+
+THREE THINGS ALREADY REPORT, AND NONE OF THEM IS THE ANSWER.
+
+  docs/HEALTH.md          is the data stale?
+  docs/STATUS.md          which plan steps are built?
+  docs/DATA_INVENTORY.md  what is on disk, and is it wired?
+
+Each is correct and each answers a question nobody asks at 9am. The question is
+"did last night work, and is anything rotting?" — which needs one line from each
+plus the thing none of them tracks: whether the pipeline RAN.
+
+Written to be read in ten seconds from a terminal, and cheap enough to mail
+daily without becoming noise. It does not fetch, compute or write anything.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+
+from src.common.paths import ARCHIVE, DOCS, ROOT
+from src.monitor import backup_state, health
+
+
+def _runs(days: int = 3) -> list[tuple[str, list[str]]]:
+    """Recent collector runs and the stages each reported non-zero.
+
+    Read from the log rather than a status file, because the log is what exists
+    when the run dies before writing anything else.
+    """
+    logs = sorted(Path(ROOT / "logs").glob("collect_*.log"))
+    if not logs:
+        return []
+    text = logs[-1].read_text(errors="ignore").splitlines()
+    out: list[tuple[str, list[str]]] = []
+    stamp, failed = None, []
+    for line in text:
+        if line.startswith("--- "):
+            if stamp:
+                out.append((stamp, failed))
+            stamp, failed = line[4:].split(" pid=")[0], []
+        m = re.match(r"^([a-z_]+)=(\d+)$", line)
+        if m and m.group(2) != "0" and m.group(1) not in failed:
+            # Deduped: a stage can echo more than once in a run when an inner
+            # script re-reports it, and "mart, mart" reads like two failures.
+            failed.append(m.group(1))
+    if stamp:
+        out.append((stamp, failed))
+    return out[-days * 3:]
+
+
+def _sessions_held(since_days: int = 7) -> dict[str, tuple[int, str]]:
+    """Sessions each scheduled feed actually holds, and its newest."""
+    man = ARCHIVE / "manifest.jsonl"
+    if not man.exists():
+        return {}
+    cut = (datetime.now(UTC).date() - timedelta(days=since_days)).isoformat()
+    held: dict[str, set[str]] = defaultdict(set)
+    for line in man.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        sd = r.get("session_date")
+        if (r.get("status") in {"STORED", "DUPLICATE", "EMPTY_DAY"}
+                and sd and sd >= cut):
+            held[r.get("source_id", "?")].add(sd)
+    return {k: (len(v), max(v)) for k, v in sorted(held.items())}
+
+
+def render() -> str:
+    today = datetime.now(UTC).date()
+    out = [f"INSTITUTIONAL RESEARCH — {today.isoformat()}", ""]
+
+    out.append("LAST RUNS")
+    runs = _runs()
+    if not runs:
+        out.append("  no collector log found")
+    for stamp, failed in runs[-4:]:
+        mark = "ok  " if not failed else "FAIL"
+        detail = "all stages clean" if not failed else f"failed: {', '.join(failed)}"
+        out.append(f"  {mark}  {stamp:<28} {detail}")
+    out.append("")
+
+    out.append("FEEDS — sessions held in the last 7 days")
+    for sid, (n, last) in _sessions_held().items():
+        out.append(f"        {sid:<22} {n:>2} session(s), newest {last}")
+    out.append("")
+
+    out.append("STALENESS")
+    try:
+        # `render()` emits a MARKDOWN TABLE ROW for HEALTH.md. A digest read in a
+        # terminal needs the same facts in prose, so they are formatted here
+        # rather than by reusing a method whose output is shaped for a file.
+        for r in health.read():
+            last = r.last_session.isoformat() if r.last_session else "never"
+            bits = [f"{r.sessions_stale} session(s) stale"]
+            if r.open_gaps:
+                bits.append(f"{len(r.open_gaps)} MISSING")
+            elif r.gaps:
+                bits.append(f"{len(r.gaps)} lost (acknowledged)")
+            mark = "STALE  " if r.alerting else "ok     "
+            out.append(f"  {mark}{r.source_id:<22} last {last}  {', '.join(bits)}")
+    except Exception as exc:  # noqa: BLE001 - a digest must not die on one section
+        out.append(f"  unavailable: {type(exc).__name__}")
+    try:
+        b = backup_state.read()
+        out.append(f"  {'AT RISK' if b.alerting else 'ok     '} backup  {b.summary}")
+    except Exception as exc:  # noqa: BLE001
+        out.append(f"  backup unavailable: {type(exc).__name__}")
+    out.append("")
+
+    out.append("WHERE TO LOOK")
+    out.append(f"  health     {DOCS / 'HEALTH.md'}")
+    out.append(f"  status     {DOCS / 'STATUS.md'}")
+    out.append(f"  inventory  {DOCS / 'DATA_INVENTORY.md'}")
+    out.append(f"  verdict    {DOCS / 'reports' / 'VERDICT.md'}")
+    return "\n".join(out)
+
+
+def main() -> int:
+    import sys
+
+    text = render()
+    print(text)
+    if "--email" in sys.argv:
+        print("\n  " + health.notify_email(
+            f"institutional-research digest {date.today().isoformat()}", text))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

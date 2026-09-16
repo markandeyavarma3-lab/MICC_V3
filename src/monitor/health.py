@@ -354,13 +354,38 @@ def notify_email(subject: str, body: str) -> str:
     msg["Subject"], msg["From"], msg["To"] = subject, sender, to
     msg.set_content(body)
     host = os.environ.get("ALERT_SMTP_HOST", "smtp.gmail.com")
-    try:
-        with smtplib.SMTP_SSL(host, 465, timeout=20) as s:
-            s.login(sender, pw)
-            s.send_message(msg)
-        return f"email sent to {to}"
-    except Exception as exc:  # noqa: BLE001 - an alert must never crash the caller
-        return f"email FAILED: {type(exc).__name__}: {exc}"
+
+    # 587/STARTTLS FIRST, 465/SSL AS FALLBACK. Measured 2026-09-16 on this
+    # machine: 587 connects in 0.0s and 465 times out. Many home and mobile
+    # networks block implicit-TLS 465 while leaving submission open, so an
+    # alerter that only knows 465 reports "email FAILED: TimeoutError" forever
+    # and the operator concludes the credentials are wrong. They were never
+    # wrong — every stale-source and backup alert since the email leg was added
+    # has been failing at the socket.
+    #
+    # Both are tried and the LAST error is reported, so a genuine auth failure
+    # still surfaces as an auth failure rather than being hidden by a timeout.
+    attempts: list[tuple[int, str]] = [(587, "starttls"), (465, "ssl")]
+    if os.environ.get("ALERT_SMTP_PORT"):
+        attempts = [(int(os.environ["ALERT_SMTP_PORT"]),
+                     os.environ.get("ALERT_SMTP_MODE", "starttls"))]
+    last = ""
+    for port, mode in attempts:
+        try:
+            if mode == "ssl":
+                with smtplib.SMTP_SSL(host, port, timeout=20) as s:
+                    s.login(sender, pw)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(host, port, timeout=20) as s:
+                    s.ehlo()
+                    s.starttls()
+                    s.login(sender, pw)
+                    s.send_message(msg)
+            return f"email sent to {to} via {port}/{mode}"
+        except Exception as exc:  # noqa: BLE001 - an alert must never crash the caller
+            last = f"{port}/{mode}: {type(exc).__name__}: {exc}"
+    return f"email FAILED: {last}"
 
 
 def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
