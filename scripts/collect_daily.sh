@@ -45,10 +45,18 @@ export RESEARCH_ENV=prod
 #
 # `note` records a stage and remembers the worst code seen. The script exits
 # with it, so a scheduler that checks status finally learns something.
+#
+# `FAILED_STAGES` was added 2026-09-16 (decision 0070). RC=1 said something
+# broke; it never said WHAT. charmatch failed on twenty consecutive scheduled
+# runs and the only signal was one line in a file with no reader.
 RC=0
+FAILED_STAGES=""
 note() {  # note <stage> <code>
   echo "$1=$2"
-  [ "$2" -ne 0 ] && RC=1
+  if [ "$2" -ne 0 ]; then
+    RC=1
+    FAILED_STAGES="$FAILED_STAGES $1"
+  fi
   return 0
 }
 
@@ -170,6 +178,13 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "outcomes" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
   note "health" $?
+  # THE MORNING DIGEST. One screen answering "did last night work, and is
+  # anything rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md
+  # each answer a piece of and none answers whole. Emailed from the 08:30 slot
+  # only: a digest that arrives twice a day is a digest that gets filtered.
+  if [ "$(date +%H)" -lt 12 ]; then
+    "$REPO/.venv/bin/python" -m src.monitor.digest --email || true
+  fi
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
   # days without running once; a session archived but not backed up sits on one
   # disk, and the endpoint that could re-serve it answers 503. The script is a
@@ -180,6 +195,11 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
 
 # The whole point: a failed stage makes the RUN fail.
 if [ "$RC" -ne 0 ]; then
-  echo "COLLECT: one or more stages FAILED — see $LOG" >&2
+  echo "COLLECT: FAILED stages:$FAILED_STAGES — see $LOG" >&2
+  # Carry it to where somebody looks. Reuses health.py's already-configured
+  # desktop and email channels; never raises, so a broken alerter cannot turn a
+  # useful failure into a stack trace.
+  "$REPO/.venv/bin/python" -m src.monitor.stage_alert "$LOG" $FAILED_STAGES \
+    >> "$LOG" 2>&1 || true
 fi
 exit "$RC"

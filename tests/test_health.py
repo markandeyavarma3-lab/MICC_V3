@@ -271,3 +271,27 @@ def test_the_acknowledged_list_only_covers_gaps_that_are_real():
                 f"{sid} {d} is acknowledged but is not a gap — the entry is "
                 f"stale and would silence a future loss on that session"
             )
+
+
+def test_email_tries_starttls_before_implicit_tls():
+    """MEASURED 2026-09-16: on this network port 587 connects in 0.0s and 465
+    times out. The alerter only knew 465, so every stale-source and backup email
+    since the leg was added failed at the socket with 'TimeoutError' — which
+    reads like a credential problem and is not one.
+
+    Both ports are tried and the LAST error is reported, so a genuine auth
+    failure still surfaces as an auth failure instead of being masked.
+    """
+    import inspect
+
+    src = inspect.getsource(health.notify_email)
+    assert "starttls" in src and "587" in src
+    assert src.index("587") < src.index("465"), "465 is still tried first"
+    assert "ALERT_SMTP_PORT" in src, "the port is not overridable"
+
+
+def test_email_reports_which_transport_succeeded():
+    """'email sent' alone cannot tell you the fallback saved you."""
+    import inspect
+
+    assert "via {port}/{mode}" in inspect.getsource(health.notify_email)
