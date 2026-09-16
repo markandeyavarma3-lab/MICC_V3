@@ -327,10 +327,25 @@ ADJUSTED = SpineSpec(
 
 
 def build(spec: SpineSpec, env: str | None = None,
-          con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
-    """Build one spine, holding an exclusive lock on it. See `_exclusive`."""
+          con: duckdb.DuckDBPyConnection | None = None,
+          register: bool = True) -> BuildResult:
+    """Build one spine, holding an exclusive lock on it, and register it.
+
+    REGISTRATION HAPPENS HERE, NOT ONLY IN build_all() (decision 0064).
+    collect_daily.sh rebuilds the price spines nightly by calling this and
+    `build_adjusted` directly, and until 2026-09-16 only `build_all` registered
+    the result. The first night the spine grew after charpanel joined the
+    script, `charmatch.build_panel` pointed a provenance edge at a spine
+    checksum nobody had registered and the foreign key refused it. The
+    artefact is registered on the path that actually runs, under the same lock
+    that built it. `register=False` is for callers that own registration
+    themselves (none in production) and for tests of the build alone.
+    """
     with _exclusive(spec.name):
-        return _build_impl(spec, env, con)
+        r = _build_impl(spec, env, con)
+        if register:
+            register_spine(spec, r, env=env, con=con)
+        return r
 
 
 def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
@@ -502,23 +517,49 @@ def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection 
 
 
 def build_adjusted(env: str | None = None,
-                   con: duckdb.DuckDBPyConnection | None = None) -> BuildResult:
-    """Build the adjusted spine, holding an exclusive lock on it."""
+                   con: duckdb.DuckDBPyConnection | None = None,
+                   register: bool = True) -> BuildResult:
+    """Build the adjusted spine, holding an exclusive lock on it, and register
+    it — see `build` for why registration lives here (0064)."""
     with _exclusive(ADJUSTED.name):
-        return _build_adjusted_impl(env, con)
+        r = _build_adjusted_impl(env, con)
+        if register:
+            register_spine(ADJUSTED, r, env=env, con=con)
+        return r
 
 
-def build_all(env: str | None = None) -> list[BuildResult]:
-    """Build every spine and register each in the provenance DAG.
+#: EACH SPINE EDGES ONLY TO THE SOURCES IT ACTUALLY READS.
+#:
+#: The first version attached all three carried sources to BOTH spines, so
+#: `price_spine` claimed to derive from `seed:fno`. That is not a cosmetic
+#: error: the DAG's most valuable query is "which results does a restatement
+#: of THIS source invalidate?" (Plan 2 §8.2). An over-broad edge answers it
+#: wrongly in the expensive direction — a restated F&O file would have flagged
+#: every price-derived result as suspect.
+#:
+#: `seed:v1_export` is a genuine parent of both: it is one carried directory
+#: containing stock_data AND fo_data.
+def _parent_dirs(spec: SpineSpec) -> tuple[Path, ...]:
+    if spec is FNO:
+        return (SEED, SEED_INCREMENTS / "fno")
+    return (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices")
 
-    Each spine records edges to the SOURCE artefacts it was built from, so
-    "which data version produced this?" is a graph walk. Registering the parents
-    first is why `seed.carry` must run before this.
+
+def register_spine(spec: SpineSpec, r: BuildResult, env: str | None = None,
+                   con: duckdb.DuckDBPyConnection | None = None) -> str:
+    """Register a built spine in the provenance DAG and return its checksum.
+
+    Addressed by DATA, not by bytes: DuckDB's parquet writer is not
+    byte-deterministic (see provenance.data_checksum), so hashing the files
+    registered a new artefact on every rebuild of unchanged data. Parents are
+    the carried sources the spine actually reads; each must already be
+    registered (seed.carry / bhavcopy.register do that) or the foreign key
+    fails loudly — an edge to an unregistered input is a lineage nobody can
+    walk, and hiding it is how charpanel went unparented.
     """
-    con = duckdb.connect()
-    results: list[BuildResult] = []
+    c = con or duckdb.connect()
 
-    def _digest(path) -> str | None:
+    def _digest(path: Path) -> str | None:
         if not path.is_dir():
             return None
         try:
@@ -526,56 +567,41 @@ def build_all(env: str | None = None) -> list[BuildResult]:
         except prov.ProvenanceError:
             return None
 
-    # EACH SPINE EDGES ONLY TO THE SOURCES IT ACTUALLY READS.
-    #
-    # The first version attached all three carried sources to BOTH spines, so
-    # `price_spine` claimed to derive from `seed:fno`. That is not a cosmetic
-    # error: the DAG's most valuable query is "which results does a restatement
-    # of THIS source invalidate?" (Plan 2 §8.2). An over-broad edge answers it
-    # wrongly in the expensive direction — a restated F&O file would have flagged
-    # every price-derived result as suspect.
-    #
-    # `seed:v1_export` is a genuine parent of both: it is one carried directory
-    # containing stock_data AND fo_data.
-    per_spine = {
-        PRICE.name: (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices"),
-        ADJUSTED.name: (SEED, SEED_INCREMENTS / "prices", COLLECTED / "prices"),
-        FNO.name: (SEED, SEED_INCREMENTS / "fno"),
-    }
+    parents = [(d, "input") for d in (_digest(p) for p in _parent_dirs(spec)) if d is not None]
+    digest = prov.data_checksum(c, f"{r.path}/**/*.parquet", (*spec.columns, "_y"))
+    total_bytes = sum(p.stat().st_size for p in r.path.glob("**/*.parquet"))
+    prov.register(
+        prov.Artefact(
+            artefact_hash=digest,
+            artefact_type="TABLE",
+            logical_name=f"warehouse:{spec.name}",
+            produced_by=PRODUCED_BY,
+            row_count=r.rows,
+            byte_size=total_bytes,
+            params={
+                "columns": list(spec.columns),
+                "rows": r.rows,
+                "decision": "0027",
+                "addressing": "data_checksum",
+            },
+        ),
+        parents=parents,
+        env=env,
+    )
+    r.artefact_hash = digest
+    return digest
 
+
+def build_all(env: str | None = None) -> list[BuildResult]:
+    """Build every spine. Each `build` registers itself in the provenance DAG
+    (see `register_spine`), with edges to the SOURCE artefacts it was built
+    from, so "which data version produced this?" is a graph walk. Registering
+    the parents first is why `seed.carry` must run before this.
+    """
+    con = duckdb.connect()
+    results: list[BuildResult] = []
     for spec in (PRICE, ADJUSTED, FNO):
         r = build_adjusted(env=env, con=con) if spec is ADJUSTED else build(spec, env=env, con=con)
-        parents = [
-            (d, "input")
-            for d in (_digest(p) for p in per_spine[spec.name])
-            if d is not None
-        ]
-        # Addressed by DATA, not by bytes. DuckDB's parquet writer is not
-        # byte-deterministic (see provenance.data_checksum), so hashing the files
-        # registered a new artefact on every rebuild of unchanged data.
-        digest = prov.data_checksum(
-            con, f"{r.path}/**/*.parquet", (*spec.columns, "_y")
-        )
-        total_bytes = sum(p.stat().st_size for p in r.path.glob("**/*.parquet"))
-        prov.register(
-            prov.Artefact(
-                artefact_hash=digest,
-                artefact_type="TABLE",
-                logical_name=f"warehouse:{spec.name}",
-                produced_by=PRODUCED_BY,
-                row_count=r.rows,
-                byte_size=total_bytes,
-                params={
-                    "columns": list(spec.columns),
-                    "rows": r.rows,
-                    "decision": "0027",
-                    "addressing": "data_checksum",
-                },
-            ),
-            parents=parents,
-            env=env,
-        )
-        r.artefact_hash = digest
         results.append(r)
     return results
 
