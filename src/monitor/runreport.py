@@ -213,8 +213,13 @@ def render(run: Run | None = None) -> str:
         out.append(f"  unavailable: {type(exc).__name__}")
     try:
         b = backup_state.read()
-        flag = 'AT RISK' if b.alerting else 'ok    '
-        out.append(f"  {flag:<6}{'backup':<22} {b.summary}")
+        # An explicit space after the field, not just padding inside it: "AT
+        # RISK" is 7 characters, one past a width-6 field, and a format spec
+        # does not insert a separator when the content already exceeds the
+        # width — it emits the flag and the next field with nothing between
+        # them. Found from a real Telegram /status reply: "AT RISKbackup".
+        flag = 'AT RISK' if b.alerting else 'ok'
+        out.append(f"  {flag:<7} {'backup':<22} {b.summary}")
     except Exception as exc:  # noqa: BLE001
         out.append(f"  backup unavailable: {type(exc).__name__}")
 
