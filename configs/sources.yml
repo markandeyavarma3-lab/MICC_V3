@@ -334,3 +334,18 @@ acknowledged_gaps:
     session: 2026-09-10
     acknowledged: 2026-09-16
     reason: same as 2026-09-08 — identical empty file, ordinary zero-block day.
+  - source_id: nse_block_deals
+    session: 2026-09-15
+    acknowledged: 2026-09-16
+    reason: >-
+      UNLIKE THE THREE ABOVE, THIS ONE IS NOT CONFIRMED EMPTY — stated plainly
+      because the difference matters. The 2026-09-15 20:31 run and the 2026-09-16
+      08:30 run both fetched block.csv and both got the file dated 2026-09-11
+      (identical to the last STORED session before it), meaning NSE had not yet
+      published a 2026-09-15 file at either check. By the 2026-09-16 20:30 run
+      the endpoint had moved on to an EMPTY_DAY dated 2026-09-16. Whatever
+      2026-09-15 held — real deals or none — never appeared as the "current"
+      file during either of the two windows this project checks, and the
+      rolling endpoint keeps no history to check afterward. Recoverability was
+      tested directly on 2026-09-16 (re-fetched block.csv; still the 09-16 empty
+      file) before acknowledging this as unrecoverable rather than assuming it.
