@@ -6,6 +6,75 @@
 **Registered:** 2026-09-11, before any return was computed · **Status:** REJECTED
 **Artefact:** `engine_1_deals_entity_verdict` (`92ae0987f83e869d`)
 **Date:** 2026-09-11 · Every number below comes from a query, not recollection.
+**Corrected:** 2026-09-12 — see *Correction* immediately below before reading
+any count in this memo.
+
+---
+
+## Correction, 2026-09-12: the code did not run the spec it registered
+
+**The verdict is unchanged and is not in question.** This correction *removes*
+apparent evidence for skill, so it can only harden a DEAD finding. What changed
+is that several intermediate numbers printed below are now known to be wrong.
+
+An audit of `src/research/entity_verdict.py` against the frozen registration in
+`scripts/register_exp002.py` found four deviations. The registration was correct
+throughout; the implementation did not follow it.
+
+| registered | implemented | consequence |
+|---|---|---|
+| `permutation_policy`: moving-block bootstrap, block 63 sessions, 10,000 draws, seed 20260911 | `math.erfc(\|t\|/√2)`, a two-sided **normal approximation** on raw per-deal returns | **produced both reported FDR passes** |
+| `holding_period`: "primary 63 sessions; **all 9 horizons reported**" | `HORIZONS` declared at module level and never read | eight of nine horizons never computed |
+| BH-FDR at 5% | raw `p*m/rank`, without the step-up running minimum | adjusted values not monotone in *p* |
+| per-entity IC (workstream item 4) | `ic_eval` field declared, never assigned | IC never computed |
+
+**Why the first one is not a stylistic difference.** The normal approximation
+clears the BH rank-1 threshold (*p* < 0.05/24 = 0.002083) at |*t*| ≥ **3.08**
+*regardless of n*. The correct two-sided *t* at the same threshold needs
+|*t*| ≥ **305.6** at n = 2 and |*t*| ≥ **7.10** at n = 5. The registered
+bootstrap is stricter still: it cannot run at all on two deals, because two
+monthly cohorts cannot fill a three-month block.
+
+**How far this goes, stated precisely — an earlier draft of this correction
+overstated it.** The registered bootstrap resamples *whole months* and needs
+more than three monthly cohorts, so what decides computability is the number of
+distinct months an entity's formation deals span, not the deal count:
+
+| case | under the registered bootstrap |
+|---|---|
+| n = 2 (SUNDARAM), 2 months | **uncomputable** — cannot fill a three-month block |
+| n = 5 (FRANKLIN TEMPLETON), ≤ 3 distinct months | **uncomputable** |
+| n = 5, ≥ 4 distinct months | **computable, and may still be significant** |
+
+Which case Franklin Templeton falls into **is not known from this environment**
+— it needs the warehouse. So the honest statement is: SUNDARAM's pass is
+definitely an artefact of the substituted test; Franklin Templeton's may or may
+not survive, and if it survives it remains a *significantly negative* result in
+the BOTTOM tier. **The verdict is unaffected either way**, because the
+registered bar requires a passer in the **TOP** tier and both sit in BOTTOM.
+
+The memo already argued these
+passes were meaningless *on sample-size grounds*; the stronger and more
+uncomfortable statement is that **they were never passes under the registered
+design at all.**
+
+`src/research/power.py:198` has carried `block_bootstrap_ci` — the exact
+registered procedure, seed parameter and all — since before this study ran. It
+had **no callers anywhere in the codebase.**
+
+**What is now fixed in code**, verified by `tests/test_entity_verdict_stats.py`
+(16 tests, no warehouse required): `_p_form` runs the registered bootstrap and
+returns `None` where it cannot run; `_bh` is a proper step-up; `_rank_ic`
+computes IC with a five-observation floor; `build()` reports all nine horizons.
+
+**What is NOT fixed here.** The corrected figures are not in this memo, because
+recomputing them requires the warehouse (`db/research_prod.duckdb`,
+`data/warehouse/`), which is gitignored and absent from the environment this
+correction was made in. **Every count below tagged ⚠ is superseded and awaits a
+re-run.** Inventing replacements would be the failure this project exists to
+refuse. The re-run must use the unchanged `spec_hash`
+`8e7436d7aa9e9186…`, since the registration never needed amending — only the
+code did.
 
 ---
 
@@ -18,7 +87,7 @@ net-of-costs on 2016–2026. Both, not either.*
 | | |
 |---|---|
 | entities tested (LONG_ONLY) | 24 |
-| passed BH-FDR 5% **anywhere** | **2** |
+| passed BH-FDR 5% **anywhere** | ⚠ **2** — artefact of the substituted test; awaits re-run |
 | passed BH-FDR 5% **in the TOP tier** | **0** |
 | TOP tier, out-of-sample, net of costs | +1.11% |
 
@@ -27,6 +96,12 @@ there on *significantly negative* formation excess. A passed test in the wrong
 direction is not a finding.
 
 ## Why the two "passes" are not evidence of anything
+
+> ⚠ **Superseded by the correction above.** Both rows below were produced by a
+> normal approximation that the registration did not authorise. Under the
+> registered moving-block bootstrap neither entity is testable. The section is
+> kept as written because the record of what was published matters more than a
+> tidy memo.
 
 | entity | formation deals | formation excess | q | tier |
 |---|---:|---:|---:|---|
