@@ -879,7 +879,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Sixty-six decision records, each recording what was decided, by whom, why, **what
+Sixty-seven decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1337,9 +1337,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 581 tests that enforces honest research
+- A discipline framework with 587 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Sixty-six decision records with reversal conditions
+- Sixty-seven decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history

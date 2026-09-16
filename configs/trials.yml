@@ -55,6 +55,15 @@ families:
     typical_dof: 246      # 247 monthly cohorts
     selection_happens_within: true
 
+  - id: TRACK_O_POSITIONING
+    description: "Participant-wise F&O open-interest category series (FII / DII /
+      Pro / Client, index and stock futures net) as a daily signal on the
+      NIFTY. Derivatives POSITIONING, not cash flow. Decision 0067."
+    carried: 0
+    estimator: monthly_cohort_mean_difference   # top vs bottom tercile of daily category dOI
+    typical_dof: 150      # ~150 monthly cohorts, 2014-01 .. 2026-07 (NIFTY 50 coverage)
+    selection_happens_within: true
+    decision_record: "0067"
   - id: TRACK_S_CALENDAR
     description: "Calendar pattern cells: window x ordinal x alignment x entity."
     carried: 0
