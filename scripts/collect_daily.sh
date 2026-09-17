@@ -83,7 +83,10 @@ mkdir -p "$REPO/logs"
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   "$REPO/.venv/bin/python" -m src.archive.stopgap
-  note "exit" $?
+  # `deals`, not `exit` (2026-09-17). The stage was named for the exit code it
+  # recorded back when that was all this script recorded; on a phone, "FAIL
+  # exit" reads as the script dying. It is the bulk/block/FII-DII fetch.
+  note "deals" $?
   # ALWAYS run the health check, including after a failed fetch — especially
   # then. On 2026-08-28 all three slots failed on DNS, the collector said "may
   # be permanently lost", exited 1, and nobody saw it for two days. Detection

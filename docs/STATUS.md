@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-16; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-16 15:03 UTC, 3 generation(s), 4 commit(s) and 0 archived session(s) not in it |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-17 04:03 UTC, 3 generation(s), 0 commit(s) and 1 archived session(s) not in it |
 
 ## Phase 2 Collection
 
@@ -148,4 +148,4 @@ VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `8134200`.
+Derived at commit `1ac1227`.

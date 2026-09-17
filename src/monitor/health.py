@@ -43,6 +43,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from src.common.paths import ARCHIVE, DOCS, ROOT
+from src.common.sessions import expected_session, exposure
 from src.monitor import backup_state
 
 MANIFEST = ARCHIVE / "manifest.jsonl"
@@ -225,7 +226,12 @@ def read() -> list[SourceHealth]:
         if sid not in latest or d > latest[sid][0]:
             latest[sid] = (d, got)
 
-    today = datetime.now(UTC).date()
+    # STALE MEANS "PUBLISHED AND NOT HELD". Until 2026-09-17 this counted
+    # sessions up to TODAY, so every source read "1 session(s) stale" on every
+    # trading-day morning — for a file NSE would not publish until that
+    # evening. A number that is wrong every morning is a number that gets
+    # ignored on the morning it is right. See src/common/sessions.py.
+    today = expected_session()
     traded = observed_sessions()
     out = []
     for sid in (*REQUIRED, *OPTIONAL):
@@ -257,6 +263,30 @@ def read() -> list[SourceHealth]:
                                     acknowledged_gaps().get(sid, ())))
         else:
             out.append(SourceHealth(sid, None, None, 999, sid in REQUIRED))
+    return out
+
+
+#: The sources whose endpoint is a rolling current-session file — the ones a
+#: failed fetch can actually cost something on. The dated feeds (bhavcopy,
+#: F&O, corporate actions, insider) can be re-fetched for any past date.
+ROLLING = ("nse_bulk_deals", "nse_block_deals", "fii_dii_cash")
+
+
+def rolling_exposure(rows: list[SourceHealth] | None = None) -> list[tuple[str, bool, str]]:
+    """For each rolling source: (source_id, at_risk, sentence).
+
+    THE FACT THE 2026-09-17 ALERTS LACKED. Three channels said "may be
+    permanently lost" and "re-run now" for a failed fetch of a session that
+    was already held. This is the one place that question is answered, so
+    stopgap, stage_alert and runreport cannot disagree about it.
+    """
+    rows = rows if rows is not None else read()
+    by_id = {r.source_id: r for r in rows}
+    out = []
+    for sid in ROLLING:
+        r = by_id.get(sid)
+        at_risk, why = exposure(r.last_session if r else None)
+        out.append((sid, at_risk, why))
     return out
 
 
@@ -484,8 +514,14 @@ def main() -> int:
         print("  ALERTED on backup")
     if alerting:
         print(f"  ALERTED on {len(alerting)} source(s)")
-        print(f"  email: {notify_email.__doc__.splitlines()[0]}")
-    return 1 if (alerting or b.alerting) else 0
+    # EXIT 0 WHEN THE CHECK RAN, whatever it found. This returned 1 on any
+    # finding, so collect_daily.sh recorded `health=1`, the digest listed the
+    # run as FAIL, and stage_alert paged "PROCESSING FAILED: health" — for a
+    # stage that had just finished successfully and already paged its own
+    # finding through `broadcast`. Every run in September read FAIL for this
+    # reason alone, which is how a FAIL stops meaning anything. A finding is
+    # a finding; a stage failure is the check itself dying, and that raises.
+    return 0
 
 
 if __name__ == "__main__":

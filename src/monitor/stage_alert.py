@@ -35,8 +35,25 @@ from src.monitor import health
 #: was collected but not processed. Both matter; this one is worse, because the
 #: three rolling NSE feeds cannot be re-fetched after the file turns over.
 COLLECTION_STAGES = frozenset({
-    "exit", "prices", "bhavcopy", "corpact", "derivatives", "insider",
+    "deals", "prices", "bhavcopy", "corpact", "derivatives", "insider",
 })
+
+#: The stage whose feeds are ROLLING — a miss there can cost a session. Named
+#: `deals` since 2026-09-17; it was `exit` for its whole life before that, a
+#: name that survived from an early version where the only thing recorded was
+#: the script's exit code, and that read on a phone as "the exit stage failed".
+ROLLING_STAGE = "deals"
+
+#: Old name -> current name, applied wherever a stage name is READ from a
+#: record (last_run.tsv, the collector log). Every run before 2026-09-17 wrote
+#: `exit`; without this, the morning's own record read as a PROCESSING failure
+#: the moment the rename landed, and every historical FAIL line in the digest
+#: would name a stage that no longer exists.
+LEGACY_STAGE_NAMES = {"exit": "deals"}
+
+
+def canonical(stage: str) -> str:
+    return LEGACY_STAGE_NAMES.get(stage, stage)
 
 
 def compose(stages: list[str], log: str) -> str:
@@ -48,15 +65,27 @@ def compose(stages: list[str], log: str) -> str:
     other = sorted(s for s in stages if s not in COLLECTION_STAGES)
     lines = [f"{len(stages)} stage(s) failed: {', '.join(sorted(stages))}", ""]
     if lost:
-        lines += [
-            f"COLLECTION: {', '.join(lost)}",
-            "  Data may not have been fetched. nse_bulk_deals, nse_block_deals",
-            "  and fii_dii_cash are ROLLING endpoints — a session missed here is",
-            "  recoverable only until the file turns over, around 19:00 IST the",
-            "  next trading day. Re-run now if this was the evening slot:",
-            "    cd ~/Workspace/institutional-research && ./scripts/collect_daily.sh",
-            "",
-        ]
+        lines += [f"COLLECTION: {', '.join(lost)}"]
+        if ROLLING_STAGE in lost:
+            # THE FACT, PER SOURCE, NOT THE BOILERPLATE. On 2026-09-17 this
+            # said "recoverable only until the file turns over ... Re-run now"
+            # for a failed fetch of a session already held. Now it says which
+            # sessions are held, which the endpoint is serving, and whether
+            # those differ — from the same function health and stopgap use.
+            try:
+                for sid, at_risk, why in health.rolling_exposure():
+                    lines.append(f"  {'AT RISK ' if at_risk else 'held    '} {sid:<16} {why}")
+                if any(r for _, r, _ in health.rolling_exposure()):
+                    lines += ["  Re-run now:",
+                              "    /collect   (or: cd ~/Workspace/institutional-research && ./scripts/collect_daily.sh)"]
+                else:
+                    lines.append("  Nothing on the endpoint is missing; the next slot retries.")
+            except Exception as exc:  # noqa: BLE001 - the alert must still go out
+                lines.append(f"  (exposure unavailable: {type(exc).__name__})")
+        dated = [s for s in lost if s != ROLLING_STAGE]
+        if dated:
+            lines.append(f"  {', '.join(dated)}: dated feeds — re-fetchable for any past date; the next run retries.")
+        lines.append("")
     if other:
         lines += [
             f"PROCESSING: {', '.join(other)}",

@@ -47,6 +47,13 @@ EXCHANGE = "NSE"
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 TIMEOUT = 40
+
+from src.common.bounded import bounded
+
+#: Hard bound on ONE attempt — resolution included. `timeout=TIMEOUT` below
+#: bounds the socket after `getaddrinfo` returns; nothing bounds `getaddrinfo`,
+#: and on 2026-09-17 it held the deal fetch for 50 minutes. See src/common/bounded.py.
+DEADLINE = TIMEOUT + 15
 RETRIES = 3
 BACKOFF_BASE = 5
 RATE_LIMIT = 2.0
@@ -215,8 +222,10 @@ def capture(f: Feed, session: date, today: date | None = None) -> dict:
         req = urllib.request.Request(url, headers={
             "User-Agent": UA, "Referer": "https://www.nseindia.com/", "Accept": "*/*"})
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                body = r.read()
+            def _get(req=req) -> bytes:
+                with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                    return r.read()
+            body = bounded(_get, DEADLINE, what=url)
             break
         except urllib.error.HTTPError as e:
             if e.code == 404:

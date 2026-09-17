@@ -15,6 +15,7 @@ from __future__ import annotations
 import pytest
 
 from src.common.paths import ROOT
+from src.monitor import stage_alert
 
 pytestmark = pytest.mark.unit
 
@@ -107,3 +108,60 @@ def test_a_stage_reported_twice_in_one_run_counts_once():
 
     for _stamp, failed in digest._runs():
         assert len(failed) == len(set(failed)), f"duplicated stage names: {failed}"
+
+
+# --- the collection branch, which had no test until it paged for nothing ------
+
+
+def _exposure(monkeypatch, at_risk: bool):
+    from src.monitor import health
+    why = ("newest held 2026-09-15; the endpoint is serving 2026-09-16, which is NOT held — Fetch now"
+           if at_risk else
+           "newest held 2026-09-16 is what the endpoint is serving; nothing at risk, the next slot retries")
+    monkeypatch.setattr(health, "rolling_exposure",
+                        lambda rows=None: [(s, at_risk, why) for s in health.ROLLING])
+
+
+def test_a_failed_deal_fetch_of_a_session_already_held_does_not_say_re_run(monkeypatch):
+    """2026-09-17 08:37: DNS failed, the endpoint was serving 09-16, 09-16 was
+    held. The alert said "recoverable only until the file turns over ... Re-run
+    now". Nothing was at risk. The message must say so, per source."""
+    _exposure(monkeypatch, at_risk=False)
+    msg = stage_alert.compose(["deals"], log="x.log")
+    assert "COLLECTION: deals" in msg
+    assert "nothing at risk" in msg
+    assert "Nothing on the endpoint is missing" in msg
+    assert "Re-run now" not in msg and "turns over" not in msg
+
+
+def test_a_failed_deal_fetch_of_a_session_not_held_says_re_run(monkeypatch):
+    """The morning after a fully missed evening — the case the boilerplate was
+    written for, now stated with the actual session and where it is."""
+    _exposure(monkeypatch, at_risk=True)
+    msg = stage_alert.compose(["deals"], log="x.log")
+    assert "AT RISK" in msg and "2026-09-16" in msg and "NOT held" in msg
+    assert "Re-run now" in msg and "/collect" in msg
+
+
+def test_a_failed_dated_feed_is_not_treated_as_a_rolling_loss(monkeypatch):
+    """prices/bhavcopy/insider can be re-fetched for any past date. They must
+    not inherit the rolling feeds' urgency."""
+    _exposure(monkeypatch, at_risk=True)  # would be alarming if consulted
+    msg = stage_alert.compose(["prices"], log="x.log")
+    assert "COLLECTION: prices" in msg
+    assert "dated feeds" in msg and "re-fetchable" in msg
+    assert "AT RISK" not in msg and "Re-run now" not in msg
+
+
+def test_the_alert_still_goes_out_if_the_exposure_lookup_dies(monkeypatch):
+    """The lookup reads the manifest. A broken manifest must not turn a stage
+    alert into no alert."""
+    from src.monitor import health
+
+    def boom(rows=None):
+        raise RuntimeError("manifest unreadable")
+
+    monkeypatch.setattr(health, "rolling_exposure", boom)
+    msg = stage_alert.compose(["deals"], log="x.log")
+    assert "COLLECTION: deals" in msg
+    assert "exposure unavailable: RuntimeError" in msg
