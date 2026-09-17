@@ -35,7 +35,7 @@ from src.monitor import health
 #: was collected but not processed. Both matter; this one is worse, because the
 #: three rolling NSE feeds cannot be re-fetched after the file turns over.
 COLLECTION_STAGES = frozenset({
-    "deals", "prices", "bhavcopy", "corpact", "derivatives", "insider",
+    "deals", "prices", "bhavcopy", "corpact", "derivatives", "insider", "shp",
 })
 
 #: The stage whose feeds are ROLLING — a miss there can cost a session. Named

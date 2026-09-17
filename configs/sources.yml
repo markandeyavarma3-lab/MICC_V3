@@ -162,7 +162,11 @@ sources:
     report_type: SHP
     status: CONFIRMED_HISTORY        # 2026-09-17: 5 symbols (RELIANCE, TCS, SBIN, CDSL, KPRMILL), 20-22 filings each, quarter-ends 2021-09-30 -> 2026-06-30 for ALL five regardless of size; oldest XBRL resolves (200, holder names present). No sweep yet.
     history_floor: "2021-09-30"      # uniform across large and small caps, so the endpoint's window, not listing age. UNKNOWN whether fixed (XBRL format start) or a rolling ~5 years — sweep before finding out the hard way.
-    panel: "~20 quarters x ~2,000 symbols; the TIME dimension is 20, whatever the cross-section is"
+    panel: "~20 quarters x ~2,900 symbols; the TIME dimension is 20, whatever the cross-section is"
+    collector: src/archive/shp.py       # decision 0074. Sweeps the bhavcopy EQ+BE universe (2,886 on 2026-09-16)
+    schedule: "01:00 daily via com.institutional-research.shp; ~5,000 XBRL/night until the ~60k backlog clears, then seconds until a quarter rolls"
+    first_sweep: "2026-09-17 13:50 IST, by hand, --max-detail 4000"
+    archived_bytes_only: true           # NOTHING PARSED. What to compute is a registration decision, not a collector's.
     cadence: quarterly
     licence: public_disclosure
     automated_use_permitted: "yes"
