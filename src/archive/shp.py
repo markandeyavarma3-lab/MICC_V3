@@ -91,13 +91,38 @@ BACKOFF_BASE = 5
 RATE_LIMIT = 2.0
 
 #: XBRL files fetched per run. The first sweep has ~60,000 behind it; a
-#: quarterly top-up has ~2,900. One run at this budget is about 70 minutes.
-MAX_DETAIL_PER_RUN = 2000
+#: quarterly top-up has ~2,900.
+#:
+#: 2000 was the first number. The first sweep (2026-09-17, budget 4000)
+#: measured NSE's tolerance: ~1,150 files/hour sustained for three hours, then
+#: the host slowed every response to the deadline, the run stretched from an
+#: estimated four hours to seven, and it was still running when the 20:30
+#: collector started — whose deal fetch then took eleven minutes instead of
+#: twenty seconds. 1500 is under an hour at the observed rate.
+MAX_DETAIL_PER_RUN = 1500
+
+#: Wall-clock cap. A run that is being throttled does not finish faster by
+#: continuing; it finishes later and collides with the next scheduled job. The
+#: nightly job starts at 01:00 and the collector at 08:30; 150 minutes ends
+#: the sweep by 03:30 with room.
+MAX_MINUTES = 150
+
+#: Circuit breaker. This many CONSECUTIVE network failures (deadline, refused,
+#: reset — not 404, which is a fact about one file) means the host is
+#: throttling us, and the honest move is to stop and say so, not to retry the
+#: next 2,000 files at 135 seconds each.
+BREAKER_FAILURES = 5
 
 #: A master stored more recently than this is not re-fetched without --force.
 #: Filings are quarterly; a week of slack covers late filers without
 #: re-sweeping 2,900 symbols every night.
 MASTER_FRESH_DAYS = 80
+
+#: An EMPTY master (an ETF, a debt-only listing) is fresh for this long. ~100
+#: ETFs sit in the EQ series and will never file; re-asking nightly is 100
+#: wasted fetches. Seven days, not eighty, in case an EMPTY was ever a
+#: throttled 200 rather than a fact.
+EMPTY_FRESH_DAYS = 7
 
 #: If MORE than this fraction of masters in a run come back empty, the run is
 #: FAILED: that is a retired endpoint, not 1,500 companies that stopped filing.
@@ -220,19 +245,34 @@ def _seen_digests(rows: list[dict]) -> set[str]:
             and r.get("status") in {"STORED", "DUPLICATE"} and r.get("sha256")}
 
 
-def _fresh_masters(rows: list[dict], days: int = MASTER_FRESH_DAYS) -> set[str]:
-    """Symbols whose master was stored within `days` — skipped unless --force."""
-    cut = datetime.now(UTC) - timedelta(days=days)
+def _fresh_masters(rows: list[dict], days: int = MASTER_FRESH_DAYS,
+                   empty_days: int = EMPTY_FRESH_DAYS) -> set[str]:
+    """Symbols whose master was stored within `days` (or EMPTY within
+    `empty_days`) — skipped unless --force."""
+    now = datetime.now(UTC)
+    cut, ecut = now - timedelta(days=days), now - timedelta(days=empty_days)
     out = set()
     for r in rows:
-        if (r.get("source_id") == MASTER_SOURCE and r.get("status") in {"STORED", "DUPLICATE"}
-                and r.get("symbol") and r.get("fetched_at")):
-            try:
-                if datetime.fromisoformat(r["fetched_at"]) >= cut:
-                    out.add(r["symbol"])
-            except ValueError:
-                continue
+        if r.get("source_id") != MASTER_SOURCE or not (r.get("symbol") and r.get("fetched_at")):
+            continue
+        try:
+            at = datetime.fromisoformat(r["fetched_at"])
+        except ValueError:
+            continue
+        if (r.get("status") in {"STORED", "DUPLICATE"} and at >= cut) or \
+           (r.get("status") == "EMPTY" and at >= ecut):
+            out.add(r["symbol"])
     return out
+
+
+class Throttled(RuntimeError):
+    """The host is slowing every response to the deadline. Stop, do not grind."""
+
+
+def _is_network_failure(err: str) -> bool:
+    """A 404 is a fact about one file. Everything else that reaches here is the
+    host, or the path to it."""
+    return "404" not in err
 
 
 def _quarter_end(row: dict) -> date | None:
@@ -250,15 +290,26 @@ def _quarter_end(row: dict) -> date | None:
 
 
 def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
-                   today: date | None = None) -> dict:
+                   today: date | None = None, streak: list[int] | None = None,
+                   deadline_at: datetime | None = None) -> dict:
+    """`streak` counts CONSECUTIVE network failures across symbols; a success
+    resets it, BREAKER_FAILURES raises Throttled. `deadline_at` is the run's
+    wall-clock cap; detail fetching stops at it, the master still lands."""
     today = today or datetime.now(UTC).date()
+    streak = streak if streak is not None else [0]
     url = MASTER_URL.format(symbol=symbol)
     base = {"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
             "symbol": symbol, "url": url, "session_date": today.isoformat(),
             "fetched_at": datetime.now(UTC).isoformat()}
     try:
         body = _get(op, url, REFERER)
+        streak[0] = 0
     except Exception as exc:  # noqa: BLE001 - the record is the deliverable
+        if _is_network_failure(str(exc)):
+            streak[0] += 1
+            if streak[0] >= BREAKER_FAILURES:
+                record({**base, "status": "FAILED", "error": str(exc)[:200]})
+                raise Throttled(f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
         return {**base, "status": "FAILED", "error": str(exc)}
     try:
         payload = json.loads(body)
@@ -293,7 +344,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
     # run must not read as healthy on the strength of the index.
     got = skipped = failures = 0
     for r in rows:
-        if budget[0] <= 0:
+        if budget[0] <= 0 or (deadline_at and datetime.now(UTC) >= deadline_at):
             break
         xurl = str(r.get("xbrl") or "").strip()
         q = _quarter_end(r)
@@ -301,8 +352,21 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
             continue
         try:
             xb = _get(op, xurl, "https://www.nseindia.com/")
+            streak[0] = 0
         except Exception as exc:  # noqa: BLE001 - one bad filing must not stop the run
             failures += 1
+            if _is_network_failure(str(exc)):
+                streak[0] += 1
+                if streak[0] >= BREAKER_FAILURES:
+                    entry["details_stored"], entry["detail_failures"] = got, failures
+                    entry["status"] = "FAILED"
+                    entry["error"] = f"throttled after {got} detail file(s): {str(exc)[:80]}"
+                    record({"source_id": XBRL_SOURCE, "exchange": EXCHANGE, "report_type": XBRL_TYPE,
+                            "symbol": symbol, "session_date": q.isoformat(), "url": xurl,
+                            "record_id": r.get("recordId"), "status": "FAILED", "error": str(exc)[:200],
+                            "fetched_at": datetime.now(UTC).isoformat()})
+                    record(entry)
+                    raise Throttled(f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
             record({"source_id": XBRL_SOURCE, "exchange": EXCHANGE, "report_type": XBRL_TYPE,
                     "symbol": symbol, "session_date": q.isoformat(), "url": xurl,
                     "record_id": r.get("recordId"), "status": "FAILED", "error": str(exc)[:200],
@@ -335,8 +399,10 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
 
 
 def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_RUN,
-            force: bool = False) -> list[Outcome]:
+            force: bool = False, max_minutes: int = MAX_MINUTES) -> list[Outcome]:
     symbols = symbols or universe()
+    started = datetime.now(UTC)
+    deadline_at = started + timedelta(minutes=max_minutes)
     rows = _manifest_rows()
     seen = _seen_digests(rows)
     fresh = set() if force else _fresh_masters(rows)
@@ -351,12 +417,21 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         print(f"  warmup failed (continuing, the API may still answer): {exc}")
 
     budget = [max_detail]
+    streak = [0]
     out: list[Outcome] = []
     empties = 0
+    stopped = ""
     for i, sym in enumerate(todo):
+        if datetime.now(UTC) >= deadline_at:
+            stopped = f"wall clock: {max_minutes} min reached after {i} symbol(s)"
+            break
         if i:
             time.sleep(RATE_LIMIT)
-        e = capture_symbol(op, sym, seen, budget)
+        try:
+            e = capture_symbol(op, sym, seen, budget, streak=streak, deadline_at=deadline_at)
+        except Throttled as exc:
+            stopped = f"THROTTLED after {i} symbol(s): {exc}"
+            break
         record(e)
         if e["status"] == "EMPTY":
             empties += 1
@@ -368,6 +443,14 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         if (i + 1) % 100 == 0:
             print(f"  ... {i + 1}/{len(todo)}  xbrl budget left {budget[0]}", flush=True)
 
+    if stopped:
+        # Recorded as a FAILED run-level row so the nightly stage alerts, and
+        # printed with the count so the next night's budget can be judged.
+        record({"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
+                "status": "FAILED", "fetched_at": datetime.now(UTC).isoformat(),
+                "error": f"run stopped — {stopped}"})
+        print(f"\n  RUN STOPPED: {stopped}", flush=True)
+        out.append(Outcome("(run)", "FAILED", detail=stopped))
     if todo and empties / len(todo) > EMPTY_RUN_FRACTION:
         record({"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
                 "status": "FAILED", "fetched_at": datetime.now(UTC).isoformat(),
@@ -384,9 +467,10 @@ def main() -> int:
     ap.add_argument("--symbols", nargs="*", help="override the bhavcopy universe")
     ap.add_argument("--max-detail", type=int, default=MAX_DETAIL_PER_RUN)
     ap.add_argument("--force", action="store_true", help="re-fetch masters stored recently")
+    ap.add_argument("--max-minutes", type=int, default=MAX_MINUTES)
     args = ap.parse_args()
 
-    results = collect(args.symbols or None, args.max_detail, args.force)
+    results = collect(args.symbols or None, args.max_detail, args.force, args.max_minutes)
     for r in results:
         if r.status in {"FAILED"} or r.details:
             flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "EMPTY": "empty", "FAILED": "FAIL "}.get(r.status, r.status)

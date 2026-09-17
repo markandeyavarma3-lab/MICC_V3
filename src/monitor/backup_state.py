@@ -74,11 +74,16 @@ class BackupState:
     #: Archived sessions fetched after the newest backup. NOT recoverable.
     sessions_at_risk: int
     generations: int
+    #: The static leg (0075): destinations with a VERIFIED copy of the 9.1 GB
+    #: that never changes, and when. Empty means it has never been verified
+    #: anywhere — which was true, silently, from 2026-09-01 to 2026-09-17.
+    static_verified: tuple[tuple[str, datetime], ...] = ()
 
     @property
     def alerting(self) -> bool:
-        """No backup at all, or an irreplaceable session sitting outside one."""
-        return self.bundle is None or self.sessions_at_risk > 0
+        """No backup at all, an irreplaceable session sitting outside one, or the
+        static 9.1 GB verified at no destination."""
+        return self.bundle is None or self.sessions_at_risk > 0 or not self.static_verified
 
     @property
     def summary(self) -> str:
@@ -87,9 +92,47 @@ class BackupState:
         if self.bundle is None:
             return f"NO BACKUP in {self.destination}"
         when = self.taken_at.strftime("%Y-%m-%d %H:%M") if self.taken_at else "unknown"
+        if self.static_verified:
+            static = "static 9.1 GB verified at " + ", ".join(
+                f"{_short(d)} {ts:%Y-%m-%d}" for d, ts in self.static_verified)
+        else:
+            static = "static 9.1 GB VERIFIED NOWHERE"
         return (f"newest {when} UTC, {self.generations} generation(s), "
                 f"{self.commits_behind} commit(s) and "
-                f"{self.sessions_at_risk} archived session(s) not in it")
+                f"{self.sessions_at_risk} archived session(s) not in it; {static}")
+
+
+STATIC_STAMP = ROOT / "logs" / "backup_static.txt"
+
+
+def _short(dest: str) -> str:
+    return "pen drive" if dest.startswith("/Volumes/") else ("iCloud" if "CloudDocs" in dest else dest)
+
+
+def static_verified(stamp: Path | None = None) -> tuple[tuple[str, datetime], ...]:
+    """Newest verified sync per destination, from static_sync.zsh's stamp file.
+
+    The stamp is written ONLY after a stat-by-stat verification passed, so a
+    line here is a copy that existed, file for file and size for size, at that
+    moment. Read-only; a missing or malformed stamp reads as "nowhere".
+    """
+    stamp = stamp or STATIC_STAMP
+    out: dict[str, datetime] = {}
+    try:
+        lines = stamp.read_text().splitlines()
+    except OSError:
+        return ()
+    for ln in lines:
+        parts = ln.split("\t")
+        if len(parts) < 3:
+            continue
+        try:
+            ts = datetime.fromisoformat(parts[2].replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if parts[1] not in out or ts > out[parts[1]]:
+            out[parts[1]] = ts
+    return tuple(sorted(out.items()))
 
 
 def _sessions_after(cut: datetime) -> int:
@@ -146,17 +189,18 @@ def read() -> BackupState:
     """Read-only. Never writes, never runs a backup."""
     dest = destination()
     if dest is None or not dest.is_dir():
-        return BackupState(dest, None, None, -1, _sessions_after(datetime.min.replace(tzinfo=UTC)), 0)
+        return BackupState(dest, None, None, -1, _sessions_after(datetime.min.replace(tzinfo=UTC)), 0,
+                           static_verified())
 
     stamped = sorted(
         ((m.group(1), p) for p in dest.glob("repo-*.bundle") if (m := STAMP_RE.search(p.name))),
     )
     if not stamped:
         return BackupState(dest, None, None, -1,
-                           _sessions_after(datetime.min.replace(tzinfo=UTC)), 0)
+                           _sessions_after(datetime.min.replace(tzinfo=UTC)), 0, static_verified())
 
     stamp, newest = stamped[-1]
     # The stamp is local time (backup.sh uses `date +...`); compare in UTC.
     taken = datetime.strptime(stamp, "%Y%m%d-%H%M%S").astimezone().astimezone(UTC)
     return BackupState(dest, newest, taken, _commits_behind(newest),
-                       _sessions_after(taken), len(stamped))
+                       _sessions_after(taken), len(stamped), static_verified())
