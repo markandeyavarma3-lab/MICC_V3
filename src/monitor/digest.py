@@ -51,10 +51,14 @@ def _runs(days: int = 3) -> list[tuple[str, list[str]]]:
                 out.append((stamp, failed))
             stamp, failed = line[4:].split(" pid=")[0], []
         m = re.match(r"^([a-z_]+)=(\d+)$", line)
-        if m and m.group(2) != "0" and m.group(1) not in failed:
+        if m and m.group(2) != "0":
             # Deduped: a stage can echo more than once in a run when an inner
             # script re-reports it, and "mart, mart" reads like two failures.
-            failed.append(m.group(1))
+            # Canonical: pre-2026-09-17 logs say `exit` for the deal fetch.
+            from src.monitor.stage_alert import canonical
+            name = canonical(m.group(1))
+            if name not in failed:
+                failed.append(name)
     if stamp:
         out.append((stamp, failed))
     return out[-days * 3:]

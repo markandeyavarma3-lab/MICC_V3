@@ -39,7 +39,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, date
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -47,6 +47,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.common.hashing import hash_bytes  # noqa: E402
+from src.common.sessions import exposure
 from src.common.paths import ARCHIVE  # noqa: E402
 
 # Matches configs/sources.yml http:. A bare curl with no User-Agent is rejected by
@@ -59,6 +60,13 @@ UA = (
 TIMEOUT = 30
 RETRIES = 3
 BACKOFF_BASE = 5
+
+from src.common.bounded import bounded
+
+#: Hard bound on ONE attempt — resolution included. `timeout=TIMEOUT` below
+#: bounds the socket after `getaddrinfo` returns; nothing bounds `getaddrinfo`,
+#: and on 2026-09-17 it held the deal fetch for 50 minutes. See src/common/bounded.py.
+DEADLINE = TIMEOUT + 15
 RATE_LIMIT = 2.0
 
 MANIFEST = ARCHIVE / "manifest.jsonl"
@@ -112,8 +120,10 @@ def _fetch(url: str, referer: str = "https://www.nseindia.com/") -> bytes:
                     "Referer": referer,
                 },
             )
-            with urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https hosts
-                return resp.read()
+            def _get(req=req) -> bytes:
+                with urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https hosts
+                    return resp.read()
+            return bounded(_get, DEADLINE, what=url)
         except (HTTPError, URLError, TimeoutError) as exc:
             last = exc
     raise RuntimeError(f"all {RETRIES} attempts failed for {url}: {last}")
@@ -266,6 +276,31 @@ def capture(src: Source, session_hint: str | None = None) -> dict:
     return {**entry, "status": entry.get("status", "STORED"), "path": str(dest)}
 
 
+def newest_held(source_id: str) -> date | None:
+    """Newest session_date this source holds, from the manifest. None if none."""
+    if not MANIFEST.exists():
+        return None
+    best: date | None = None
+    for line in MANIFEST.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("source_id") != source_id or not r.get("session_date"):
+            continue
+        if r.get("status") in {"STORED", "DUPLICATE", "EMPTY_DAY"}:
+            d = date.fromisoformat(r["session_date"][:10])
+            best = d if best is None or d > best else best
+    return best
+
+
+def exposure_lines(source_ids: list[str]) -> list[tuple[str, bool, str]]:
+    """(source_id, at_risk, sentence) per failed source. See src/common/sessions.py."""
+    return [(sid, *exposure(newest_held(sid))) for sid in source_ids]
+
+
 def main() -> int:
     # Warm the session for cookies before hitting the API host. The archive host
     # does not need this; /api/ does.
@@ -297,7 +332,14 @@ def main() -> int:
     failed = [s.id for s, e in results if e["status"] == "FAILED" and s.required]
     if failed:
         print(f"\nREQUIRED SOURCE FAILED: {', '.join(failed)}")
-        print("This session's bytes may be permanently lost. Investigate today.")
+        # SAY WHAT IS AT RISK, NOT THAT SOMETHING MIGHT BE. This printed "This
+        # session's bytes may be permanently lost. Investigate today." on
+        # 2026-09-17 08:37 for a failed fetch of 2026-09-16 — a session already
+        # held from the previous evening. The morning slot fetches a duplicate
+        # by design; a failed duplicate loses nothing. The exposure line comes
+        # from the same function the alerts use, so the three cannot disagree.
+        for sid, at_risk, why in exposure_lines(failed):
+            print(f"  {'AT RISK ' if at_risk else 'held    '} {sid:<18} {why}")
         return 1
     print(f"\nmanifest: {MANIFEST}")
     return 0

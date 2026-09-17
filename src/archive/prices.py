@@ -75,6 +75,13 @@ UA = (
     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 )
 TIMEOUT = 30
+
+from src.common.bounded import bounded
+
+#: Hard bound on ONE attempt — resolution included. `timeout=TIMEOUT` below
+#: bounds the socket after `getaddrinfo` returns; nothing bounds `getaddrinfo`,
+#: and on 2026-09-17 it held the deal fetch for 50 minutes. See src/common/bounded.py.
+DEADLINE = TIMEOUT + 15
 RETRIES = 3
 BACKOFF_BASE = 5
 RATE_LIMIT = 2.0
@@ -106,8 +113,10 @@ def _fetch(url: str) -> bytes:
                 "Accept-Language": "en-US,en;q=0.9",
                 "Referer": "https://www.nseindia.com/",
             })
-            with urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https host
-                return resp.read()
+            def _get(req=req) -> bytes:
+                with urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https host
+                    return resp.read()
+            return bounded(_get, DEADLINE, what=url)
         except HTTPError as exc:
             if exc.code == 404:
                 raise  # a holiday or an unpublished session; retrying cannot help

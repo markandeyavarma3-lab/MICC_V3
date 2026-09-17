@@ -69,6 +69,13 @@ REFERER = "https://www.nseindia.com/companies-listing/corporate-filings-insider-
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 TIMEOUT = 30
+
+from src.common.bounded import bounded
+
+#: Hard bound on ONE attempt — resolution included. `timeout=TIMEOUT` below
+#: bounds the socket after `getaddrinfo` returns; nothing bounds `getaddrinfo`,
+#: and on 2026-09-17 it held the deal fetch for 50 minutes. See src/common/bounded.py.
+DEADLINE = TIMEOUT + 15
 RETRIES = 3
 BACKOFF_BASE = 5
 RATE_LIMIT = 1.5
@@ -107,8 +114,10 @@ def _get(op, url: str, referer: str) -> bytes:
                 "User-Agent": UA, "Accept": "*/*",
                 "Accept-Language": "en-US,en;q=0.9", "Referer": referer,
             })
-            with op.open(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https hosts
-                return resp.read()
+            def _get(req=req, op=op) -> bytes:
+                with op.open(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https hosts
+                    return resp.read()
+            return bounded(_get, DEADLINE, what=url)
         except (HTTPError, URLError, TimeoutError) as exc:
             last = exc
     raise RuntimeError(f"all {RETRIES} attempts failed for {url}: {last}")

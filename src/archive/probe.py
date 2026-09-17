@@ -26,8 +26,9 @@ from typing import Callable
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.archive.derivatives import (  # noqa: E402
-    BACKOFF_BASE, RATE_LIMIT, RETRIES, TIMEOUT, UA, record,
+    BACKOFF_BASE, DEADLINE, RATE_LIMIT, RETRIES, TIMEOUT, UA, record,
 )
+from src.common.bounded import bounded
 from src.common.hashing import hash_bytes  # noqa: E402
 from src.common.paths import ARCHIVE  # noqa: E402
 
@@ -51,8 +52,11 @@ def fetch(url: str, headers: dict | None = None, data: bytes | None = None,
         _rate_limit()
         req = urllib.request.Request(url, headers=hdrs, data=data)
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                return r.status, r.read(), ""
+            def _get(req=req) -> tuple[int, bytes]:
+                with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                    return r.status, r.read()
+            status, body = bounded(_get, DEADLINE, what=url)
+            return status, body, ""
         except urllib.error.HTTPError as e:
             status = e.code
             try:

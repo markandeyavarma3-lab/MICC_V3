@@ -295,3 +295,72 @@ def test_email_reports_which_transport_succeeded():
     import inspect
 
     assert "via {port}/{mode}" in inspect.getsource(health.notify_email)
+
+
+# --- staleness is measured against what NSE has PUBLISHED (2026-09-17) --------
+
+
+def test_a_source_holding_yesterdays_session_is_not_stale_on_a_trading_morning(
+        tmp_path, monkeypatch):
+    """Every source read "1 session(s) stale" at 08:37 on 2026-09-17 — for
+    that day's file, which NSE would not publish until the evening. The count
+    was against the calendar date rather than against what was on the endpoint.
+    """
+    from datetime import date
+    from src.common import sessions as S
+    from src.common.sessions import IST
+
+    # Thursday 2026-09-17, 08:37 IST; the endpoint is serving 09-16.
+    monkeypatch.setattr(health, "expected_session",
+                        lambda now=None: S.expected_session(datetime(2026, 9, 17, 8, 37, tzinfo=IST)))
+    _manifest(tmp_path, monkeypatch,
+              [_rec(s, date(2026, 9, 16).isoformat()) for s in health.REQUIRED])
+    rows = {r.source_id: r for r in health.read()}
+    assert all(rows[s].sessions_stale == 0 for s in health.REQUIRED), (
+        {s: rows[s].sessions_stale for s in health.REQUIRED})
+
+
+def test_the_same_source_is_one_stale_once_the_evening_file_is_due(
+        tmp_path, monkeypatch):
+    """And at 20:30 the same holdings ARE one session behind — that is the
+    number the 20:30 and 22:30 slots exist to bring back to zero."""
+    from datetime import date
+    from src.common import sessions as S
+    from src.common.sessions import IST
+
+    monkeypatch.setattr(health, "expected_session",
+                        lambda now=None: S.expected_session(datetime(2026, 9, 17, 20, 30, tzinfo=IST)))
+    _manifest(tmp_path, monkeypatch,
+              [_rec(s, date(2026, 9, 16).isoformat()) for s in health.REQUIRED])
+    rows = {r.source_id: r for r in health.read()}
+    assert all(rows[s].sessions_stale == 1 for s in health.REQUIRED)
+
+
+def test_rolling_exposure_says_nothing_is_at_risk_when_the_held_session_is_current(
+        tmp_path, monkeypatch):
+    """The sentence the 2026-09-17 alerts should have printed."""
+    from datetime import date
+    from src.common import sessions as S
+    from src.common.sessions import IST
+
+    at = datetime(2026, 9, 17, 8, 37, tzinfo=IST)
+    monkeypatch.setattr(health, "expected_session", lambda now=None: S.expected_session(at))
+    monkeypatch.setattr(health, "exposure", lambda held, now=None: S.exposure(held, at))
+    _manifest(tmp_path, monkeypatch,
+              [_rec(s, date(2026, 9, 16).isoformat()) for s in health.ROLLING])
+    exp = {sid: (risk, why) for sid, risk, why in health.rolling_exposure()}
+    assert not any(risk for risk, _ in exp.values())
+    assert all("nothing at risk" in why for _, why in exp.values())
+
+
+def test_the_health_stage_exits_zero_on_a_finding(tmp_path, monkeypatch, capsys):
+    """A finding is not a failure of the check. Returning 1 made every
+    September run read FAIL in the digest and paged "PROCESSING FAILED: health"
+    for a stage that had just paged its own finding."""
+    _manifest(tmp_path, monkeypatch,
+              [_rec(s, _days_ago(10)) for s in health.REQUIRED])
+    monkeypatch.setattr(health, "broadcast", lambda *a, **k: {})
+    monkeypatch.setattr(health, "HEALTH_PATH", tmp_path / "HEALTH.md")
+    monkeypatch.setattr(health, "ROOT", tmp_path)  # main() prints the path relative to ROOT
+    assert health.main() == 0
+    assert "ALERTED" in capsys.readouterr().out

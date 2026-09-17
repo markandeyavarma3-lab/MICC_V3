@@ -36,7 +36,7 @@ from src.common.paths import ARCHIVE, LOGS
 from src.monitor import backup_state, health
 #: Imported rather than re-derived: these are the stages whose failure costs
 #: data instead of costing a retry, and two lists that must agree would not.
-from src.monitor.stage_alert import COLLECTION_STAGES
+from src.monitor.stage_alert import COLLECTION_STAGES, ROLLING_STAGE, canonical
 
 RUN_TSV = LOGS / "last_run.tsv"
 IST = ZoneInfo("Asia/Kolkata")
@@ -101,7 +101,7 @@ def read_run(path: Path | None = None) -> Run:
         if len(parts) != 3:
             continue
         try:
-            stages.append(Stage(parts[0], int(parts[1]), int(parts[2])))
+            stages.append(Stage(canonical(parts[0]), int(parts[1]), int(parts[2])))
         except ValueError:
             continue
     return Run(started, stages)
@@ -160,9 +160,20 @@ def render(run: Run | None = None) -> str:
         lost = [s.name for s in bad if s.name in COLLECTION_STAGES]
         proc = [s.name for s in bad if s.name not in COLLECTION_STAGES]
         if lost:
-            out += [f"  COLLECTION FAILED: {', '.join(lost)}",
-                    "    Rolling NSE feeds are recoverable only until the file",
-                    "    turns over (~19:00 IST next session). Re-run: /collect", ""]
+            out.append(f"  COLLECTION FAILED: {', '.join(lost)}")
+            if ROLLING_STAGE in lost:
+                # Per-source fact, not boilerplate — see stage_alert.compose.
+                try:
+                    exp = health.rolling_exposure()
+                    for sid, at_risk, why in exp:
+                        out.append(f"    {'AT RISK ' if at_risk else 'held    '} {sid:<16} {why}")
+                    out.append("    Re-run: /collect" if any(r for _, r, _ in exp)
+                               else "    Nothing on the endpoint is missing; the next slot retries.")
+                except Exception as exc:  # noqa: BLE001
+                    out.append(f"    (exposure unavailable: {type(exc).__name__})")
+            if [s for s in lost if s != ROLLING_STAGE]:
+                out.append("    Dated feeds re-fetch for any past date; the next run retries.")
+            out.append("")
         if proc:
             out += [f"  PROCESSING FAILED: {', '.join(proc)}",
                     "    Bytes are on disk; the next run retries. Act if it repeats.", ""]
@@ -186,6 +197,8 @@ def render(run: Run | None = None) -> str:
             held = [r for r in rs if r.get("status") in HELD]
             new = [r for r in held if r.get("status") == "STORED"]
             failed = [r for r in rs if r.get("status") == "FAILED"]
+            pending = [r for r in rs if r.get("status") == "PENDING"]
+            nosess = [r for r in rs if r.get("status") == "NO_SESSION"]
             bits = []
             if new:
                 bits.append(f"{len(new)} NEW ({_size(sum(r.get('bytes', 0) for r in new))})")
@@ -193,7 +206,15 @@ def render(run: Run | None = None) -> str:
                 bits.append(f"{len(held) - len(new)} already held")
             if failed:
                 bits.append(f"{len(failed)} FAILED")
-            out.append(f"  {sid:<22} {', '.join(bits) or 'no result'}")
+            # A dated feed asked for today before NSE published it is PENDING —
+            # "not yet published" is a fact about the exchange, not a result
+            # this run lacks. This read "no result" for three feeds on every
+            # morning run, which is the wording of a failure.
+            if pending:
+                bits.append(f"{pending[-1].get('session_date', '?')} not yet published")
+            if nosess:
+                bits.append(f"{len(nosess)} no session (holiday)")
+            out.append(f"  {sid:<22} {', '.join(bits) or 'no record'}")
             # The error text, not just the count. A FAILED row whose reason is
             # "EMPTY ENVELOPE" is a different morning from one whose reason is
             # a DNS failure, and the count alone cannot tell them apart.
