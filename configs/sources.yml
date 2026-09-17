@@ -160,7 +160,9 @@ sources:
   - id: shp_filings
     exchange: NSE
     report_type: SHP
-    status: CONFIRMED_PROOF_ONLY     # 2026-09-15: 200, 22 filings for RELIANCE; XBRL 200, 57 named holders; one symbol, no sweep
+    status: CONFIRMED_HISTORY        # 2026-09-17: 5 symbols (RELIANCE, TCS, SBIN, CDSL, KPRMILL), 20-22 filings each, quarter-ends 2021-09-30 -> 2026-06-30 for ALL five regardless of size; oldest XBRL resolves (200, holder names present). No sweep yet.
+    history_floor: "2021-09-30"      # uniform across large and small caps, so the endpoint's window, not listing age. UNKNOWN whether fixed (XBRL format start) or a rolling ~5 years — sweep before finding out the hard way.
+    panel: "~20 quarters x ~2,000 symbols; the TIME dimension is 20, whatever the cross-section is"
     cadence: quarterly
     licence: public_disclosure
     automated_use_permitted: "yes"
@@ -178,6 +180,22 @@ sources:
       promoter_related_flag. No promoter list exists today."
     note: "Per-symbol, not a bulk file: ~2,000 symbols x 2s = ~1.1 h per full
       sweep; quarterly cadence makes that fine. Probe only, decision pending."
+
+  - id: nse_insider_pit
+    exchange: NSE
+    report_type: INSIDER
+    status: CONFIRMED_ROLLING_4M     # 2026-09-17 probe: from_date/to_date windows answer 200 with data back to ~mid-May 2026 (May 338, June 944) and 0 for April and earlier. Control window (Aug 17 - Sep 15) returned 840, matching what is held, so the zeros are absence, not blocking.
+    cadence: daily
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    route: "https://www.nseindia.com/api/corporates-pit-gg?index=equities&from_date={DD-MM-YYYY}&to_date={DD-MM-YYYY}"
+    route_kind: dated_range          # BACKFILL-CAPABLE, but only ~4 months deep; every month not collected falls off the back
+    history_window: "~4 months rolling"
+    coverage: "2026-05-01 -> today"  # backfilled 2026-09-17 from 2026-08-01; 13,027 filings indexed. Mid-May and earlier were already gone.
+    note: "0046 called this the only track whose gap closes in years rather
+      than decades. That assumed forward collection; the endpoint adds no
+      history beyond ~4 months, so it still does. The retired /api/corporates-pit
+      (no -gg) answers 200 with data:[] — see src/archive/insider.py."
 
   - id: nifty500_tri
     exchange: NSE
