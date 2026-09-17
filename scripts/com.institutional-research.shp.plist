@@ -21,8 +21,27 @@
     <array>
         <string>/Users/satya_03/Workspace/institutional-research/scripts/shp_nightly.sh</string>
     </array>
+    <!--
+      THREE sessions a day, not one (0074 amendment 2, 2026-09-18). The first
+      sweep measured NSE's tolerance as ~3 hours continuous before it slows
+      every response to the deadline; it did NOT measure a daily cap. So the
+      backlog (~55,000 files) is cleared by short sessions in the gaps between
+      collector slots (08:30 / 20:30 / 22:30), never overlapping one:
+
+        01:00  ends by 03:30 (150-min wall clock); 5 h clear of 08:30
+        10:30  ends by 13:00; 7.5 h clear of 20:30
+        14:30  ends by 17:00; 3.5 h clear of 20:30
+
+      1,500 files x 3 = 4,500 a day -> ~12 days for the backlog instead of ~35.
+      If THROTTLED rows appear in the manifest at the second or third session,
+      the daily total is the cap after all, and the daytime slots come out.
+    -->
     <key>StartCalendarInterval</key>
-    <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+    <array>
+        <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    </array>
     <key>StandardOutPath</key>
     <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_shp.out</string>
     <key>StandardErrorPath</key>

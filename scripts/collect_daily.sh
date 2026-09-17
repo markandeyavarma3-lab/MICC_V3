@@ -102,6 +102,21 @@ mkdir -p "$REPO/logs"
   note "prices" $?
   "$REPO/.venv/bin/python" -m src.ingest.bhavcopy
   note "bhavcopy" $?
+  # EVERY INDEX'S CLOSE, DAILY (2026-09-18). Same host and shape as the price
+  # bhavcopy — dated, backfillable to 2021-10-18 — so a missed run costs a
+  # retry. Collection only: nothing parses it into the warehouse yet; the
+  # benchmarks that would read it (sector, NIFTY 500 price) are a registration
+  # away. Archived so that the day a registration wants them, the bytes exist.
+  "$REPO/.venv/bin/python" -m src.archive.index_close
+  note "index_close" $?
+  # INDEX CONSTITUENTS, DAILY (2026-09-18). Six lists — the NIFTY 500 and the
+  # four size buckets that compose it, plus Microcap 250. There is NO history
+  # route anywhere (probed: nsearchives 404s a dated name; niftyindices serves
+  # a 200 HTML error page for every date). History accrues forward from
+  # today, like fii_dii_cash. sha256 dedupe means an ordinary day is six
+  # DUPLICATEs and a rebalance day is the change log.
+  "$REPO/.venv/bin/python" -m src.archive.constituents
+  note "constituents" $?
   # A 90-day window ending today: actions are announced ahead of their ex-date,
   # so re-reading the recent past is how a revision is picked up at all. sha256
   # dedupe makes an unchanged window a no-op.
