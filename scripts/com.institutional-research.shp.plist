@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.institutional-research.shp.plist — the nightly shareholding-pattern sweep.
+
+  01:00 every day. Nothing else in this project touches nseindia between the
+  22:30 collector slot and the 08:30 one, so the sweep's ~1 request/2s never
+  stacks on the collector's. StartCalendarInterval replays a missed 01:00 on
+  the next wake, like the collector's slots (see that plist's header).
+
+  Install / reload:
+      cp scripts/com.institutional-research.shp.plist ~/Library/LaunchAgents/
+      launchctl bootout   gui/$UID/com.institutional-research.shp 2>/dev/null
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.institutional-research.shp.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.institutional-research.shp</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/satya_03/Workspace/institutional-research/scripts/shp_nightly.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict><key>Hour</key><integer>1</integer><key>Minute</key><integer>0</integer></dict>
+    <key>StandardOutPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_shp.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_shp.err</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/satya_03/Workspace/institutional-research</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
