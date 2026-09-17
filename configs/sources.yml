@@ -113,6 +113,13 @@ sources:
       returns 200 + the "page has been moved" HTML. The API base for the
       report pages (BSE_Domain_APIUrl) is injected at runtime from a config this
       probe could not locate. Still UNPROVEN; leads recorded, not guessed.
+    probed_2026_09_18: >-
+      The environment object is in chunk-7QGVG4GA.js and carries PLACEHOLDERS:
+      {production:false, BSE_Domain_APIUrl:"@BSE_Domain_APIUrl", ...}. The
+      production values are supplied by this.config.getConfig() from a source
+      not located in main-X4YRFL25.js, env.js (SERVER_IP only) or the first
+      nine chunks. Every dated BulkDeal route 302s to an HTML page. Twelve
+      requests; stopped. Still UNPROVEN.
 
   - id: bse_block_deals
     exchange: BSE
@@ -185,6 +192,24 @@ sources:
     note: "Per-symbol, not a bulk file: ~2,000 symbols x 2s = ~1.1 h per full
       sweep; quarterly cadence makes that fine. Probe only, decision pending."
 
+  - id: nse_corporate_actions
+    exchange: NSE
+    report_type: CORPACT
+    status: CONFIRMED_BACKFILLED     # 2026-09-18: from_date/to_date windows answer back to at least 2010 (2010-03..05: 168 actions); backfilled 2010-01-01 -> 2026-05-31 in 67 windows, 53,967 raw records, 1,611 price-affecting (split/bonus/rights/demerger) across 1,042 symbols
+    cadence: daily                   # 90-day trailing window each run (revisions are announced ahead of ex-date)
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    route: "https://www.nseindia.com/api/corporates-corporateActions?index=equities&from_date={DD-MM-YYYY}&to_date={DD-MM-YYYY}"
+    route_kind: dated_range
+    coverage: "2010-01-01 -> today"
+    collector: src/archive/corporate_actions.py
+    parser: src/ingest/corp_actions.py
+    note: "The adjusted spine applies ONLY actions dated after the seed's freeze
+      (src/warehouse/spine.py: `date > boundary`); the 2010-2026 history is a
+      record for cross-checking the seed's own adjustments, not an input to
+      them. Changing that is a registration-level decision — it would move
+      every historical adjusted price. 113 UNPARSED ratios in the history."
+
   - id: nse_insider_pit
     exchange: NSE
     report_type: INSIDER
@@ -236,6 +261,8 @@ sources:
     exchange: NSE
     report_type: INDEX_CONSTITUENTS
     status: CONFIRMED_SNAPSHOT_ONLY  # 2026-09-15: 200, 32,819 B, 500 rows: Company Name, Industry, Symbol, Series, ISIN Code; no dated history route
+    collector: src/archive/constituents.py   # daily stage `constituents` since 2026-09-18; six lists (500, 50, Next 50, Midcap 150, Smallcap 250, Microcap 250), sha256-deduped so the archive is the change log
+    history_probe_2026_09_18: "nsearchives ind_nifty500list_31032026.csv -> 404; niftyindices.com/Index_Constituents/ind_nifty500list_{DD-Mon-YYYY}.csv -> 200 with a 78,919-byte HTML error page for EVERY date asked (a 200 that lies). No history exists to fetch; it accrues from today."
     cadence: daily
     licence: public_disclosure
     route: "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv"

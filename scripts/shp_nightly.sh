@@ -1,5 +1,6 @@
 #!/bin/zsh
 # shp_nightly.sh — the shareholding-pattern sweep, on its own schedule. Decision 0074.
+# Three sessions a day since 0074 amendment 2 (01:00, 10:30, 14:30) — see the plist.
 #
 # NOT A STAGE IN collect_daily.sh, ON PURPOSE. The first sweep has ~60,000 XBRL
 # files behind it — about 33 hours at the 2-second rate limit — and even a
