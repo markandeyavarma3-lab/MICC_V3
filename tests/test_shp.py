@@ -207,3 +207,82 @@ def test_a_master_fetched_this_quarter_is_skipped_unless_forced(tmp_path, monkey
     fetched.clear()
     shp.collect(["OLD", "FRESH"], max_detail=0, force=True)
     assert sorted(fetched) == ["FRESH", "OLD"]
+
+
+# --- what the first sweep taught: stop when the host says stop -----------------
+
+
+def test_consecutive_network_failures_trip_the_breaker_and_stop_the_run(tmp_path, monkeypatch):
+    """The first sweep grinded for seven hours at the deadline once NSE slowed,
+    and was still running when the collector started. Five consecutive network
+    failures now stop the run and record why."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    calls = []
+    def get(op, url, ref):
+        calls.append(url)
+        raise RuntimeError("all 3 attempts failed: Deadline")
+    monkeypatch.setattr(shp, "_get", get)
+    out = shp.collect([f"S{i}" for i in range(20)], max_detail=0)
+    masters = [u for u in calls if "share-holdings-master" in u]
+    assert len(masters) == shp.BREAKER_FAILURES        # not 20 (the warm-up is not a master)
+    assert out[-1].symbol == "(run)" and "THROTTLED" in out[-1].detail
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    assert "THROTTLED" in rows[-1]["error"]
+
+
+def test_a_404_is_not_a_network_failure_and_does_not_count_toward_the_breaker(tmp_path, monkeypatch):
+    """A missing XML is a fact about one filing; twenty of them in a row is
+    still not the host throttling us."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_get", _fake_get({
+        "share-holdings-master": _master(12),
+        **{f"SHP_{i}_WEB": RuntimeError("HTTP Error 404: Not Found") for i in range(12)}}))
+    e = shp.capture_symbol(None, "ACME", set(), [100])   # must not raise Throttled
+    assert e["status"] == "FAILED" and e["detail_failures"] == 12
+
+
+def test_a_success_resets_the_streak(tmp_path, monkeypatch):
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    n = [0]
+    def get(op, url, ref):
+        n[0] += 1
+        if n[0] % 3 == 0:
+            return _master(1, xbrl=False)
+        raise RuntimeError("Deadline")
+    monkeypatch.setattr(shp, "_get", get)
+    out = shp.collect([f"S{i}" for i in range(12)], max_detail=0)
+    assert not any(o.symbol == "(run)" for o in out)     # two failures, a success, repeat — never five
+
+
+def test_the_wall_clock_stops_the_run_between_symbols(tmp_path, monkeypatch):
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    monkeypatch.setattr(shp, "_get", lambda op, url, ref: _master(1, xbrl=False))
+    out = shp.collect([f"S{i}" for i in range(50)], max_detail=0, max_minutes=0)
+    assert out[-1].symbol == "(run)" and "wall clock" in out[-1].detail
+    assert len(out) == 1                                  # stopped before the first symbol
+
+
+def test_an_empty_master_is_fresh_for_a_week_not_a_quarter(tmp_path, monkeypatch):
+    """~100 ETFs sit in the EQ series and never file. Re-asking nightly is 100
+    wasted fetches; asking again in a week guards against an EMPTY that was a
+    throttled 200."""
+    rows = [
+        {"source_id": shp.MASTER_SOURCE, "symbol": "ETF3D", "status": "EMPTY",
+         "fetched_at": (datetime.now(UTC) - timedelta(days=3)).isoformat()},
+        {"source_id": shp.MASTER_SOURCE, "symbol": "ETF10D", "status": "EMPTY",
+         "fetched_at": (datetime.now(UTC) - timedelta(days=10)).isoformat()},
+        {"source_id": shp.MASTER_SOURCE, "symbol": "CO10D", "status": "STORED",
+         "fetched_at": (datetime.now(UTC) - timedelta(days=10)).isoformat()},
+    ]
+    assert shp._fresh_masters(rows) == {"ETF3D", "CO10D"}

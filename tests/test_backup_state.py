@@ -60,6 +60,11 @@ def test_backup_state_notices_a_session_outside_the_backup(tmp_path, monkeypatch
 def test_a_session_already_inside_the_backup_does_not_alert(tmp_path, monkeypatch):
     _dest(tmp_path, monkeypatch)
     _manifest(tmp_path, monkeypatch, [_rec(TAKEN - timedelta(hours=3))])
+    # The static leg (0075) is a third reason to alert; give it a verified copy
+    # so this test isolates the session logic it was written for.
+    stamp = tmp_path / "backup_static.txt"
+    stamp.write_text("fp\t/icloud/static\t2026-09-17T10:00:00Z\t1\t1\n")
+    monkeypatch.setattr(backup_state, "STATIC_STAMP", stamp)
 
     s = backup_state.read()
     assert s.sessions_at_risk == 0
@@ -112,3 +117,39 @@ def test_backup_dest_env_overrides_exactly_as_the_script_does(tmp_path, monkeypa
     SSD would report as 'no backup'."""
     monkeypatch.setenv("BACKUP_DEST", str(tmp_path))
     assert backup_state.destination() == tmp_path
+
+
+# --- the static leg (0075) ------------------------------------------------------
+
+
+def test_static_verified_reads_the_newest_line_per_destination(tmp_path):
+    from datetime import UTC, datetime
+    from src.monitor import backup_state as b
+    stamp = tmp_path / "backup_static.txt"
+    stamp.write_text(
+        "fp1\t/icloud/static\t2026-09-17T10:00:00Z\t18220\t9700000000\n"
+        "fp1\t/Volumes/NO NAME/x\t2026-09-17T10:05:00Z\t18220\t9700000000\n"
+        "fp1\t/icloud/static\t2026-09-18T10:00:00Z\t18220\t9700000000\n"
+        "garbage line\n")
+    got = dict(b.static_verified(stamp))
+    assert got["/icloud/static"] == datetime(2026, 9, 18, 10, tzinfo=UTC)
+    assert got["/Volumes/NO NAME/x"] == datetime(2026, 9, 17, 10, 5, tzinfo=UTC)
+
+
+def test_a_missing_stamp_reads_as_verified_nowhere_and_alerts(tmp_path):
+    """From 2026-09-01 to 2026-09-17 this was the true state and nothing said so."""
+    from src.monitor import backup_state as b
+    assert b.static_verified(tmp_path / "absent") == ()
+    s = b.BackupState(tmp_path, tmp_path / "repo-x.bundle", None, 0, 0, 3, ())
+    assert s.alerting
+    assert "VERIFIED NOWHERE" in s.summary
+
+
+def test_a_verified_static_copy_clears_the_static_alert_and_is_named(tmp_path):
+    from datetime import UTC, datetime
+    from src.monitor import backup_state as b
+    s = b.BackupState(tmp_path, tmp_path / "repo-x.bundle", None, 0, 0, 3,
+                      (("/Users/x/Library/Mobile Documents/com~apple~CloudDocs/b/static",
+                        datetime(2026, 9, 17, tzinfo=UTC)),))
+    assert not s.alerting
+    assert "verified at iCloud 2026-09-17" in s.summary

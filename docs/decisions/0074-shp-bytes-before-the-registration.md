@@ -102,3 +102,39 @@ after the run.
   derivatives. Two archives waiting on registrations is the project being
   honest about what it has not yet asked, not a backlog to clear by asking
   carelessly.
+
+## Amendment 1 — 2026-09-17 evening: the first sweep met the reversal clause
+
+The clause read: *"A sweep hitting NSE harder than it tolerates … the nightly
+budget comes down before anything else changes."* It happened on the first
+run.
+
+Measured from the manifest, by hour: 516, 910, 1,149 XBRL files stored in the
+three hours from 17:30 IST — then the host slowed every response to the
+45-second deadline. The run I had sized to end by 17:40 was still running at
+20:57, at one file per 85 seconds, with 15 masters failed, and the 20:30
+collector's deal fetch — sharing the host — took **11 minutes** instead of
+twenty seconds. A separate dead stretch of three and a half hours earlier in
+the run has no explanation in the log, which was buffered and lost when the
+process was stopped.
+
+The 33 `EMPTY` masters were checked before being believed: they are ETFs
+(`ABSL10BANK`, `ABSLLIQUID`, …), which sit in the EQ series and do not file.
+Genuine, not a throttled `200 []`.
+
+Changed, each with a test observed failing under perturbation:
+
+- **Wall clock** (`--max-minutes`, 150): a throttled run does not finish
+  faster by continuing; it finishes later and collides with the next job.
+- **Circuit breaker**: five consecutive network failures (deadline, refused,
+  reset — a 404 is a fact about one file and does not count) stop the run,
+  record `THROTTLED` as a FAILED run row, and page as the `shp` stage.
+- **Nightly budget 5,000 → 1,500** — under an hour at the rate NSE tolerated.
+- **`EMPTY` masters fresh for 7 days** — ~100 ETFs were being re-asked every
+  run.
+- **Buffered progress lines flushed**, so the next stopped run leaves a log.
+
+Not changed: the 2-second rate. Three hours at that rate were tolerated; the
+budget and the clock are the levers, and the rate is the last one to touch.
+The first sweep landed 2,621 XBRL files across 152 symbols and quarters back
+to 2015; the nightly job takes it from there.

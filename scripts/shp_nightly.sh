@@ -23,8 +23,9 @@ mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
-  # 5000 files x 2s ~= 2.8h, plus masters on a top-up night. Ends by ~04:00.
-  "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 5000
+  # 1500 files: under an hour at the ~1,150/h NSE tolerated on 2026-09-17 before
+  # throttling; the 150-minute wall clock ends the run by 03:30 regardless.
+  "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 1500 --max-minutes 150
   RC=$?
   echo "shp=$RC"
 } >> "$LOG" 2>&1

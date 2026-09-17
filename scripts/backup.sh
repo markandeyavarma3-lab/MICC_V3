@@ -13,7 +13,14 @@
 #   total              ~23 MB
 #
 # Everything else — the 1.2 GB seed, the increments, the spines, the char panel —
-# is either still in MICCV2 or rebuilt by one command. It is bulk, not value.
+# was described here until 2026-09-17 as "either still in MICCV2 or rebuilt by
+# one command". HALF OF THAT STOPPED BEING TRUE ON 2026-09-01, when MICCV2 was
+# deleted (0042). The spines and the char panel ARE rebuilt by one command.
+# data/raw/v1_export (1.2 GB), v1_increments (1.1 GB) and salvaged (6.8 GB)
+# are not: NSE does not serve that history and the repos it came from are
+# gone. For sixteen days their only copy was this disk, and this comment said
+# otherwise. They are now the STATIC LEG below — one verified copy per
+# destination, kept in sync, never rotated. Decision 0075.
 #
 # WHY NOT GIT ALONE. `.gitignore` correctly excludes /data/ and /db/, because a
 # tracked live database is audit defect #9 and drifts. So a git remote protects
@@ -115,9 +122,13 @@ fi
   echo "  git apply uncommitted.patch     # the working tree at backup time"
   fi
   echo
-  echo "NOT INCLUDED, and deliberately: data/raw/v1_export, data/raw/v1_increments,"
-  echo "data/{dev,prod}/warehouse. ~4.6 GB, all of it either still in MICCV2 or"
-  echo "rebuilt by:  python -m src.warehouse.seed && python -m src.warehouse.spine"
+  echo "NOT IN THIS TARBALL: data/{dev,prod}/warehouse (rebuilt by:"
+  echo "  python -m src.warehouse.seed && python -m src.warehouse.spine)."
+  echo "STATIC LEG (0075), beside this tarball under static/ and on the pen drive"
+  echo "when mounted: data/raw/v1_export, data/raw/v1_increments, data/raw/salvaged"
+  echo "— 9.1 GB that changes never and can be re-fetched from nowhere. Restore by"
+  echo "copying static/data/raw/* back under data/raw/. logs/backup_static.txt is"
+  echo "the record of every verified sync."
 } > "$WORK/MANIFEST-$STAMP.txt"
 
 # 4. THE RESTORE DRILL — watched, not assumed
@@ -153,5 +164,28 @@ echo "$STAMP" >> "$INDEX"
 
 "${0:A:h}/lib/prune_generations.zsh" "$DEST" "$STAMP" 3 "$INDEX"
 
+# --- THE STATIC LEG (decision 0075) -------------------------------------------
+#
+# The directories that never change and cannot be re-fetched. One verified copy
+# per destination, driven from a local fingerprint and verified by stat of
+# known paths — never by listing the destination, which launchd cannot do under
+# TCC (see prune_generations.zsh). iCloud always; the pen drive whenever it is
+# mounted. A failed leg makes the RUN report it, but does not block the tarball
+# above, which has already been written and drilled.
+STATIC_STAMP="$REPO/logs/backup_static.txt"
+STATIC_DIRS=(data/raw/v1_export data/raw/v1_increments data/raw/salvaged)
+STATIC_RC=0
+"${0:A:h}/lib/static_sync.zsh" "$REPO" "$DEST/static" "$STATIC_STAMP" $STATIC_DIRS || STATIC_RC=1
+PEN="${BACKUP_PEN_DRIVE:-/Volumes/NO NAME/institutional-research_backup}"
+if [ -d "$PEN" ]; then
+  "${0:A:h}/lib/static_sync.zsh" "$REPO" "$PEN" "$STATIC_STAMP" $STATIC_DIRS || STATIC_RC=1
+else
+  echo "  static: pen drive not mounted ($PEN) — iCloud copy only this run"
+fi
+
 echo "  wrote: $(du -ch "$DEST"/repo-$STAMP.bundle "$DEST"/state-$STAMP.tar.gz | tail -1 | cut -f1)"
+if [ "$STATIC_RC" -ne 0 ]; then
+  echo "BACKUP: GREEN for the nightly bundle, STATIC LEG FAILED — the 9.1 GB is not verified at every destination"
+  exit 1
+fi
 echo "BACKUP: GREEN"
