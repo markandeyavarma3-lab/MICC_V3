@@ -1,7 +1,9 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED. Nothing registered, nothing computed.**
-Written 2026-09-17 for the owner to argue with. On acceptance it becomes
+**Status: DRAFT / PROPOSED — revision 2, 2026-09-18. Nothing registered.**
+Written 2026-09-17 for the owner to argue with; revised after their answers
+and after a PRELIMINARY dispersion run (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
+no signal read, nothing frozen) on the first 220 companies. On acceptance it becomes
 decision 0075, `scripts/register_exp004.py` (plain INSERT, hashed), a
 `TRACK_H_HOLDINGS` family in `trials.yml`, and a dispersion-only power run on
 the pattern of `oi_power.py` — in that order, before any forward return is read.
@@ -37,15 +39,29 @@ have 249 and a handful of events in each. This has ~20 quarters and **the entire
 listed universe in each** — the first structure in this project not starved on
 the cross-section.
 
-The honest arithmetic, before any data: a diversified long–short decile spread
-of ~290 stocks a side has a quarterly SD on the order of 4%. At 20 periods,
-80% power, 5% two-sided, `power.mde` gives roughly **2.5% per quarter**. The
-standing plausible bound (0028: 0.5%/month) is **1.5% per quarter**. If those
-guesses hold, the study is **UNDERPOWERED by construction** and the landing is
-"cannot yet be distinguished from zero at 20 quarters", not a hint in either
-direction. It reaches the bound at ~56 quarters — fourteen years — unless the
-realised SD is lower than the guess. **The dispersion-only run decides this
-BEFORE the pass bar is applied, and the owner is told the number first.**
+**Measured, not guessed (2026-09-18, preliminary, 220 companies, 18 matured
+quarters, random deciles, market-relative):** the within-quarter cross-sectional
+SD of a 63-session market-relative return is **33%**, the 1st/99th percentiles
+are **−45% / +74%**, and the MDE of the decile spread is **12.05% per quarter —
+8× the bound**. Winsorised at those percentiles the MDE is **4.89% — 3.3× the
+bound**. A handful of micro-caps that tripled or collapsed inside a quarter
+carry most of the dispersion.
+
+Scaling to the full universe cuts the within-quarter term by at most √10 ≈ 3.2×
+(less, because stocks move together within a quarter): unclipped ≈ 3.8%, still
+short; **winsorised ≈ 1.5% — at the bound.** So the study is feasible only
+with a tail rule, and that rule has to be chosen NOW, before any signal is
+read, or it becomes a knob. Two candidates, one to be picked in §6:
+
+- **winsorise the outcome at 1st/99th** (keeps every name; clips the effect of
+  the extremes), or
+- **restrict the universe by liquidity** — the `costs.yml` participation cap
+  already implies one; a spread that exists only in names the cap excludes
+  fails kill criterion 2 anyway.
+
+The dispersion-only run on the FULL panel decides between "at the bound" and
+"still short" before the pass bar is applied, and the owner is told the number
+first. The bound is fixed at 0028's number and is not raised after seeing the SD.
 
 Registering a study that may land UNDERPOWERED is the project's standing
 practice (0067 registered exp_003 with the same warning). What is not standing
@@ -97,11 +113,11 @@ and counted; the original broadcast is the point-in-time fact.
 | experiment_id | `exp_004_holdings_change` |
 | engine_id | `ENGINE_H_HOLDINGS` |
 | trial_family | `TRACK_H_HOLDINGS` — new, counter 0, `selection_happens_within: true` |
-| hypothesis | The top decile of quarter-over-quarter change in a stock's FPI (primary) or MF (secondary) holding, ranked within quarter, earns a higher CHAR_MATCHED abnormal return over the next 63 sessions than the bottom decile, after multiplicity. |
+| hypothesis | The top decile of filing-over-filing change in a stock's institutional holding — FPI (Cat I + II), all foreign institutions, and mutual funds, each a separate test — ranked within quarter, earns a higher CHAR_MATCHED abnormal return over the next 63 sessions than the bottom decile, after multiplicity. |
 | prior_belief | Weak-to-moderate. The literature finds a short-horizon effect for active institutions; Indian evidence is thin, the panel is 20 quarters, and the honest expectation is UNDERPOWERED against 0028's bound. |
 | data_version | SHP XBRL `[sweep: N symbols, Q quarters, first→last]`, source `nse_shp_xbrl` (0074); prices `price_spine_adj` as of `[sweep date]`; `char_panel` as of same; identity by **ISIN** (0069), never symbol. |
-| universe_definition | Every ISIN with (a) a non-revised XBRL filing at quarter q and q−1, (b) a spine price on the entry session, (c) a CHAR_MATCHED bucket. Series EQ/BE at filing. Counts of exclusions reported per reason. |
-| signal_definition | **Primary**: Δ`ShareholdingAsAPercentageOfTotalNumberOfShares` under `InstitutionsForeignMember`, q−1→q. **Secondary**: same under `MutualFundsOrUTIMember`. **Robustness (reported, not tested)**: Δ`NumberOfShareholders` under the same members — an entry/exit count one large holder cannot dominate. |
+| universe_definition | Every ISIN with (a) a non-revised XBRL filing (`revised = false`, per the master's `revisedStatus`) and a prior filing, (b) a spine price on the entry session, (c) a CHAR_MATCHED bucket, (d) `identity_total` within 1pt of 100. Series EQ/BE at filing. **Off-cycle filings are kept as observations (owner decision 2026-09-18)**: the signal is the change since the PREVIOUS filing, whatever its date, and the interval in days is carried on every row and reported by bucket; a change over 3 weeks and a change over 3 months are both observations, and the robustness section shows the calendar-only result. Counts of exclusions reported per reason. |
+| signal_definition | Three tested signals, each Δ`pct_shares` (percent, scale-normalised — see `src/ingest/shp.py`) since the previous filing: **FPI** = `FPI_Cat1` + `FPI_Cat2` (`InstitutionsForeignPortfolioInvestorCategoryOne/TwoMember`); **all foreign institutions** = `ForeignInst_Total` (`InstitutionsForeignMember`, which ALSO holds FDI, FVCI and sovereign funds — the parser's first label, "FPI_Total", was wrong and is corrected); **MF** = `MutualFund` (`MutualFundsOrUTIMember`). **Robustness (reported, not tested)**: Δ`num_shareholders` under the same members. |
 | interpretation_mode | CROSS_SECTIONAL — ranks are within-quarter; the estimator is the mean over quarters of the decile-spread return. |
 | holding_period | Primary 63 sessions (one quarter). Reported: 21, 63, 126, 252. A quarterly signal held for 252 sessions overlaps 3 of 4 cohorts; declared here as the departure from research.yml's 12-month primary, for the same reason 0067 declared 21. |
 | entry_policy | Next session's OPEN after `broadcastDate`, per symbol. Never the quarter-end. |
@@ -112,13 +128,14 @@ and counted; the original broadcast is the point-in-time fact.
 | validation_period | none |
 | final_test_period | `[sweep: first quarter with q−1 available]` → `[sweep: last quarter whose 63-session horizon has matured]`. Touched once. |
 | search_space_definition | ONE specification, no free parameters. Deciles within quarter. Estimator = mean across quarters of (top − bottom) CHAR_MATCHED abnormal return at 63 sessions, Newey–West with lag from `power.nw_lag` on the quarterly series. |
-| test_count | **2** (FPI, MF) × 1 primary horizon. |
-| multiple_testing_policy | Benjamini–Hochberg FDR 5% across the 2 tests, declared here. Robustness horizons and the count signal reported, never tested. |
+| test_count | **3** (FPI, all-foreign, MF) × 1 primary horizon. Owner's choice 2026-09-18, knowing each extra test costs power. |
+| multiple_testing_policy | Benjamini–Hochberg FDR 5% across the 3 tests, declared here. Robustness horizons, the count signal and the calendar-only variant reported, never tested. |
+| outcome_tail_rule | **TO BE CHOSEN BEFORE REGISTRATION, from §3**: (a) winsorise the 63-session abnormal return at the 1st/99th percentile of the evaluation panel, or (b) restrict to names inside the `costs.yml` participation cap. Whichever is chosen is frozen with the spec; the other is reported as robustness. Without one the preliminary MDE is 8× the bound and the study cannot be registered honestly. |
 | permutation_policy | Moving-block bootstrap over quarters, block = 2 quarters, 10,000 draws, seed 20260917. Within-quarter label permutation (1,000) as the null calibration, per `nullcal.py`'s method. |
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
 | kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
 | confounds | momentum APPLICABLE (controlled by CHAR_MATCHED; raw vs matched reported — kill 3); share-count APPLICABLE (flagged — kill 4); index inclusion APPLICABLE, NOT controlled (constituents are one snapshot) — stated limitation; delisting APPLICABLE (0052); size/liquidity APPLICABLE (tiers reported; participation cap — kill 2); industry NOT CONTROLLED (`sector_history` is Phase 3; same degradation `char_panel` already declares). |
-| exploratory_prior_run | none. No forward return has been joined to any SHP row. The sweep (0074) archived bytes; this draft was written from element names in one XBRL and the manifest's counts. |
+| exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md` (2026-09-18): forward market-relative returns were joined to 3,092 stock-quarters to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
 
 ## 7. What would make me not register it
 
