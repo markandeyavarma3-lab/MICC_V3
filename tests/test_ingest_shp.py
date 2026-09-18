@@ -159,3 +159,16 @@ def test_the_identity_total_is_carried_per_filing(tmp_path):
     f = tmp_path / "x.xml.gz"; f.write_bytes(_xbrl("MainD", "INE000A01010", "ACME", "0.4137", "0.5863", "0.06"))
     rows = shp.parse_xbrl_file(str(f))
     assert all(r.identity_total == pytest.approx(100.0) for r in rows)
+
+
+def test_three_taxonomies_map_to_one_fpi_series():
+    """2020-2022: `InstitutionsForeignPortfolioInvestorMember` (undivided).
+    2022-2024: `...Catergory...` — NSE's own typo. 2025+: `...Category...`.
+    Without all three, FPI had a two-year hole and a false 2020 floor."""
+    m = shp._CATEGORY
+    assert m["institutionsforeignportfolioinvestormember"] == "FPI_Undivided"
+    assert m["institutionsforeignportfolioinvestorcatergoryonemember"] == "FPI_Cat1"
+    assert m["institutionsforeignportfolioinvestorcategoryonemember"] == "FPI_Cat1"
+    # the dead lines in the old taxonomy (always 0 across 1,047 files) are NOT mapped
+    assert "foreignportfolioinvestormember" not in m
+    assert "foreigninstitutionsmember" not in m
