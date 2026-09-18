@@ -194,9 +194,9 @@ def test_a_master_fetched_this_quarter_is_skipped_unless_forced(tmp_path, monkey
     man = tmp_path / "m.jsonl"; monkeypatch.setattr(shp, "MANIFEST", man)
     monkeypatch.setattr(shp, "RATE_LIMIT", 0)
     monkeypatch.setattr(shp, "_opener", lambda: None)
-    man.write_text(json.dumps({"source_id": shp.MASTER_SOURCE, "symbol": "OLD", "status": "STORED",
+    man.write_text(json.dumps({"source_id": shp.MASTER_SOURCE, "symbol": "OLD", "status": "STORED", "xbrl_complete": True,
                                "sha256": "x", "fetched_at": (datetime.now(UTC) - timedelta(days=100)).isoformat()}) + "\n"
-                   + json.dumps({"source_id": shp.MASTER_SOURCE, "symbol": "FRESH", "status": "STORED",
+                   + json.dumps({"source_id": shp.MASTER_SOURCE, "symbol": "FRESH", "status": "STORED", "xbrl_complete": True,
                                  "sha256": "y", "fetched_at": datetime.now(UTC).isoformat()}) + "\n")
     fetched = []
     def get(op, url, ref):
@@ -282,7 +282,63 @@ def test_an_empty_master_is_fresh_for_a_week_not_a_quarter(tmp_path, monkeypatch
          "fetched_at": (datetime.now(UTC) - timedelta(days=3)).isoformat()},
         {"source_id": shp.MASTER_SOURCE, "symbol": "ETF10D", "status": "EMPTY",
          "fetched_at": (datetime.now(UTC) - timedelta(days=10)).isoformat()},
-        {"source_id": shp.MASTER_SOURCE, "symbol": "CO10D", "status": "STORED",
+        {"source_id": shp.MASTER_SOURCE, "symbol": "CO10D", "status": "STORED", "xbrl_complete": True,
          "fetched_at": (datetime.now(UTC) - timedelta(days=10)).isoformat()},
     ]
-    assert shp._fresh_masters(rows) == {"ETF3D", "CO10D"}
+    done, cached = shp._fresh_masters(rows)
+    assert done == {"ETF3D", "CO10D"} and cached == {}
+
+
+
+# --- the fresh-skip bug (2026-09-18) --------------------------------------------
+
+
+def test_a_fresh_master_with_xbrl_still_owed_is_not_done_and_is_read_from_disk(tmp_path, monkeypatch):
+    """The second session indexed 1,596 companies in 53 minutes, fetched XBRL
+    for 84, and the other 1,500 were then skipped as "fresh" for 80 days with
+    their filings unfetched. A company is done when its FILINGS are held; a
+    fresh index is read from the archive, not re-fetched, and only the
+    missing XBRL is requested."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    # session 1: master + 1 of 3 filings (budget 1)
+    monkeypatch.setattr(shp, "_get", _fake_get({
+        "share-holdings-master": _master(3),
+        "SHP_0_WEB": b"<x>0</x>", "SHP_1_WEB": b"<x>1</x>", "SHP_2_WEB": b"<x>2</x>"}))
+    shp.collect(["ACME"], max_detail=1)
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    m1 = [r for r in rows if r["source_id"] == shp.MASTER_SOURCE][-1]
+    assert m1["xbrl_complete"] is False and m1["xbrl_wanted"] == 3 and m1["xbrl_attempted"] == 1
+    done, cached = shp._fresh_masters(rows)
+    assert done == set() and "ACME" in cached          # NOT done: XBRL owed
+    # session 2: the master must NOT be fetched again; exactly the 2 missing XBRL are
+    calls = []
+    def get(op, url, ref):
+        if url == shp.WARMUP:
+            return b""
+        calls.append(url)
+        return {"SHP_1_WEB": b"<x>1</x>", "SHP_2_WEB": b"<x>2</x>"}[next(k for k in ("SHP_1_WEB", "SHP_2_WEB") if k in url)]
+    monkeypatch.setattr(shp, "_get", get)
+    shp.collect(["ACME"], max_detail=10)
+    assert len(calls) == 2 and not any("share-holdings-master" in u for u in calls)
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    m2 = [r for r in rows if r["source_id"] == shp.MASTER_SOURCE][-1]
+    assert m2["xbrl_complete"] is True and "archived master" in m2.get("note", "")
+    done, _ = shp._fresh_masters(rows)
+    assert done == {"ACME"}
+
+
+def test_a_404_counts_as_attempted_so_a_gone_filing_does_not_block_completeness(tmp_path, monkeypatch):
+    """12 old filings 404 on the first sweep. Without this, those companies
+    could never be complete and would be re-asked every session forever."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_get", _fake_get({
+        "share-holdings-master": _master(2),
+        "SHP_0_WEB": b"<x>0</x>", "SHP_1_WEB": RuntimeError("HTTP Error 404: Not Found")}))
+    shp._prior_xbrl.clear()
+    e = shp.capture_symbol(None, "ACME", set(), [10])
+    assert e["xbrl_complete"] is True and e["detail_failures"] == 1

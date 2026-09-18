@@ -246,23 +246,44 @@ def _seen_digests(rows: list[dict]) -> set[str]:
 
 
 def _fresh_masters(rows: list[dict], days: int = MASTER_FRESH_DAYS,
-                   empty_days: int = EMPTY_FRESH_DAYS) -> set[str]:
-    """Symbols whose master was stored within `days` (or EMPTY within
-    `empty_days`) — skipped unless --force."""
+                   empty_days: int = EMPTY_FRESH_DAYS) -> tuple[set[str], dict[str, str]]:
+    """(done, cached): `done` are symbols to skip — master fresh AND every
+    filing's XBRL attempted, or EMPTY within `empty_days`. `cached` maps a
+    symbol whose master is fresh but whose XBRL is INCOMPLETE to the archived
+    master's path, so the next session reads the filing list from disk and
+    spends its requests on the XBRL.
+
+    THE BUG THIS REPLACES (2026-09-18). "Fresh" meant "master fetched within
+    80 days", full stop. The second session fetched masters for 1,596
+    companies in 53 minutes, ran out of XBRL budget after 84 of them, and the
+    other 1,500 were then skipped as fresh — for 80 days, filings unfetched.
+    The index outran the detail and the detail could never catch up. The
+    count of companies with XBRL sat at 240 while 22,470 filings were
+    "indexed".
+    """
     now = datetime.now(UTC)
     cut, ecut = now - timedelta(days=days), now - timedelta(days=empty_days)
-    out = set()
+    done: set[str] = set()
+    cached: dict[str, str] = {}
+    latest: dict[str, dict] = {}
     for r in rows:
         if r.get("source_id") != MASTER_SOURCE or not (r.get("symbol") and r.get("fetched_at")):
             continue
+        if r["symbol"] not in latest or r["fetched_at"] > latest[r["symbol"]]["fetched_at"]:
+            latest[r["symbol"]] = r
+    for s, r in latest.items():
         try:
             at = datetime.fromisoformat(r["fetched_at"])
         except ValueError:
             continue
-        if (r.get("status") in {"STORED", "DUPLICATE"} and at >= cut) or \
-           (r.get("status") == "EMPTY" and at >= ecut):
-            out.add(r["symbol"])
-    return out
+        if r.get("status") == "EMPTY" and at >= ecut:
+            done.add(s)
+        elif r.get("status") in {"STORED", "DUPLICATE"} and at >= cut:
+            if r.get("xbrl_complete"):
+                done.add(s)
+            elif r.get("path"):
+                cached[s] = r["path"]
+    return done, cached
 
 
 class Throttled(RuntimeError):
@@ -291,26 +312,33 @@ def _quarter_end(row: dict) -> date | None:
 
 def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
                    today: date | None = None, streak: list[int] | None = None,
-                   deadline_at: datetime | None = None) -> dict:
+                   deadline_at: datetime | None = None, cached_master: str | None = None) -> dict:
     """`streak` counts CONSECUTIVE network failures across symbols; a success
     resets it, BREAKER_FAILURES raises Throttled. `deadline_at` is the run's
-    wall-clock cap; detail fetching stops at it, the master still lands."""
+    wall-clock cap; detail fetching stops at it, the master still lands.
+    `cached_master` is an archived master to read the filing list from
+    instead of fetching it — a fresh index whose XBRL is still owed."""
     today = today or datetime.now(UTC).date()
     streak = streak if streak is not None else [0]
     url = MASTER_URL.format(symbol=symbol)
     base = {"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
             "symbol": symbol, "url": url, "session_date": today.isoformat(),
             "fetched_at": datetime.now(UTC).isoformat()}
-    try:
-        body = _get(op, url, REFERER)
-        streak[0] = 0
-    except Exception as exc:  # noqa: BLE001 - the record is the deliverable
-        if _is_network_failure(str(exc)):
-            streak[0] += 1
-            if streak[0] >= BREAKER_FAILURES:
-                record({**base, "status": "FAILED", "error": str(exc)[:200]})
-                raise Throttled(f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
-        return {**base, "status": "FAILED", "error": str(exc)}
+    if cached_master and Path(cached_master).exists():
+        with gzip.open(cached_master, "rb") as fh:
+            body = fh.read()
+        base["note"] = "filing list read from the archived master; XBRL continued"
+    else:
+        try:
+            body = _get(op, url, REFERER)
+            streak[0] = 0
+        except Exception as exc:  # noqa: BLE001 - the record is the deliverable
+            if _is_network_failure(str(exc)):
+                streak[0] += 1
+                if streak[0] >= BREAKER_FAILURES:
+                    record({**base, "status": "FAILED", "error": str(exc)[:200]})
+                    raise Throttled(f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
+            return {**base, "status": "FAILED", "error": str(exc)}
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
@@ -343,6 +371,8 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
     # index succeeds and EVERY detail fetch fails, the host has moved and the
     # run must not read as healthy on the strength of the index.
     got = skipped = failures = 0
+    attempted = 0
+    wanted = sum(1 for r in rows if str(r.get("xbrl") or "").strip() and _quarter_end(r))
     for r in rows:
         if budget[0] <= 0 or (deadline_at and datetime.now(UTC) >= deadline_at):
             break
@@ -350,11 +380,19 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
         q = _quarter_end(r)
         if not xurl or not q:
             continue
+        # Already held or already known-gone: skip without a request. This is
+        # what makes a resumed symbol cost only its MISSING filings.
+        prior = _prior_xbrl.get(xurl)
+        if prior in {"STORED", "DUPLICATE", "GONE"}:
+            attempted += 1
+            skipped += prior != "GONE"
+            continue
         try:
             xb = _get(op, xurl, "https://www.nseindia.com/")
             streak[0] = 0
         except Exception as exc:  # noqa: BLE001 - one bad filing must not stop the run
             failures += 1
+            attempted += "404" in str(exc)  # a 404 is final; a network failure is not
             if _is_network_failure(str(exc)):
                 streak[0] += 1
                 if streak[0] >= BREAKER_FAILURES:
@@ -374,6 +412,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
             time.sleep(RATE_LIMIT)
             continue
         budget[0] -= 1
+        attempted += 1
         d2 = hash_bytes(xb)
         p2 = _xbrl_path(q, d2)
         x = {"source_id": XBRL_SOURCE, "exchange": EXCHANGE, "report_type": XBRL_TYPE,
@@ -388,6 +427,8 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
         record(x)
         time.sleep(RATE_LIMIT)
     entry["details_stored"], entry["details_dup"], entry["detail_failures"] = got, skipped, failures
+    entry["xbrl_wanted"], entry["xbrl_attempted"] = wanted, attempted
+    entry["xbrl_complete"] = attempted >= wanted
     if failures and not got and not skipped:
         entry["status"] = "FAILED"
         entry["error"] = (f"master lists {len(rows)} filings but ALL {failures} XBRL fetches "
@@ -398,6 +439,24 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
 # --- the sweep ----------------------------------------------------------------
 
 
+#: XBRL url -> its latest manifest status ("GONE" for a 404). Built per run by
+#: collect(); read by capture_symbol() so a resumed symbol requests only what
+#: it is missing.
+_prior_xbrl: dict[str, str] = {}
+
+
+def _index_prior_xbrl(rows: list[dict]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for r in rows:
+        if r.get("source_id") != XBRL_SOURCE or not r.get("url"):
+            continue
+        st = r.get("status")
+        if st == "FAILED":
+            st = "GONE" if "404" in (r.get("error") or "") else "FAILED"
+        out[r["url"]] = st
+    return out
+
+
 def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_RUN,
             force: bool = False, max_minutes: int = MAX_MINUTES) -> list[Outcome]:
     symbols = symbols or universe()
@@ -405,10 +464,15 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
     deadline_at = started + timedelta(minutes=max_minutes)
     rows = _manifest_rows()
     seen = _seen_digests(rows)
-    fresh = set() if force else _fresh_masters(rows)
-    todo = [s for s in symbols if s not in fresh]
-    print(f"  universe {len(symbols)} symbols; {len(symbols) - len(todo)} fresh (<{MASTER_FRESH_DAYS}d), "
-          f"{len(todo)} to fetch; XBRL budget {max_detail}")
+    _prior_xbrl.clear()
+    _prior_xbrl.update(_index_prior_xbrl(rows))
+    done, cached = (set(), {}) if force else _fresh_masters(rows)
+    # INCOMPLETE SYMBOLS FIRST. Their filing list is on disk, so every request
+    # goes to XBRL; unindexed symbols follow. This is what lets the detail
+    # catch up with the index instead of trailing it by 80 days.
+    todo = [s for s in symbols if s in cached] + [s for s in symbols if s not in done and s not in cached]
+    print(f"  universe {len(symbols)} symbols; {len(done)} done, {len(cached)} indexed-but-incomplete (XBRL owed), "
+          f"{len(todo) - len(cached)} unindexed; XBRL budget {max_detail}", flush=True)
 
     op = _opener()
     try:
@@ -428,7 +492,8 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         if i:
             time.sleep(RATE_LIMIT)
         try:
-            e = capture_symbol(op, sym, seen, budget, streak=streak, deadline_at=deadline_at)
+            e = capture_symbol(op, sym, seen, budget, streak=streak, deadline_at=deadline_at,
+                               cached_master=cached.get(sym))
         except Throttled as exc:
             stopped = f"THROTTLED after {i} symbol(s): {exc}"
             break
