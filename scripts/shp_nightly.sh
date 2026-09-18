@@ -29,6 +29,13 @@ mkdir -p "$REPO/logs"
   "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 1500 --max-minutes 150
   RC=$?
   echo "shp=$RC"
+  # LAND WHAT THE SESSION JUST ARCHIVED (2026-09-18). Re-parses every archived
+  # filing into data/raw/collected/shp/shp_holdings.parquet — one row per
+  # (ISIN, quarter, category), scale-normalised, joined to broadcast_date on
+  # ISIN. Seconds for thousands of files; the table is always the whole
+  # archive, never a delta, so a parser fix reaches every row on the next run.
+  "$REPO/.venv/bin/python" -m src.ingest.shp
+  echo "shp_parse=$?"
 } >> "$LOG" 2>&1
 
 if [ "$RC" -ne 0 ]; then

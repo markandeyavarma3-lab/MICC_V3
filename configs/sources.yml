@@ -173,7 +173,9 @@ sources:
     collector: src/archive/shp.py       # decision 0074. Sweeps the bhavcopy EQ+BE universe (2,886 on 2026-09-16)
     schedule: "01:00 daily via com.institutional-research.shp; ~5,000 XBRL/night until the ~60k backlog clears, then seconds until a quarter rolls"
     first_sweep: "2026-09-17 13:50 IST, by hand, --max-detail 4000"
-    archived_bytes_only: true           # NOTHING PARSED. What to compute is a registration decision, not a collector's.
+    parser: src/ingest/shp.py           # since 2026-09-18, after every sweep session -> data/raw/collected/shp/shp_holdings.parquet
+    parsed_shape: "one row per (ISIN, quarter_end, category); pct_shares normalised to PERCENT with pct_scale_raw recorded (2018-2024 schema files percent, V1.1+ files fractions); broadcast_date joined from the master on ISIN (symbols change; ISINs do not — 0069)"
+    nothing_computed: true              # no return, rank or decile. What to compute is exp_004's registration, not this parser's.
     cadence: quarterly
     licence: public_disclosure
     automated_use_permitted: "yes"
