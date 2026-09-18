@@ -177,6 +177,26 @@ def registered_hash(env: str | None = None) -> str:
     return row[0]
 
 
+def market_series_sql(index_key: str = "NIFTY50") -> str:
+    """The market leg: (d, close) for one index, COLLECTED FIRST, SEED FALLBACK.
+
+    The seed's `global_indices_daily.parquet` ends 2026-07-07; the archive
+    (`src/ingest/index_close.py`) runs 2021-10-18 -> today. Reconciled
+    2026-09-18: zero difference on all 1,161 overlapping sessions, so the two
+    are one series. The seed still supplies four sessions the archive lacks
+    (three April-2023 files NSE dated MM-DD, refused rather than guessed, and
+    the 2025-02-01 Saturday budget session) and everything before 2021-10-18.
+    """
+    collected = COLLECTED / "index_close" / "index_close.parquet"
+    seed = f"{SEED}/global_indices_daily.parquet"
+    return f"""
+        SELECT d, close FROM (
+            SELECT date AS d, close, 0 AS pri FROM read_parquet('{collected}') WHERE index_key = '{index_key}'
+            UNION ALL
+            SELECT CAST(date AS DATE) AS d, close, 1 AS pri FROM read_parquet('{seed}') WHERE symbol = '{index_key}'
+        ) QUALIFY ROW_NUMBER() OVER (PARTITION BY d ORDER BY pri) = 1"""
+
+
 # --- half two: the panel, behind the guard ------------------------------------
 
 
@@ -187,7 +207,6 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
     sig = sig if sig is not None else signals()
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
     charp = str(warehouse_dir(env) / "char_panel" / "**" / "*.parquet")
-    nifty = f"{SEED}/global_indices_daily.parquet"
     min_cell = _min_cell()
     con = duckdb.connect(str(research_db(env)), read_only=True)
     try:
@@ -232,6 +251,7 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
             cases.append(f"WHEN {level}.n >= {min_cell} THEN ({level}.m * {level}.n - COALESCE(own.ret, 0)) / ({level}.n - CASE WHEN own.ret IS NULL THEN 0 ELSE 1 END)")
             levels.append(f"WHEN {level}.n >= {min_cell} THEN '{level}'")
         bench = "CASE " + " ".join(cases) + " END"
+        con.execute(f"CREATE TEMP TABLE mkt AS {market_series_sql()}")
         df = con.execute(f"""
             SELECT e.isin, e.quarter_end, e.cohort, e.interval_days, e.is_calendar_quarter,
                    e.d_fpi, e.d_foreign, e.d_mf, e.entry_date, f.exit_date, e.adv20,
@@ -242,8 +262,8 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
                    ec.size_q, ec.mom_q, ec.vol_q
             FROM ev e
             JOIN fwd f ON f.isin = e.isin AND f.quarter_end = e.quarter_end
-            LEFT JOIN (SELECT date, close FROM read_parquet('{nifty}') WHERE symbol='NIFTY50') me ON CAST(me.date AS DATE) = e.entry_date
-            LEFT JOIN (SELECT date, close FROM read_parquet('{nifty}') WHERE symbol='NIFTY50') mx ON CAST(mx.date AS DATE) = f.exit_date
+            LEFT JOIN mkt me ON me.d = e.entry_date
+            LEFT JOIN mkt mx ON mx.d = f.exit_date
             LEFT JOIN cellmap ec ON ec.symbol = e.symbol AND ec.d = e.entry_date
             LEFT JOIN cells own ON own.symbol = e.symbol AND own.d = e.entry_date
             {' '.join(joins)}
@@ -354,4 +374,116 @@ def run(env: str | None = None, permutations: int = 1000) -> tuple[str, list[Tes
     }
     counts = {**sig.attrs["counts"], "panel_rows": len(pnl), "tradeable": int(pnl["tradeable"].sum()),
               "with_char_match": int(pnl["char_rel"].notna().sum())}
-    return sh, results, {"robustness": robustness, "counts": counts}
+    return sh, results, {"robustness": robustness, "counts": counts, "panel": pnl}
+
+
+# --- verdict, gate, report, charge -------------------------------------------------
+
+
+@dataclass
+class Verdict:
+    landing: str                      # POWERED_ALIVE / POWERED_DEAD / UNDERPOWERED
+    reasons: list[str]
+    event_gate: dict[str, bool]       # per signal
+    portfolio_gate: dict[str, float]  # per signal: net-of-cost spread at the pessimistic level
+    kills: dict[str, list[str]]       # per signal: kill criteria tripped
+
+
+def net_of_costs(spread: float, cohorts: int, avg_adv: float, notional: float = NOTIONAL_INR) -> float:
+    """The portfolio gate (0003): the decile spread minus the PESSIMISTIC
+    round-trip cost of building and unwinding both sides, per quarter.
+
+    Turnover per quarter is the whole book (every name is replaced when the
+    deciles are re-ranked — the conservative assumption, since some names stay).
+    Impact uses the mean ADV of the tradeable names; per-name quantity is the
+    equal-weight share of a side. sigma_daily 2% is costs.yml's small-cap
+    default; the registered run reports the realised figure alongside.
+    """
+    from datetime import date
+    from src.research import costs
+    per_name = (notional / 2) / max(2, cohorts // DECILE if cohorts else 2)
+    sc = costs.cost_scenarios(turnover=notional, on=date.today(), quantity=per_name,
+                              adv=avg_adv if avg_adv and avg_adv > 0 else 1.0, sigma_daily=0.02)
+    pess = next(s for s in sc.scenarios if s.name == "pessimistic")
+    return spread - pess.total_bps / 10_000 * 2  # long AND short legs each pay
+
+
+def verdict(results: list[TestResult], robustness: dict, panel: pd.DataFrame) -> Verdict:
+    avg_adv = float(panel.loc[panel["tradeable"], "adv20"].mean()) if "adv20" in panel else 0.0
+    names_per_cohort = int(panel[panel["tradeable"]].groupby("cohort").size().median()) if len(panel) else 0
+    event, port, kills = {}, {}, {}
+    raw = {r.signal: r for r in robustness.get("raw_return (kill 3: momentum)", [])}
+    untr = {r.signal: r for r in robustness.get("untradeable names only (kill 2: liquidity)", [])}
+    for r in results:
+        k = []
+        if r.mde > BOUND:
+            k.append(f"kill 1: MDE {r.mde:.2%} > bound {BOUND:.2%} — UNDERPOWERED")
+        u = untr.get(r.signal)
+        if u is not None and abs(u.spread_mean) > BOUND and abs(r.spread_mean) < BOUND / 2:
+            k.append("kill 2: spread lives in the untradeable names, absent in the tradeable")
+        w = raw.get(r.signal)
+        if w is not None and abs(w.spread_mean) > BOUND and abs(r.spread_mean) < BOUND / 2:
+            k.append("kill 3: spread present in raw returns, absent under CHAR_MATCHED — momentum")
+        kills[r.signal] = k
+        event[r.signal] = (abs(r.spread_mean) > BOUND and r.mde <= BOUND
+                           and not np.isnan(r.q_fdr) and r.q_fdr < FDR_ALPHA)
+        port[r.signal] = net_of_costs(r.spread_mean, names_per_cohort, avg_adv)
+    if all(r.mde > BOUND for r in results):
+        landing = "UNDERPOWERED"
+        reasons = [f"every signal's MDE exceeds the bound; smallest ratio "
+                   f"{min(r.mde for r in results) / BOUND:.2f}x. No fit is run."]
+    elif any(event[s] and port[s] > 0 for s in event):
+        landing = "POWERED_ALIVE"
+        reasons = [f"{s}: event gate passed (q={next(r for r in results if r.signal == s).q_fdr:.3f}) "
+                   f"and net-of-cost spread {port[s]:+.2%}" for s in event if event[s] and port[s] > 0]
+    else:
+        landing = "POWERED_DEAD"
+        reasons = [f"{r.signal}: spread {r.spread_mean:+.2%}, q={r.q_fdr:.3f}, MDE {r.mde:.2%}, "
+                   f"net {port[r.signal]:+.2%}" for r in results]
+    return Verdict(landing, reasons, event, port, kills)
+
+
+def render(sh: str, results: list[TestResult], extra: dict, v: Verdict) -> str:
+    L = [f"# HOLDINGS_VERDICT.md — exp_004 landing: **{v.landing}**", "",
+         f"**Generated by `python -m src.research.holdings` against the registered spec "
+         f"(`spec_hash {sh[:12]}…`, decision 0076). Three tests, BH-FDR {FDR_ALPHA:.0%}, "
+         f"primary CHAR_MATCHED at {HORIZON} sessions, tail rule = participation cap.**", ""]
+    L += ["## Landing", ""] + [f"- {r}" for r in v.reasons] + [""]
+    L += ["## Primary", "", "| signal | cohorts | names | spread | SE (serial) | t | p (perm) | q (BH) | MDE | bound | net of cost | event gate |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for r in results:
+        L.append(f"| {r.signal} | {r.n_cohorts} | {r.n_names:,} | {r.spread_mean:+.2%} | {r.spread_se:.2%} | {r.t:.2f} | "
+                 f"{r.p_perm:.3f} | {r.q_fdr:.3f} | {r.mde:.2%} | {BOUND:.2%} | {v.portfolio_gate[r.signal]:+.2%} | "
+                 f"{'PASS' if v.event_gate[r.signal] else 'fail'} |")
+    L += ["", "## Kill criteria", ""]
+    for s, ks in v.kills.items():
+        L += [f"- **{s}**: " + ("; ".join(ks) if ks else "none tripped")]
+    L += ["", "## Robustness (reported, never tested)", ""]
+    for name, rs in extra.get("robustness", {}).items():
+        L += [f"### {name}", "", "| signal | cohorts | spread | p (perm) | MDE |", "|---|---|---|---|---|"]
+        L += [f"| {r.signal} | {r.n_cohorts} | {r.spread_mean:+.2%} | {r.p_perm:.3f} | {r.mde:.2%} |" for r in rs] + [""]
+    L += ["## Counts", ""] + [f"- {k}: {v_:,}" if isinstance(v_, int) else f"- {k}: {v_}" for k, v_ in extra.get("counts", {}).items()]
+    return "\n".join(L) + "\n"
+
+
+def main() -> int:
+    from src.research import families
+    sh, results, extra = run()
+    pnl = extra.get("panel")
+    v = verdict(results, extra["robustness"], pnl if pnl is not None else pd.DataFrame())
+    text = render(sh, results, extra, v)
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(text)
+    print(text)
+    # ONE charge, the declared width: three tests. The robustness rows are
+    # reported and never tested, and do not widen the family.
+    charge = families.commit_charge(FAMILY, trials_added=len(results),
+                                    description=f"exp_004 primary: {len(results)} signals x 1 horizon, spec {sh[:12]}",
+                                    experiment_id=EXPERIMENT_ID)
+    print(f"\n  charged {FAMILY}: +{len(results)} trials -> {charge.trials_after}")
+    print(f"  wrote {REPORT}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

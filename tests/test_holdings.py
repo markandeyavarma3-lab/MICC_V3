@@ -147,3 +147,64 @@ def test_the_tail_rule_is_per_cohort_and_uses_the_pessimistic_cap():
     t = h.tradeable(df)
     assert t["tradeable"].sum() == 3
     assert h.CAP_SESSIONS * h.CAP_PCT_ADV * 20e7 == pytest.approx(5e7)
+
+
+# --- verdict, gate, report --------------------------------------------------------
+
+
+def _res(signal, spread, mde, q, p=0.01):
+    return h.TestResult(signal, "char_rel", 18, 3000, spread, 0.005, spread / 0.005, p, q_fdr=q, mde=mde)
+
+
+def _panel_for_gate(adv=50e7):
+    df = _panel(cohorts=3, n=100)
+    df["adv20"] = adv; df["tradeable"] = True
+    return df
+
+
+def test_underpowered_when_every_signal_mde_exceeds_the_bound():
+    rs = [_res("d_fpi", 0.03, 0.05, 0.01), _res("d_foreign", 0.02, 0.04, 0.01), _res("d_mf", 0.01, 0.03, 0.01)]
+    v = h.verdict(rs, {}, _panel_for_gate())
+    assert v.landing == "UNDERPOWERED"
+    assert all("kill 1" in k[0] for k in v.kills.values())
+    assert not any(v.event_gate.values())  # a 3% spread does not pass when the MDE is 5%
+
+
+def test_alive_needs_the_event_gate_and_a_positive_net_of_cost_spread():
+    rs = [_res("d_fpi", 0.04, 0.01, 0.01), _res("d_foreign", 0.001, 0.01, 0.9), _res("d_mf", 0.002, 0.01, 0.9)]
+    v = h.verdict(rs, {}, _panel_for_gate(adv=50e7))
+    assert v.landing == "POWERED_ALIVE" and v.event_gate["d_fpi"] and v.portfolio_gate["d_fpi"] > 0
+    # the same spread in names too thin to trade at the pessimistic level: costs eat it
+    v2 = h.verdict(rs, {}, _panel_for_gate(adv=1e6))
+    assert v2.portfolio_gate["d_fpi"] < rs[0].spread_mean
+
+
+def test_dead_when_powered_but_nothing_clears_the_bound_after_fdr():
+    rs = [_res("d_fpi", 0.005, 0.01, 0.3), _res("d_foreign", -0.004, 0.01, 0.5), _res("d_mf", 0.002, 0.01, 0.9)]
+    v = h.verdict(rs, {}, _panel_for_gate())
+    assert v.landing == "POWERED_DEAD" and not any(v.event_gate.values())
+
+
+def test_kill_2_and_3_name_the_confound_they_found():
+    prim = [_res("d_fpi", 0.002, 0.01, 0.9)]
+    rob = {"raw_return (kill 3: momentum)": [_res("d_fpi", 0.04, 0.01, 0.01)],
+           "untradeable names only (kill 2: liquidity)": [_res("d_fpi", 0.05, 0.01, 0.01)]}
+    v = h.verdict(prim, rob, _panel_for_gate())
+    assert any("kill 2" in k for k in v.kills["d_fpi"]) and any("kill 3" in k for k in v.kills["d_fpi"])
+
+
+def test_the_report_names_the_hash_the_landing_and_every_test():
+    rs = [_res("d_fpi", 0.005, 0.01, 0.3), _res("d_foreign", -0.004, 0.01, 0.5), _res("d_mf", 0.002, 0.01, 0.9)]
+    v = h.verdict(rs, {}, _panel_for_gate())
+    text = h.render("abcdef0123456789", rs, {"robustness": {}, "counts": {"filings": 5119}}, v)
+    assert "abcdef012345" in text and "POWERED_DEAD" in text
+    assert all(s in text for s in ("d_fpi", "d_foreign", "d_mf")) and "filings: 5,119" in text
+
+
+def test_an_event_gate_pass_that_costs_eat_is_dead_not_alive():
+    """Decision 0003: both gates, not either. A 2% spread in names thin enough
+    that the pessimistic round trip costs more than 2% is a paper result."""
+    rs = [_res("d_fpi", 0.02, 0.01, 0.01), _res("d_foreign", 0.001, 0.01, 0.9), _res("d_mf", 0.002, 0.01, 0.9)]
+    v = h.verdict(rs, {}, _panel_for_gate(adv=2e5))   # Rs 2 lakh/day ADV: impact dwarfs the spread
+    assert v.event_gate["d_fpi"] and v.portfolio_gate["d_fpi"] < 0
+    assert v.landing == "POWERED_DEAD"
