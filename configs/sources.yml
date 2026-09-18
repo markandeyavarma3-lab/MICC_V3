@@ -255,15 +255,20 @@ sources:
     licence: public_disclosure
     route: "https://nsearchives.nseindia.com/content/indices/ind_close_all_{DDMMYYYY}.csv"
     route_kind: dated_archive        # same host and shape as the price bhavcopy: dated, backfillable
-    backfill_reach: "at least 2023-09-11; 2021-09-10 is 404 — the edge is between, not measured"
-    existing_rows: 0                 # 4 proof files archived under INDEX_CLOSE/; nothing parsed
-    note: "Price indices only (no TRI column). Probe only."
+    backfill_reach: "2021-10-18 (bisected 2026-09-18: 10-15 is 404, 10-18 is 200); everything after answers 200"
+    collector: src/archive/index_close.py   # daily stage `index_close` since 2026-09-18; backfilled 2021-10-18 -> today, 1,212 sessions
+    parser: src/ingest/index_close.py       # daily stage `index_close_parse` -> collected/index_close/index_close.parquet, one row per (session, index), 145,264 rows, 172 indices
+    reconciled: "NIFTY50 vs the seed's global_indices_daily on 1,161 overlapping sessions 2021-10-18 -> 2026-07-07: ZERO difference. The seed still supplies 3 April-2023 sessions (NSE wrote the date MM-DD; refused, not guessed) and the 2025-02-01 Saturday budget session."
+    used_by: "exp_004's market leg (holdings.market_series_sql: collected first, seed fallback) — the seed ends 2026-07-07 and would have lost every cohort after 2026-Q1"
+    note: "Price indices only (no TRI column); the TRI is INDEX_TRI/, a separate archive."
 
   - id: nifty500_constituents
     exchange: NSE
     report_type: INDEX_CONSTITUENTS
     status: CONFIRMED_SNAPSHOT_ONLY  # 2026-09-15: 200, 32,819 B, 500 rows: Company Name, Industry, Symbol, Series, ISIN Code; no dated history route
     collector: src/archive/constituents.py   # daily stage `constituents` since 2026-09-18; six lists (500, 50, Next 50, Midcap 150, Smallcap 250, Microcap 250), sha256-deduped so the archive is the change log
+    parser: src/ingest/constituents.py       # daily stage `constituents_parse` -> collected/constituents/constituents.parquet: SNAPSHOTS (one row per snapshot x index x ISIN, with NSE's industry); membership on a date is an ASOF join (membership_sql); a date before the first snapshot gets NO rows
+    first_snapshot: "2026-09-15 (NIFTY 500), 2026-09-17 (the five size buckets)"
     history_probe_2026_09_18: "nsearchives ind_nifty500list_31032026.csv -> 404; niftyindices.com/Index_Constituents/ind_nifty500list_{DD-Mon-YYYY}.csv -> 200 with a 78,919-byte HTML error page for EVERY date asked (a 200 that lies). No history exists to fetch; it accrues from today."
     cadence: daily
     licence: public_disclosure
