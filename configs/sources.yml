@@ -227,6 +227,7 @@ sources:
       than decades. That assumed forward collection; the endpoint adds no
       history beyond ~4 months, so it still does. The retired /api/corporates-pit
       (no -gg) answers 200 with data:[] — see src/archive/insider.py."
+    detail_2026_09_18: "The index lists one row per PERSON; the XBRL is per FILING: 17,634 rows -> 2,672 distinct files. Only 1,092 distinct files were on disk because every run re-fetched held files in index order and spent its 400-file budget on duplicates while reporting 0 new. Fixed: per-file manifest rows (nse_insider_xbrl) and a URL index so a held file costs no request; the ~1,580 missing fetched the same night."
 
   - id: nifty500_tri
     exchange: NSE
