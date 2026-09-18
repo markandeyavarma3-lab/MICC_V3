@@ -131,8 +131,8 @@ and counted; the original broadcast is the point-in-time fact.
 | test_count | **3** (FPI, all-foreign, MF) × 1 primary horizon. Owner's choice 2026-09-18, knowing each extra test costs power. |
 | multiple_testing_policy | Benjamini–Hochberg FDR 5% across the 3 tests, declared here. Robustness horizons, the count signal and the calendar-only variant reported, never tested. |
 | outcome_tail_rule | **CHOSEN 2026-09-18: the participation cap.** A name is in the primary universe only if 5 sessions × 5% of ADV20 (costs.yml's pessimistic level) can build its equal-weight share of one side of a **₹100 crore** long–short book, decided per cohort. One declared parameter (the notional), the same cost model the project already imposes, and a spread that exists only in untradeable names fails kill 2 anyway. Winsorisation at 1st/99th is reported as robustness. `holdings.tradeable()`. |
-| revised_policy | **OPEN — owner to decide.** 598 of 4,137 filings (14%) are marked Revised by the master, and the master lists NO original for any of them: the revision replaces it. (a) **Keep them, entering after the revised broadcast** — point-in-time honest (the corrected figure was public then), keeps 14% of the panel, entry is later than it would have been. (b) Drop them — cleaner provenance, loses 14% of company-quarters outright. Recommended: (a). |
-| interval_policy | **OPEN — owner to decide.** With off-cycle filings kept, the change since the previous filing spans 1 to 1,096 days (median 91). A change over three years is not a quarterly signal. (a) **Cap at 200 days** — keeps every ordinary quarter and every off-cycle filing that follows one, drops the handful of resumptions after a filing gap. (b) No cap. Recommended: (a). |
+| revised_policy | **DECIDED 2026-09-18 (a): keep revised filings, entering on the revised broadcast date.** NSE's master replaces the original with the revision and keeps no copy — 598 of 4,137 filings on the sample. The revision is the only version that exists; its `broadcast_date` is when the corrected figures became public, so entering after it is point-in-time honest and later than an original would have been. The `revised` flag is carried and reported by cohort. |
+| interval_policy | **DECIDED 2026-09-18 (a): cap at 200 days.** A change spanning more than 200 days between filings is a resumption after a filing gap (20 changes spanned 400–1,096 days on the sample), not a quarterly signal. Excluded from the primary, counted. Every ordinary quarter and every off-cycle filing that follows one is kept. |
 | permutation_policy | Moving-block bootstrap over quarters, block = 2 quarters, 10,000 draws, seed 20260917. Within-quarter label permutation (1,000) as the null calibration, per `nullcal.py`'s method. |
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
 | kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
@@ -155,8 +155,8 @@ and counted; the original broadcast is the point-in-time fact.
 
 Built, tested, pushed: `src/research/holdings.py` — `signals()` runs now (a
 parse); `panel()` and `run()` refuse without a registration. `scripts/
-register_exp004.py` refuses below 95% sweep coverage and refuses while the
-two OPEN policies above are unset. `TRACK_H_HOLDINGS` is in `trials.yml` at
+register_exp004.py` refuses below 95% sweep coverage; both policies are now set,
+so coverage is the only remaining gate. `TRACK_H_HOLDINGS` is in `trials.yml` at
 counter 0. Nothing has read a signal against a return.
 
 On acceptance, in order:

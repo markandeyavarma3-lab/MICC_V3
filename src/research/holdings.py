@@ -68,6 +68,10 @@ BOUND = 0.005 * 3
 FDR_ALPHA = 0.05
 MIN_NAMES_PER_COHORT = 20
 DECILE = 10
+#: Owner decision 2026-09-18 (interval_policy = a). A change since the previous
+#: filing that spans more than this is a resumption after a filing gap, not a
+#: quarterly signal; 86 of 3,253 changes spanned 201-1,096 days on the sample.
+INTERVAL_CAP_DAYS = 200
 
 #: The three tested signals: which parsed categories sum to each.
 #: FPI is one series across two taxonomies: undivided to 2024, Cat I + II from
@@ -107,11 +111,14 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
     """One row per (ISIN, filing): the three signals as changes since the
     PREVIOUS filing, the interval between them, and the cohort quarter.
 
-    Excluded here, and counted: revised filings (the original broadcast is the
-    point-in-time fact), filings whose identity_total is off by more than a
-    point (a bad file), and a company's first filing (no prior to difference).
-    Off-cycle filings are KEPT (owner decision 2026-09-18); `interval_days`
-    says how long each change spans.
+    Excluded here, and counted: filings whose identity_total is off by more
+    than a point (a bad file), a company's first filing (no prior to
+    difference), and changes spanning more than INTERVAL_CAP_DAYS. Off-cycle
+    filings are KEPT; so are REVISED filings (owner decisions 2026-09-18,
+    revised_policy = a): NSE's master replaces the original with the revision
+    and keeps no copy, so the revision is the only version that exists, and
+    its `broadcast_date` — the day the corrected figures became public — is
+    the point-in-time entry. `revised` and `interval_days` ride on every row.
     """
     con = duckdb.connect()
     # ABSENT MEANS ZERO, WITHIN THE FILING'S OWN TAXONOMY. The 2020-2022
@@ -131,18 +138,20 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
         GROUP BY 1,2,3,4,5,6
     """).df()
     con.close()
-    counts = {"filings": len(wide)}
-    ok = wide[(~wide["revised"]) & (wide["identity_total"].isna() | ((wide["identity_total"] - 100).abs() <= 1))].copy()
-    counts["revised_excluded"] = int(wide["revised"].sum())
-    counts["identity_excluded"] = len(wide) - len(ok) - counts["revised_excluded"]
+    counts = {"filings": len(wide), "revised_kept": int(wide["revised"].sum())}
+    ok = wide[wide["identity_total"].isna() | ((wide["identity_total"] - 100).abs() <= 1)].copy()
+    counts["identity_excluded"] = len(wide) - len(ok)
     ok = ok.sort_values(["isin", "quarter_end"])
     prev = ok.groupby("isin").shift(1)
     ok["prev_quarter_end"] = prev["quarter_end"]
     for s in ("fpi", "foreign", "mf"):
         ok[f"d_{s}"] = ok[s] - prev[s]
     ok = ok[ok["prev_quarter_end"].notna()].copy()
-    counts["first_filings_excluded"] = len(wide) - counts["revised_excluded"] - counts["identity_excluded"] - len(ok)
+    counts["first_filings_excluded"] = len(wide) - counts["identity_excluded"] - len(ok)
     ok["interval_days"] = (pd.to_datetime(ok["quarter_end"]) - pd.to_datetime(ok["prev_quarter_end"])).dt.days
+    before = len(ok)
+    ok = ok[ok["interval_days"] <= INTERVAL_CAP_DAYS].copy()
+    counts["interval_excluded"] = before - len(ok)
     q = pd.to_datetime(ok["quarter_end"])
     ok["cohort"] = q.dt.year.astype(str) + "Q" + q.dt.quarter.astype(str)
     ok.attrs["counts"] = counts

@@ -271,6 +271,11 @@ def test_the_wall_clock_stops_the_run_between_symbols(tmp_path, monkeypatch):
     out = shp.collect([f"S{i}" for i in range(50)], max_detail=0, max_minutes=0)
     assert out[-1].symbol == "(run)" and "wall clock" in out[-1].detail
     assert len(out) == 1                                  # stopped before the first symbol
+    # A wall-clock stop is how a backlog session is EXPECTED to end: STOPPED,
+    # not FAILED, so it does not page three times a day. THROTTLED still fails.
+    assert out[-1].status == "STOPPED"
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    assert rows[-1]["status"] == "STOPPED" and "error" not in rows[-1]
 
 
 def test_an_empty_master_is_fresh_for_a_week_not_a_quarter(tmp_path, monkeypatch):
