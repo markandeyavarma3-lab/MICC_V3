@@ -509,13 +509,16 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
             print(f"  ... {i + 1}/{len(todo)}  xbrl budget left {budget[0]}", flush=True)
 
     if stopped:
-        # Recorded as a FAILED run-level row so the nightly stage alerts, and
-        # printed with the count so the next night's budget can be judged.
+        # THROTTLED is a failure: the host refused us and the budget was lost.
+        # The WALL CLOCK is not: it is how every backlog session is expected
+        # to end, and a stage alert for it three times a day is the alert
+        # nobody reads. Recorded as STOPPED, exit 0, visible in /feeds.
+        status = "FAILED" if stopped.startswith("THROTTLED") else "STOPPED"
         record({"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
-                "status": "FAILED", "fetched_at": datetime.now(UTC).isoformat(),
-                "error": f"run stopped — {stopped}"})
-        print(f"\n  RUN STOPPED: {stopped}", flush=True)
-        out.append(Outcome("(run)", "FAILED", detail=stopped))
+                "status": status, "fetched_at": datetime.now(UTC).isoformat(),
+                "error" if status == "FAILED" else "note": f"run stopped — {stopped}"})
+        print(f"\n  RUN {status}: {stopped}", flush=True)
+        out.append(Outcome("(run)", status, detail=stopped))
     if todo and empties / len(todo) > EMPTY_RUN_FRACTION:
         record({"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
                 "status": "FAILED", "fetched_at": datetime.now(UTC).isoformat(),
@@ -537,8 +540,8 @@ def main() -> int:
 
     results = collect(args.symbols or None, args.max_detail, args.force, args.max_minutes)
     for r in results:
-        if r.status in {"FAILED"} or r.details:
-            flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "EMPTY": "empty", "FAILED": "FAIL "}.get(r.status, r.status)
+        if r.status in {"FAILED", "STOPPED"} or r.details:
+            flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "EMPTY": "empty", "FAILED": "FAIL ", "STOPPED": "stop "}.get(r.status, r.status)
             print(f"  {flag} {r.symbol:<12} {r.filings:>3} filings  {r.details:>3} xbrl  {r.detail}"[:120])
     by = {}
     for r in results:

@@ -71,16 +71,34 @@ def test_an_absent_category_is_zero_in_the_new_taxonomy_and_null_foreign_in_the_
     assert np.isnan(s.loc["O1", "d_foreign"])             # unknown, not zero
 
 
-def test_revised_and_bad_identity_filings_are_excluded_and_counted(tmp_path):
+def test_revised_filings_are_kept_on_their_own_broadcast_date_and_bad_identity_is_excluded(tmp_path):
+    """Owner decision (a): the revision is the only version NSE keeps, and its
+    broadcast is when the corrected figures became public."""
     p = _holdings(tmp_path, [
         ("I1", "2026-03-31", "2026-04-20", True, False, 100.0, "MutualFund", 5.0),
-        ("I1", "2026-06-30", "2026-07-15", True, True, 100.0, "MutualFund", 6.0),     # revised
+        ("I1", "2026-06-30", "2026-08-11", True, True, 100.0, "MutualFund", 6.0),     # revised, late
         ("I1", "2026-09-30", "2026-10-15", True, False, 119.6, "MutualFund", 7.0),    # bad file
         ("I1", "2026-12-31", "2027-01-15", True, False, 100.0, "MutualFund", 8.0),
     ])
     s = h.signals(p)
-    assert s.attrs["counts"] == {"filings": 4, "revised_excluded": 1, "identity_excluded": 1, "first_filings_excluded": 1}
-    assert list(s["d_mf"]) == [3.0]                       # 2026-12-31 vs 2026-03-31, the survivors
+    assert s.attrs["counts"] == {"filings": 4, "revised_kept": 1, "identity_excluded": 1,
+                                 "first_filings_excluded": 1, "interval_excluded": 0}
+    assert list(s["d_mf"]) == [1.0, 2.0]                  # 06-30 vs 03-31 (revised, kept); 12-31 vs 06-30
+    assert list(s["broadcast_date"]) == ["2026-08-11", "2027-01-15"]
+    assert list(s["revised"]) == [True, False]
+
+
+def test_a_change_spanning_more_than_the_interval_cap_is_excluded_and_counted(tmp_path):
+    """Owner decision (a): 200 days. A resumption after a three-year gap is
+    not a quarterly signal."""
+    p = _holdings(tmp_path, [
+        ("I1", "2023-03-31", "2023-04-20", True, False, 100.0, "MutualFund", 5.0),
+        ("I1", "2026-03-31", "2026-04-20", True, False, 100.0, "MutualFund", 9.0),    # 1,096 days later
+        ("I1", "2026-06-30", "2026-07-15", True, False, 100.0, "MutualFund", 9.5),    # 91 days
+    ])
+    s = h.signals(p)
+    assert s.attrs["counts"]["interval_excluded"] == 1
+    assert list(s["interval_days"]) == [91] and list(s["d_mf"]) == [0.5]
 
 
 # --- the estimator ---------------------------------------------------------------

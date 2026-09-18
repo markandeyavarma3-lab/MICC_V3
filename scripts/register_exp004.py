@@ -29,7 +29,7 @@ from src.common.paths import ARCHIVE, governance_db  # noqa: E402
 from src.research import families  # noqa: E402
 from src.research.holdings import (  # noqa: E402
     BOUND, CAP_PCT_ADV, CAP_SESSIONS, EXPERIMENT_ID, FAMILY, FDR_ALPHA, HORIZON,
-    HORIZONS_REPORTED, MIN_NAMES_PER_COHORT, NOTIONAL_INR, SIGNALS,
+    HORIZONS_REPORTED, INTERVAL_CAP_DAYS, MIN_NAMES_PER_COHORT, NOTIONAL_INR, SIGNALS,
 )
 
 COVERAGE_REQUIRED = 0.95
@@ -72,11 +72,10 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
             f"non-empty companies hold XBRL ({held / universe_n:.1%}); {indexed} indexed. "
             "price_spine_adj and char_panel as of the registration commit. Identity by ISIN (0069).",
         "universe_definition":
-            "Every ISIN with (a) a filing and a prior filing, (b) a spine session after broadcast_date "
-            "and 63 sessions after entry, (c) a CHAR_MATCHED cell at entry, (d) identity_total within "
-            "1pt of 100, (e) TRADEABLE under the tail rule. Off-cycle filings are KEPT as "
-            "observations with interval_days carried (owner decision 2026-09-18). Revised filings: "
-            "see revised_policy. Exclusion counts reported per reason.",
+            "Every ISIN with (a) a filing and a prior filing within INTERVAL_CAP_DAYS, (b) a spine "
+            "session after broadcast_date and 63 sessions after entry, (c) a CHAR_MATCHED cell at "
+            "entry, (d) identity_total within 1pt of 100, (e) TRADEABLE under the tail rule. Off-cycle "
+            "and revised filings are KEPT (see the two policies). Exclusion counts reported per reason.",
         "tail_rule":
             f"A name is in the primary universe only if CAP_SESSIONS x CAP_PCT_ADV x ADV20 >= its "
             f"equal-weight share of one side of a Rs {NOTIONAL_INR / 1e7:.0f} crore long-short book "
@@ -135,8 +134,15 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
             "kill 4); index inclusion APPLICABLE, NOT CONTROLLED — constituents archived daily "
             "from 2026-09-18 only, stated limitation; delisting APPLICABLE (0052); liquidity "
             "APPLICABLE (tail rule; kill 2); industry NOT CONTROLLED (sector_history is Phase 3).",
-        "revised_policy": "TO BE SET BY THE OWNER — see the draft's open question.",
-        "interval_policy": "TO BE SET BY THE OWNER — see the draft's open question.",
+        "revised_policy":
+            "KEEP revised filings (owner decision 2026-09-18, option a). NSE's master replaces the "
+            "original with the revision and keeps no copy; the revision is the only version that "
+            "exists, and its broadcast_date — the day the corrected figures became public — is the "
+            "point-in-time entry. The `revised` flag rides on every row and is reported by cohort.",
+        "interval_policy":
+            f"CAP the change at {INTERVAL_CAP_DAYS} days between filings (owner decision 2026-09-18, "
+            "option a). A change spanning longer is a resumption after a filing gap, not a quarterly "
+            "signal; excluded from the primary and counted. Off-cycle filings inside the cap are kept.",
         "trial_family": FAMILY,
         "exploratory_prior_run": json.dumps({
             "note": "docs/reports/HOLDINGS_POWER_PRELIMINARY.md, 2026-09-18: dispersion of the "
@@ -182,6 +188,7 @@ def main() -> int:
                "primary_horizon_sessions": HORIZON, "horizons_sessions": list(HORIZONS_REPORTED),
                "signals": {k: list(v) for k, v in SIGNALS.items()}, "fdr_alpha": FDR_ALPHA,
                "notional_inr": NOTIONAL_INR, "cap_sessions": CAP_SESSIONS, "cap_pct_adv": CAP_PCT_ADV,
+               "interval_cap_days": INTERVAL_CAP_DAYS,
                "family": FAMILY, "decision": "0076", "coverage_at_registration": frac}),
            "code_commit_hash": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
            "trials_before": trials_before}
