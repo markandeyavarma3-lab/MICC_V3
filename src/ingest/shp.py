@@ -58,6 +58,19 @@ _CATEGORY = {
     "institutionsforeignmember": "ForeignInst_Total",
     "institutionsforeignportfolioinvestorcategoryonemember": "FPI_Cat1",
     "institutionsforeignportfolioinvestorcategorytwomember": "FPI_Cat2",
+    # NSE's 2022-2024 taxonomy spells it "Catergory". Corrected in 2025. Same
+    # line, misspelled member — without both spellings FPI has a two-year hole
+    # (0 rows in 2023 and 2024 on the second parse).
+    "institutionsforeignportfolioinvestorcatergoryonemember": "FPI_Cat1",
+    "institutionsforeignportfolioinvestorcatergorytwomember": "FPI_Cat2",
+    # The 2020-2022 taxonomy: FPI undivided. Measured across 1,047 old files:
+    # this member carries the values (523 non-zero, max 52%); the similarly
+    # named ForeignPortfolioInvestorMember and ForeignInstitutionsMember are
+    # ALWAYS zero there — dead lines, deliberately unmapped. Cat I/II never
+    # co-occur with this in one file, so the FPI signal sums all three.
+    "institutionsforeignportfolioinvestormember": "FPI_Undivided",
+    # The old taxonomy's parent of every institution, domestic and foreign.
+    "institutionsmember": "Institutions_Total_OldTaxonomy",
     "institutionsdomesticmember": "DomesticInstitution",
     "banksmember": "Bank",
     "insurancecompaniesmember": "Insurance",
@@ -228,7 +241,8 @@ def parse_xbrl_file(path: str) -> list[Holding]:
             pct_shares=None if raw_pct is None else raw_pct * factor,
             pct_scale_raw=scale,
             num_shareholders=_num(d.get("NumberOfShareholders", "")),
-            num_shares=_num(d.get("NumberOfSharesOnFullyDilutedBasisIncludingWarrantsESOPAndConvertibleSecurities", "")),
+            num_shares=_num(d.get("NumberOfSharesOnFullyDilutedBasisIncludingWarrantsESOPAndConvertibleSecurities")
+                            or d.get("NumberOfShares", "")),  # the old taxonomy's name
             revised=False,  # from the master, joined below
             source_file=Path(path).name,
         ))

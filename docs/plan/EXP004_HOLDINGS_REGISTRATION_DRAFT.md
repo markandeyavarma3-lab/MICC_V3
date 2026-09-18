@@ -117,7 +117,7 @@ and counted; the original broadcast is the point-in-time fact.
 | prior_belief | Weak-to-moderate. The literature finds a short-horizon effect for active institutions; Indian evidence is thin, the panel is 20 quarters, and the honest expectation is UNDERPOWERED against 0028's bound. |
 | data_version | SHP XBRL `[sweep: N symbols, Q quarters, first→last]`, source `nse_shp_xbrl` (0074); prices `price_spine_adj` as of `[sweep date]`; `char_panel` as of same; identity by **ISIN** (0069), never symbol. |
 | universe_definition | Every ISIN with (a) a non-revised XBRL filing (`revised = false`, per the master's `revisedStatus`) and a prior filing, (b) a spine price on the entry session, (c) a CHAR_MATCHED bucket, (d) `identity_total` within 1pt of 100. Series EQ/BE at filing. **Off-cycle filings are kept as observations (owner decision 2026-09-18)**: the signal is the change since the PREVIOUS filing, whatever its date, and the interval in days is carried on every row and reported by bucket; a change over 3 weeks and a change over 3 months are both observations, and the robustness section shows the calendar-only result. Counts of exclusions reported per reason. |
-| signal_definition | Three tested signals, each Δ`pct_shares` (percent, scale-normalised — see `src/ingest/shp.py`) since the previous filing: **FPI** = `FPI_Cat1` + `FPI_Cat2` (`InstitutionsForeignPortfolioInvestorCategoryOne/TwoMember`); **all foreign institutions** = `ForeignInst_Total` (`InstitutionsForeignMember`, which ALSO holds FDI, FVCI and sovereign funds — the parser's first label, "FPI_Total", was wrong and is corrected); **MF** = `MutualFund` (`MutualFundsOrUTIMember`). **Robustness (reported, not tested)**: Δ`num_shareholders` under the same members. |
+| signal_definition | Three tested signals, each Δ`pct_shares` (percent, scale-normalised — see `src/ingest/shp.py`) since the previous filing. **FPI** = `FPI_Cat1` + `FPI_Cat2` + `FPI_Undivided` — three taxonomies map to one series: undivided `InstitutionsForeignPortfolioInvestorMember` (2020–22), `…Catergory…` (NSE's own typo, 2022–24), `…Category…` (2025+); they never co-occur. **All foreign institutions** = `ForeignInst_Total` (`InstitutionsForeignMember`, which ALSO holds FDI, FVCI and sovereign funds — the parser's first label, "FPI_Total", was wrong and is corrected); no counterpart exists in the old taxonomy, so this signal starts in 2022 and is NULL before. **MF** = `MutualFund`. **A category absent from a filing is zero within that filing's taxonomy** — V1.1+ omits zero holdings, and a fund's exit is a signal. **Robustness (reported, not tested)**: Δ`num_shareholders` under the same members. Depth measured 2026-09-18 on 8% of the universe: FPI and MF from 2021Q3, FOREIGN from 2022Q2. |
 | interpretation_mode | CROSS_SECTIONAL — ranks are within-quarter; the estimator is the mean over quarters of the decile-spread return. |
 | holding_period | Primary 63 sessions (one quarter). Reported: 21, 63, 126, 252. A quarterly signal held for 252 sessions overlaps 3 of 4 cohorts; declared here as the departure from research.yml's 12-month primary, for the same reason 0067 declared 21. |
 | entry_policy | Next session's OPEN after `broadcastDate`, per symbol. Never the quarter-end. |
@@ -130,7 +130,9 @@ and counted; the original broadcast is the point-in-time fact.
 | search_space_definition | ONE specification, no free parameters. Deciles within quarter. Estimator = mean across quarters of (top − bottom) CHAR_MATCHED abnormal return at 63 sessions, Newey–West with lag from `power.nw_lag` on the quarterly series. |
 | test_count | **3** (FPI, all-foreign, MF) × 1 primary horizon. Owner's choice 2026-09-18, knowing each extra test costs power. |
 | multiple_testing_policy | Benjamini–Hochberg FDR 5% across the 3 tests, declared here. Robustness horizons, the count signal and the calendar-only variant reported, never tested. |
-| outcome_tail_rule | **TO BE CHOSEN BEFORE REGISTRATION, from §3**: (a) winsorise the 63-session abnormal return at the 1st/99th percentile of the evaluation panel, or (b) restrict to names inside the `costs.yml` participation cap. Whichever is chosen is frozen with the spec; the other is reported as robustness. Without one the preliminary MDE is 8× the bound and the study cannot be registered honestly. |
+| outcome_tail_rule | **CHOSEN 2026-09-18: the participation cap.** A name is in the primary universe only if 5 sessions × 5% of ADV20 (costs.yml's pessimistic level) can build its equal-weight share of one side of a **₹100 crore** long–short book, decided per cohort. One declared parameter (the notional), the same cost model the project already imposes, and a spread that exists only in untradeable names fails kill 2 anyway. Winsorisation at 1st/99th is reported as robustness. `holdings.tradeable()`. |
+| revised_policy | **OPEN — owner to decide.** 598 of 4,137 filings (14%) are marked Revised by the master, and the master lists NO original for any of them: the revision replaces it. (a) **Keep them, entering after the revised broadcast** — point-in-time honest (the corrected figure was public then), keeps 14% of the panel, entry is later than it would have been. (b) Drop them — cleaner provenance, loses 14% of company-quarters outright. Recommended: (a). |
+| interval_policy | **OPEN — owner to decide.** With off-cycle filings kept, the change since the previous filing spans 1 to 1,096 days (median 91). A change over three years is not a quarterly signal. (a) **Cap at 200 days** — keeps every ordinary quarter and every off-cycle filing that follows one, drops the handful of resumptions after a filing gap. (b) No cap. Recommended: (a). |
 | permutation_policy | Moving-block bootstrap over quarters, block = 2 quarters, 10,000 draws, seed 20260917. Within-quarter label permutation (1,000) as the null calibration, per `nullcal.py`'s method. |
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
 | kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
@@ -149,7 +151,15 @@ and counted; the original broadcast is the point-in-time fact.
   are pre-format-change for some symbols). Then the signal is not one series
   and the panel starts where consistency does.
 
-## 8. What happens on acceptance, in order
+## 8. What is built (2026-09-18) and what happens on acceptance
+
+Built, tested, pushed: `src/research/holdings.py` — `signals()` runs now (a
+parse); `panel()` and `run()` refuse without a registration. `scripts/
+register_exp004.py` refuses below 95% sweep coverage and refuses while the
+two OPEN policies above are unset. `TRACK_H_HOLDINGS` is in `trials.yml` at
+counter 0. Nothing has read a signal against a return.
+
+On acceptance, in order:
 
 1. `trials.yml` gains `TRACK_H_HOLDINGS` (carried 0).
 2. `scripts/register_exp004.py` writes this table, plain INSERT, hashed.

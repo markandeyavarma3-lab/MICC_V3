@@ -64,6 +64,17 @@ families:
     typical_dof: 150      # ~150 monthly cohorts, 2014-01 .. 2026-07 (NIFTY 50 coverage)
     selection_happens_within: true
     decision_record: "0067"
+  - id: TRACK_H_HOLDINGS
+    description: "Quarterly institutional holding change (SHP filings: FPI,
+      all foreign institutions, mutual funds) as a within-quarter cross-sectional
+      decile signal on 63-session CHAR_MATCHED abnormal return. Decision 0076
+      (pending registration); draft docs/plan/EXP004_HOLDINGS_REGISTRATION_DRAFT.md."
+    carried: 0
+    estimator: quarterly_cohort_decile_spread   # top minus bottom decile, mean over cohorts
+    typical_dof: 20       # ~20 calendar quarters 2021Q3 .. 2026Q2; the time dimension, whatever the cross-section
+    selection_happens_within: true
+    decision_record: "0076"
+
   - id: TRACK_S_CALENDAR
     description: "Calendar pattern cells: window x ordinal x alignment x entity."
     carried: 0
