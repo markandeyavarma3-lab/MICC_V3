@@ -52,7 +52,10 @@ PRODUCED_BY = "src/ingest/shp.py"
 _CATEGORY = {
     "shareholdingofpromoterandpromotergroupmember": "Promoter",
     "mutualfundsorutimember": "MutualFund",
-    "institutionsforeignmember": "FPI_Total",
+    # ALL foreign institutions — FPI Cat I + II AND FDI, FVCI, sovereign wealth
+    # funds, other foreign. Labelled "FPI_Total" on the first run; wrong. Cat I +
+    # Cat II differ from this total in 185 of 991 filings, which is the proof.
+    "institutionsforeignmember": "ForeignInst_Total",
     "institutionsforeignportfolioinvestorcategoryonemember": "FPI_Cat1",
     "institutionsforeignportfolioinvestorcategorytwomember": "FPI_Cat2",
     "institutionsdomesticmember": "DomesticInstitution",
@@ -85,6 +88,7 @@ class Filing:
     record_id: str
     quarter_end: str
     broadcast_date: str
+    revised: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +98,19 @@ class Holding:
     company: str
     quarter_end: str
     broadcast_date: str
+    #: "master" (the filing list's broadcastDate), "xbrl_url" (the upload
+    #: timestamp NSE embeds in the XBRL filename, used when no master row
+    #: joins — 68 companies whose ISIN changed in a scheme), or "" (neither).
+    broadcast_source: str
+    #: Calendar quarter-end (03-31/06-30/09-30/12-31) or an off-cycle filing —
+    #: listing day, rights issue, demerger date. 6.6% of filings. The study
+    #: keeps both (owner decision 2026-09-18) and a change-since-last-filing
+    #: therefore spans an irregular interval; this flag is how it knows.
+    is_calendar_quarter: bool
+    #: Promoter + Public + NonPromoterNonPublic for the FILING, in percent.
+    #: 100 by definition; 97 with an employee-trust bucket is fine; 119.6 is a
+    #: bad filing. Carried so the study can filter, not silently dropped here.
+    identity_total: float | None
     category_raw: str
     category: str
     pct_shares: float | None
@@ -138,6 +155,11 @@ def parse_master_file(path: str) -> list[Filing]:
             record_id=str(r.get("recordId")),
             quarter_end=q,
             broadcast_date=_date(r.get("broadcastDate", "")),
+            # The master's own flag: `revisedStatus` is the string "Revised"
+            # or the placeholder "-" (never empty), so truthiness reads every
+            # filing as revised — 4,049 of 4,140 on the second run. The first
+            # parser guessed an XBRL element name and found 0. Both wrong.
+            revised=str(r.get("revisedStatus") or "").strip().lower() == "revised",
         ))
     return out
 
@@ -173,9 +195,6 @@ def parse_xbrl_file(path: str) -> list[Holding]:
     isin = head.get("ISIN", "")
     symbol = (head.get("Symbol") or head.get("SymbolOfListedEntity") or "").strip().upper()
     company = head.get("NameOfTheCompany", "")
-    revised = "revised" in text.lower() and bool(
-        re.search(r'<in-bse-shp:WhetherThisIsARevisedFilingOrOriginalFiling[^>]*>Revised<', text, re.I))
-
     # ONE SCALE. The 2018-2024 schema reports the holding as a PERCENT (41.37);
     # V1.1+ reports a FRACTION (0.4137) — `unitRef="pure"`. Mixed across the
     # panel, every quarter-over-quarter change for a company whose filings
@@ -185,7 +204,8 @@ def parse_xbrl_file(path: str) -> list[Holding]:
     cat_rows = [(cref, period, cat) for cref, (period, cat) in ctx.items() if cat is not None and cref in facts]
     total = 0.0
     for cref, _, cat in cat_rows:
-        if cat.lower() in ("shareholdingofpromoterandpromotergroupmember", "publicshareholdingmember"):
+        if cat.lower() in ("shareholdingofpromoterandpromotergroupmember", "publicshareholdingmember",
+                           "nonpromoternonpublicmember"):
             total += _num(facts[cref].get("ShareholdingAsAPercentageOfTotalNumberOfShares", "")) or 0.0
     if 0.5 <= total <= 1.5:
         scale, factor = "fraction", 100.0
@@ -193,6 +213,7 @@ def parse_xbrl_file(path: str) -> list[Holding]:
         scale, factor = "percent", 1.0
     else:
         scale, factor = "unknown", 1.0  # left as-is; the row says so
+    identity_total = total * factor if scale != "unknown" else None
 
     out: list[Holding] = []
     for cref, period, cat_raw in cat_rows:
@@ -200,13 +221,16 @@ def parse_xbrl_file(path: str) -> list[Holding]:
         raw_pct = _num(d.get("ShareholdingAsAPercentageOfTotalNumberOfShares", ""))
         out.append(Holding(
             isin=isin, symbol=symbol, company=company,
-            quarter_end=period, broadcast_date="",  # joined from the master, below
+            quarter_end=period, broadcast_date="", broadcast_source="",  # joined below
+            is_calendar_quarter=period[5:] in ("03-31", "06-30", "09-30", "12-31"),
+            identity_total=identity_total,
             category_raw=cat_raw, category=_CATEGORY.get(cat_raw.lower(), cat_raw),
             pct_shares=None if raw_pct is None else raw_pct * factor,
             pct_scale_raw=scale,
             num_shareholders=_num(d.get("NumberOfShareholders", "")),
             num_shares=_num(d.get("NumberOfSharesOnFullyDilutedBasisIncludingWarrantsESOPAndConvertibleSecurities", "")),
-            revised=revised, source_file=Path(path).name,
+            revised=False,  # from the master, joined below
+            source_file=Path(path).name,
         ))
     return out
 
@@ -226,22 +250,54 @@ def parse() -> list[Holding]:
     # error keying the EXPLORE partition on the symbol; the ISIN survives a
     # rename, the symbol does not. Symbol is the fallback only when the master
     # row has no ISIN.
-    by_isin: dict[tuple[str, str], str] = {}
-    by_symbol: dict[tuple[str, str], str] = {}
+    by_isin: dict[tuple[str, str], Filing] = {}
+    by_symbol: dict[tuple[str, str], Filing] = {}
     for f in sorted(glob.glob(MASTER_GLOB, recursive=True)):
         for fl in parse_master_file(f):
             if fl.isin:
-                by_isin[(fl.isin, fl.quarter_end)] = fl.broadcast_date
-            by_symbol[(fl.symbol, fl.quarter_end)] = fl.broadcast_date
+                by_isin[(fl.isin, fl.quarter_end)] = fl
+            by_symbol[(fl.symbol, fl.quarter_end)] = fl
+    url_stamp = _xbrl_upload_dates()
 
     out: list[Holding] = []
     for f in sorted(glob.glob(XBRL_GLOB, recursive=True)):
         for h in parse_xbrl_file(f):
-            bd = by_isin.get((h.isin, h.quarter_end)) or by_symbol.get((h.symbol, h.quarter_end), "")
-            out.append(h if h.broadcast_date == bd else
-                       Holding(h.isin, h.symbol, h.company, h.quarter_end, bd,
-                              h.category_raw, h.category, h.pct_shares, h.pct_scale_raw,
-                              h.num_shareholders, h.num_shares, h.revised, h.source_file))
+            fl = by_isin.get((h.isin, h.quarter_end)) or by_symbol.get((h.symbol, h.quarter_end))
+            if fl and fl.broadcast_date:
+                bd, src, rev = fl.broadcast_date, "master", fl.revised
+            else:
+                bd, src, rev = url_stamp.get(h.source_file, ""), "xbrl_url" if h.source_file in url_stamp else "", False
+            out.append(Holding(h.isin, h.symbol, h.company, h.quarter_end, bd, src,
+                               h.is_calendar_quarter, h.identity_total,
+                               h.category_raw, h.category, h.pct_shares, h.pct_scale_raw,
+                               h.num_shareholders, h.num_shares, rev, h.source_file))
+    return out
+
+
+def _xbrl_upload_dates() -> dict[str, str]:
+    """archived filename -> upload date, from the timestamp NSE embeds in the
+    XBRL URL (`SHP_1693635_15072026073252_WEB.xml` = 2026-07-15 07:32:52).
+
+    THE FALLBACK for a filing with no master row — 68 companies whose ISIN
+    changed in a scheme of arrangement, 2.2% of rows on the first run. The URL
+    is in the manifest, keyed by the archived path. It is the time the file
+    reached NSE's static host, which is at or before `broadcastDate`, so an
+    entry rule using it is conservative, never early.
+    """
+    man = ARCHIVE / "manifest.jsonl"
+    out: dict[str, str] = {}
+    if not man.exists():
+        return out
+    for line in man.read_text(errors="ignore").splitlines():
+        if '"nse_shp_xbrl"' not in line:
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        m = re.search(r"_(\d{2})(\d{2})(\d{4})\d{6}_WEB\.xml", r.get("url", ""))
+        if m and r.get("path"):
+            out[Path(r["path"]).name] = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
     return out
 
 
@@ -253,14 +309,16 @@ def write(rows: list[Holding]) -> Path:
     try:
         con.execute("""CREATE TABLE t (
             isin VARCHAR, symbol VARCHAR, company VARCHAR, quarter_end VARCHAR,
-            broadcast_date VARCHAR, category_raw VARCHAR, category VARCHAR,
+            broadcast_date VARCHAR, broadcast_source VARCHAR, is_calendar_quarter BOOLEAN,
+            identity_total DOUBLE, category_raw VARCHAR, category VARCHAR,
             pct_shares DOUBLE, pct_scale_raw VARCHAR, num_shareholders DOUBLE,
             num_shares DOUBLE, revised BOOLEAN, source_file VARCHAR)""")
         con.executemany(
-            "INSERT INTO t VALUES (" + ",".join("?" * 13) + ")",
-            [(r.isin, r.symbol, r.company, r.quarter_end, r.broadcast_date,
-              r.category_raw, r.category, r.pct_shares, r.pct_scale_raw,
-              r.num_shareholders, r.num_shares, r.revised, r.source_file) for r in rows])
+            "INSERT INTO t VALUES (" + ",".join("?" * 16) + ")",
+            [(r.isin, r.symbol, r.company, r.quarter_end, r.broadcast_date, r.broadcast_source,
+              r.is_calendar_quarter, r.identity_total, r.category_raw, r.category,
+              r.pct_shares, r.pct_scale_raw, r.num_shareholders, r.num_shares,
+              r.revised, r.source_file) for r in rows])
         tmp = OUT.with_suffix(".parquet.partial")
         con.execute(f"COPY (SELECT * FROM t ORDER BY symbol, quarter_end, category) "
                     f"TO '{tmp}' (FORMAT PARQUET)")
@@ -283,11 +341,16 @@ def main() -> int:
     files = len({r.source_file for r in rows})
     symbols = len({r.symbol for r in rows if r.symbol})
     quarters = len({r.quarter_end for r in rows})
-    with_bd = sum(1 for r in rows if r.broadcast_date)
+    srcs: dict[str, int] = {}
+    for r in rows:
+        srcs[r.broadcast_source or "none"] = srcs.get(r.broadcast_source or "none", 0) + 1
+    cal = len({r.quarter_end for r in rows if r.is_calendar_quarter})
     print(f"  {len(rows):,} row(s) from {files:,} filing(s), {symbols:,} symbol(s), "
-          f"{quarters:,} distinct quarter-end(s)")
-    print(f"  {with_bd:,}/{len(rows):,} rows joined to a broadcast_date "
-          f"({len(rows) - with_bd:,} unmatched — no master row for that ISIN/quarter)")
+          f"{cal} calendar quarter(s) + {quarters - cal} off-cycle date(s)")
+    print(f"  broadcast_date from: {srcs}")
+    bad = len({r.source_file for r in rows if r.identity_total is not None and abs(r.identity_total - 100) > 1})
+    print(f"  {bad} filing(s) whose promoter+public+other != 100 by more than 1pt (identity_total says which)")
+    print(f"  {len({r.source_file for r in rows if r.revised})} revised filing(s), per the master")
     scales = {}
     for r in rows:
         scales[r.pct_scale_raw] = scales.get(r.pct_scale_raw, 0) + 1
