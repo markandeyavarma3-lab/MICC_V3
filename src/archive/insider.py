@@ -56,6 +56,12 @@ from src.common.hashing import hash_bytes  # noqa: E402
 from src.common.paths import ARCHIVE  # noqa: E402
 
 SOURCE_ID = "nse_insider_pit"
+#: Per-XBRL manifest rows (2026-09-18). Until this the detail fetch recorded
+#: nothing per file, so no run could know which URLs it already held; every
+#: run re-fetched held files in index order, spent its 400-file budget on
+#: duplicates, and reported "0 new" — while 1,580 of 2,672 distinct filings
+#: had never been fetched. Measured by sampling three URLs: one held.
+XBRL_SOURCE_ID = "nse_insider_xbrl"
 EXCHANGE = "NSE"
 REPORT_TYPE = "INSIDER"
 
@@ -143,6 +149,28 @@ def record(entry: dict) -> None:
         fh.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
+#: XBRL url -> latest status ("GONE" for a 404). Built per run by collect();
+#: read by capture_window so a held or gone URL costs no request.
+_prior_xbrl: dict[str, str] = {}
+
+
+def _index_prior_xbrl() -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not MANIFEST.exists():
+        return out
+    for line in MANIFEST.read_text().splitlines():
+        if '"nse_insider_xbrl"' not in line:
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("url"):
+            st = r.get("status")
+            out[r["url"]] = "GONE" if st == "FAILED" and "404" in (r.get("error") or "") else st
+    return out
+
+
 def _seen_digests() -> set[str]:
     if not MANIFEST.exists():
         return set()
@@ -154,7 +182,7 @@ def _seen_digests() -> set[str]:
             r = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if r.get("source_id") == SOURCE_ID and r.get("status") in {"STORED", "DUPLICATE"}:
+        if r.get("source_id") in {SOURCE_ID, XBRL_SOURCE_ID} and r.get("status") in {"STORED", "DUPLICATE"}:
             if r.get("sha256"):
                 out.add(r["sha256"])
     return out
@@ -223,28 +251,48 @@ def capture_window(op, frm: date, to: date, seen: set[str],
     # to prevent it. The index guard covered the index and nothing covered this.
     got = 0
     detail_failures = 0
+    already = 0
+    done_urls: set[str] = set()  # one index row per PERSON; the XML is per filing
     for r in rows:
         if budget[0] <= 0:
             break
         xml = (r.get("xmlFileName") or "").strip()
         app = str(r.get("appId") or "").strip()
-        if not xml or not app:
+        if not xml or not app or xml in done_urls:
             continue
+        done_urls.add(xml)
+        # KNOWN URL, NO REQUEST. This is the whole fix: a held or gone file
+        # costs nothing, so the budget reaches the filings never fetched.
+        if _prior_xbrl.get(xml) in {"STORED", "DUPLICATE", "GONE"}:
+            already += 1
+            continue
+        xrow = {"source_id": XBRL_SOURCE_ID, "exchange": EXCHANGE, "report_type": REPORT_TYPE,
+                "url": xml, "app_id": app, "symbol": (r.get("symbol") or "").strip().upper(),
+                "window_from": frm.isoformat(), "fetched_at": datetime.now(UTC).isoformat()}
         try:
             xb = _get(op, xml, "https://www.nseindia.com/")
-        except Exception:  # noqa: BLE001 - one bad filing must not stop the run
+        except Exception as exc:  # noqa: BLE001 - one bad filing must not stop the run
             detail_failures += 1
+            record({**xrow, "status": "FAILED", "error": str(exc)[:200]})
+            _prior_xbrl[xml] = "GONE" if "404" in str(exc) else "FAILED"
+            time.sleep(RATE_LIMIT)
             continue
         budget[0] -= 1
         d2 = hash_bytes(xb)
         p2 = _path("xbrl", app, d2, frm)
         if d2 in seen or p2.exists():
+            record({**xrow, "status": "DUPLICATE", "sha256": d2, "bytes": len(xb), "path": str(p2)})
+            _prior_xbrl[xml] = "DUPLICATE"
+            time.sleep(RATE_LIMIT)
             continue
         _store(xb, p2)
         seen.add(d2)
+        record({**xrow, "status": "STORED", "sha256": d2, "bytes": len(xb), "path": str(p2)})
+        _prior_xbrl[xml] = "STORED"
         got += 1
         time.sleep(RATE_LIMIT)
     entry["details_stored"] = got
+    entry["details_already_held"] = already
     entry["detail_failures"] = detail_failures
     # Every detail fetch failing while the index succeeded means the XBRL host
     # has moved or is refusing us, not that the filings had no detail.
@@ -268,6 +316,8 @@ def collect(start: date, end: date | None = None,
         print(f"  warmup failed (continuing, the API may still answer): {exc}")
 
     seen = _seen_digests()
+    _prior_xbrl.clear()
+    _prior_xbrl.update(_index_prior_xbrl())
     budget = [max_detail]
     out: list[Outcome] = []
     for i, (a, b) in enumerate(windows(start, end)):
