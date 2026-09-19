@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-18; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-19 15:22 UTC, 4 generation(s), 0 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-19 20:09 UTC, 4 generation(s), 0 commit(s) and 52 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -111,7 +111,7 @@ VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 |---|---|---|---|
 | 6.1 | Register all four experiments, trial counter to 72 | BUILT | 3 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
-| 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 237,271 benchmark rows against five benchmarks. NIFTY500_TR — the config's declared broad_market_headline, unbuildable for 33 days — joined the panel 2026-09-19 (0077) and enters these rows on the next outcomes run |
+| 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 289,636 benchmark rows against five benchmarks. NIFTY500_TR — the config's declared broad_market_headline, unbuildable for 33 days — joined the panel 2026-09-19 (0077) and enters these rows on the next outcomes run |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
 | 6.5 | Monthly-cohort collapse, block bootstrap, NW-HAC | WIRED |  |
 | 6.6 | Three-scheme walk-forward: anchored + rolling + CPCV | — |  |
@@ -148,4 +148,4 @@ VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `6f67b66`.
+Derived at commit `9843b40`.

@@ -228,6 +228,7 @@ sources:
       history beyond ~4 months, so it still does. The retired /api/corporates-pit
       (no -gg) answers 200 with data:[] — see src/archive/insider.py."
     detail_2026_09_18: "The index lists one row per PERSON; the XBRL is per FILING: 17,634 rows -> 2,672 distinct files. Only 1,092 distinct files were on disk because every run re-fetched held files in index order and spent its 400-file budget on duplicates while reporting 0 new. Fixed: per-file manifest rows (nse_insider_xbrl) and a URL index so a held file costs no request; the ~1,580 missing fetched the same night."
+    throttle_2026_09_20: "The 2026-09-19 22:30 stage ran 159 MINUTES against a refusing host, retrieved 12 files, exited 1, and was still running when the 01:00 SHP session started: a failing fetch costs 3 x (TIMEOUT+15s) plus backoff and nothing counted consecutive failures or elapsed time. Given shp.py's guards (0074): MAX_MINUTES=45 wall clock and a 5-consecutive-network-failure breaker (404 exempt). A clock stop is STOPPED/exit 0 (expected end of a backlog run); a refusing host is FAILED/exit 1."
 
   - id: nifty500_tri
     exchange: NSE
