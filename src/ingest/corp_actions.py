@@ -60,16 +60,52 @@ PRODUCED_BY = "src/ingest/corp_actions.py"
 PRICE_AFFECTING = re.compile(
     r"split|bonus|rights|consolidat|sub-division|demerger", re.I)
 
+#: FORMS THAT CARRY AN INSTRUMENT THAT IS NOT THE ORDINARY EQUITY. A subject
+#: mentioning any of these is refused whole, before any ratio is read from it:
+#: "Bonus Ncrps 4:1", "Bonus Debentures 1:1", "Sch Of Agmt- Bonus Deb1:1",
+#: "Bonus Preference Shares 21:1", "Bonus 1 Dvr : 10 Eq Share", "Rights - 7 Ccps
+#: And 7 Warrants:40", "Rights Issue - 1 Ncd ... With 2 Detachable Warrants".
+#: Each has a perfectly readable A:B in it and none dilutes the equity line the
+#: way that A:B would claim. A partly-paid rights share is refused for the same
+#: reason on the other side: its TERP is not the one the ratio and premium give.
+_NOT_EQUITY = re.compile(
+    r"ncrps|debenture|\bdeb\s*\d|preference|ccps|\bdvr\b|warrant|\bncd\b|"
+    r"convertible|partly\s+paid|capital\s+reduction|entitlement", re.I)
+
+_NUM = r"(\d+(?:\.\d+)?)"
+_RS = r"(?:(?:rs|re)\.?\s*)?"
+#: "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per
+#: Share", "Fv Split Rs.10 To Rs.2", "Sub-Division From Rs 10/- Per Share To
+#: Rs 2/- Per Share", "Face Valus Split (Sub-Division) - From Rs 10/- Per To
+#: Rs 2/- Per Share" (NSE's own typo), and "Bonus 1:1 / Face Value Split From
+#: 10/- To Face Value 2/-" where the split half carries no currency at all.
 _SPLIT = re.compile(
-    r"face\s+value\s+split.*?from\s+(?:rs|re)\.?\s*([\d.]+).*?to\s+(?:rs|re)\.?\s*([\d.]+)",
-    re.I | re.S)
-_BONUS = re.compile(r"^bonus\s+(\d+)\s*:\s*(\d+)$", re.I)
-#: The currency prefix is OPTIONAL. "Rights 1:9 @ Premium 91" (RELTD, ex
-#: 2026-06-08) is a perfectly ordinary rights issue that a mandatory `Rs`
-#: rejected — a parser that is strict about punctuation is not being careful,
-#: it is being wrong in a way that looks careful.
+    r"(?:face\s+valu[es]\s+split|fv\s+split|sub-division|\bsplit)"
+    r"[^\d]*?(?:from\s+)?" + _RS + _NUM +
+    r"\s*/?-?(?:\s*(?:per(?:\s+share)?|each))?\s+to\s+(?:face\s+value\s+)?" + _RS + _NUM,
+    re.I)
+#: The reverse of a split: "Consolidation Of Equity Shares From Re 1 Per Share
+#: To Rs 10 Per Share". Face value RISES, share count falls, factor > 1.
+_CONSOLIDATION = re.compile(
+    r"consolidation[^\d]*?(?:from\s+)?" + _RS + _NUM +
+    r"\s*/?-?(?:\s*per(?:\s+share)?)?\s+to\s+" + _RS + _NUM, re.I)
+#: Only these words may stand between "bonus" and its ratio. "Bonus Ncrps",
+#: "Bonus Debentures", "Bonus Preference Shares" and "Bonus 1 Dvr" all fail
+#: here, and the instrument screen above refuses them before this is reached.
+_BONUS = re.compile(
+    r"\bbonus(?:\s+(?:issue|shares?|equity|of|in\s+the\s+ratio\s+of))*"
+    r"\s*[-:]?\s*(\d+)\s*:\s*(\d+)(?![\d.])", re.I)
+#: "Rights 3:5 @ Premium Rs 45/-", "Rights At 2:1 At A Premium Of Rs.39.50 Per
+#: Share", "Rights Issue 4 : 25 @ Premium Rs 194/-", "Rights 5: 116 At Premium
+#: Rs 244", "Rights 7:10 @ Prm Rs 102/-", "Ratio Of The Rights Is 3:2". The
+#: negative look-ahead refuses "Rights 1:11.10", whose ratio is not integral
+#: and whose meaning is not one this parser will guess.
 _RIGHTS = re.compile(
-    r"^rights\s+(\d+)\s*:\s*(\d+)\s*@\s*premium\s+(?:(?:rs|re)\.?\s*)?([\d.]+)", re.I)
+    r"\brights(?:\s+issue)?\s*[-:]?\s*(?:at\s+|eq\s+|is\s+)?(\d+)\s*:\s*(\d+)(?![\d.])",
+    re.I)
+_PREMIUM = re.compile(
+    r"(?:@|at)\s*(?:a\s+)?(?:prem(?:ium)?|prm)\s*(?:of\s+)?" + _RS + _NUM, re.I)
+_AT_PAR = re.compile(r"(?:@|at)\s*par\b", re.I)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +113,7 @@ class Action:
     symbol: str
     isin: str
     date: str            # ex-date, ISO
-    action_type: str     # SPLIT | BONUS | RIGHTS | UNPARSED
+    action_type: str     # SPLIT | CONSOLIDATION | BONUS | RIGHTS | DEMERGER | UNPARSED
     ratio: str
     factor: float | None  # NULL for RIGHTS and UNPARSED
     subject: str
@@ -92,40 +128,94 @@ def _ex_date(raw: str) -> str | None:
     return None
 
 
-def classify(subject: str) -> tuple[str, str, float | None] | None:
-    """(action_type, ratio, factor), or None if not price-affecting at all."""
+Verdict = tuple[str, str, float | None]
+
+
+def classify_all(subject: str) -> list[Verdict] | None:
+    """Every action in the subject, or None if nothing in it is price-affecting.
+
+    ONE SUBJECT CAN CARRY TWO ACTIONS. "Bonus 1:2 And Face Value Split Rs.10/-
+    To Rs.5/-" is a bonus AND a split on one ex-date, and the spine multiplies
+    every factor it finds for a (symbol, date), so both are emitted as rows and
+    neither hides the other. What is NOT done is inference: a subject that
+    names a non-equity instrument anywhere is refused whole, because reading
+    the equity half of "Rights Eq 1:20 @ Premium Rs.715 And 3 Warrants : 1 Eq"
+    and ignoring the warrants would produce a factor that is confidently wrong.
+    """
     s = " ".join((subject or "").split())
     if not PRICE_AFFECTING.search(s):
         return None
+    if _NOT_EQUITY.search(s):
+        return [("UNPARSED", "", None)]
+
+    out: list[Verdict] = []
 
     if (m := _SPLIT.search(s)):
         old, new = float(m.group(1)), float(m.group(2))
         if old > 0 and new > 0 and new <= old:
-            return "SPLIT", f"{m.group(1)}:{m.group(2)}", new / old
-        return "UNPARSED", "", None
+            out.append(("SPLIT", f"{m.group(1)}:{m.group(2)}", new / old))
+        else:
+            return [("UNPARSED", "", None)]
+    elif (m := _CONSOLIDATION.search(s)):
+        old, new = float(m.group(1)), float(m.group(2))
+        if old > 0 and new > old:
+            out.append(("CONSOLIDATION", f"{m.group(1)}:{m.group(2)}", new / old))
+        else:
+            return [("UNPARSED", "", None)]
 
-    if (m := _BONUS.match(s)):
+    if (m := _BONUS.search(s)):
         a, b = int(m.group(1)), int(m.group(2))
         if a > 0 and b > 0:
-            return "BONUS", f"{a}:{b}", b / (a + b)
-        return "UNPARSED", "", None
+            out.append(("BONUS", f"{a}:{b}", b / (a + b)))
+        else:
+            return [("UNPARSED", "", None)]
 
-    if re.match(r"^demerger\b", s, re.I) or re.search(r"\bdemerger\b", s, re.I):
+    if re.search(r"\bdemerger\b", s, re.I):
         # A demerger IS price-affecting and its factor is NOT derivable from the
         # text: it depends on the value assigned to the resulting entity. Found
         # because TRIVENI fell 41.6% on 2026-07-22 with no action on file — the
         # word was simply missing from the screen above, so the one class of
         # event that needs a human was the one class being filtered out.
-        return "DEMERGER", "", None
+        out.append(("DEMERGER", "", None))
 
-    if (m := _RIGHTS.match(s)):
+    if (m := _RIGHTS.search(s)):
         a, b = int(m.group(1)), int(m.group(2))
         if a > 0 and b > 0:
-            # factor needs the cum price; see the module docstring.
-            return "RIGHTS", f"{a}:{b}@{m.group(3)}", None
-        return "UNPARSED", "", None
+            # factor needs the cum price; see the module docstring. The ratio
+            # records the premium when the subject states one, "@0" for an
+            # issue at par, and nothing after the ratio when it is silent.
+            if (pm := _PREMIUM.search(s)):
+                ratio = f"{a}:{b}@{pm.group(1)}"
+            elif _AT_PAR.search(s):
+                ratio = f"{a}:{b}@0"
+            else:
+                ratio = f"{a}:{b}"
+            out.append(("RIGHTS", ratio, None))
+        else:
+            return [("UNPARSED", "", None)]
 
-    return "UNPARSED", "", None
+    # Every price-affecting word must be accounted for by something above. A
+    # subject that says "split" or "rights" and yielded no such row is one the
+    # expressions could not read, and it is surfaced rather than filed under
+    # whatever half of it did parse.
+    kinds = {k for k, _, _ in out}
+    wanted = {"SPLIT": re.search(r"split|sub-division", s, re.I),
+              "CONSOLIDATION": re.search(r"consolidat", s, re.I),
+              "BONUS": re.search(r"bonus", s, re.I),
+              "RIGHTS": re.search(r"rights", s, re.I),
+              "DEMERGER": re.search(r"demerger", s, re.I)}
+    for kind, hit in wanted.items():
+        if hit and kind not in kinds:
+            return [("UNPARSED", "", None)]
+    return out or [("UNPARSED", "", None)]
+
+
+def classify(subject: str) -> Verdict | None:
+    """The first action in the subject — the single-verdict view `classify_all`
+    generalises. A compound subject's remaining rows are only reachable through
+    `classify_all`, which is what `parse` uses."""
+    all_ = classify_all(subject)
+    return None if all_ is None else all_[0]
 
 
 def archived_files() -> list[Path]:
@@ -139,25 +229,27 @@ def parse() -> list[Action]:
     more than once; the key is (symbol, ex-date, subject), which is what makes
     two records the same event rather than two events on one day.
     """
-    seen: dict[tuple[str, str, str], Action] = {}
+    seen: dict[tuple[str, str, str, str], Action] = {}
     for f in archived_files():
         with gzip.open(f, "rb") as fh:
             records = json.loads(fh.read())
         for r in records:
             subject = (r.get("subject") or "").strip()
-            verdict = classify(subject)
-            if verdict is None:
+            verdicts = classify_all(subject)
+            if verdicts is None:
                 continue
             ex = _ex_date(r.get("exDate") or "")
             if ex is None:
                 # An action with no readable ex-date cannot be applied to a price
                 # series at all. Kept as UNPARSED so it is counted, never dropped.
-                verdict = ("UNPARSED", "", None)
+                verdicts = [("UNPARSED", "", None)]
                 ex = ""
-            kind, ratio, factor = verdict
-            key = ((r.get("symbol") or "").strip(), ex, subject)
-            seen[key] = Action(key[0], (r.get("isin") or "").strip(), ex,
-                               kind, ratio, factor, subject)
+            for kind, ratio, factor in verdicts:
+                # The kind is part of the key: a bonus-and-split subject is two
+                # events on one day, and the spine multiplies both factors.
+                key = ((r.get("symbol") or "").strip(), ex, subject, kind)
+                seen[key] = Action(key[0], (r.get("isin") or "").strip(), ex,
+                                   kind, ratio, factor, subject)
     return sorted(seen.values(), key=lambda a: (a.date, a.symbol))
 
 

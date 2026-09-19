@@ -347,3 +347,36 @@ def test_a_404_counts_as_attempted_so_a_gone_filing_does_not_block_completeness(
     shp._prior_xbrl.clear()
     e = shp.capture_symbol(None, "ACME", set(), [10])
     assert e["xbrl_complete"] is True and e["detail_failures"] == 1
+
+
+def test_indexed_symbols_are_skipped_once_the_budget_is_spent_so_unindexed_ones_get_the_time(tmp_path, monkeypatch, capsys):
+    """09-19, 10:30 session: budget spent after 82 minutes, then 945 symbols
+    whose index was already on disk were walked at 2 s each for a DUPLICATE
+    row apiece — 31 minutes in which the 1,113 UNINDEXED symbols, the ones a
+    master fetch would actually help, waited. With no budget the walk skips
+    straight to them."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    # session 1 indexes CACHED and fetches 1 of its 3 filings
+    monkeypatch.setattr(shp, "_get", _fake_get({
+        "share-holdings-master": _master(3),
+        "SHP_0_WEB": b"<x>0</x>", "SHP_1_WEB": b"<x>1</x>", "SHP_2_WEB": b"<x>2</x>"}))
+    shp.collect(["CACHED"], max_detail=1)
+    # session 2: budget 0. CACHED is skipped outright; NEW's master is fetched.
+    calls = []
+    def get(op, url, ref):
+        if url == shp.WARMUP:
+            return b""
+        calls.append(url)
+        return _master(1, xbrl=False)
+    monkeypatch.setattr(shp, "_get", get)
+    out = shp.collect(["CACHED", "NEW"], max_detail=0)
+    assert [o.symbol for o in out] == ["NEW"]
+    assert len(calls) == 1 and "symbol=NEW" in calls[0]
+    assert "1 indexed symbol(s) skipped" in capsys.readouterr().out
+    # and CACHED is still owed, not forgotten: it is cached again next run
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    done, cached = shp._fresh_masters(rows)
+    assert "CACHED" in cached and "CACHED" not in done

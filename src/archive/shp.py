@@ -98,8 +98,16 @@ RATE_LIMIT = 2.0
 #: the host slowed every response to the deadline, the run stretched from an
 #: estimated four hours to seven, and it was still running when the 20:30
 #: collector started — whose deal fetch then took eleven minutes instead of
-#: twenty seconds. 1500 is under an hour at the observed rate.
-MAX_DETAIL_PER_RUN = 1500
+#: twenty seconds. 1500 was under an hour at the observed rate.
+#:
+#: 2500 from 2026-09-19. With the wall clock (below) as the hard stop and the
+#: breaker as the throttle detector, the budget was the binding limit and not
+#: the guard: the 10:30 session on 09-19 spent all 1,500 in 82 minutes at
+#: 3.3 s/file and then idled for the remaining 68. 2500 fills the 150 minutes
+#: at that pace; if the host slows, the wall clock ends the run at the same
+#: hour it always did, with more files instead of fewer. Measured, not
+#: assumed: compare files-per-session before and after in the SHP log.
+MAX_DETAIL_PER_RUN = 2500
 
 #: Wall-clock cap. A run that is being throttled does not finish faster by
 #: continuing; it finishes later and collides with the next scheduled job. The
@@ -485,10 +493,19 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
     out: list[Outcome] = []
     empties = 0
     stopped = ""
+    skipped = 0
     for i, sym in enumerate(todo):
         if datetime.now(UTC) >= deadline_at:
             stopped = f"wall clock: {max_minutes} min reached after {i} symbol(s)"
             break
+        if budget[0] <= 0 and sym in cached:
+            # The index is on disk and the only thing owed is XBRL, which
+            # this run can no longer fetch. Walking it anyway cost 2 s of
+            # rate-limit sleep per symbol for a DUPLICATE row and nothing
+            # else — 945 symbols, 31 minutes, on 2026-09-19 — while the
+            # unindexed symbols behind it waited. They get the time instead.
+            skipped += 1
+            continue
         if i:
             time.sleep(RATE_LIMIT)
         try:
@@ -507,6 +524,9 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         # detail resumes next run from the manifest.
         if (i + 1) % 100 == 0:
             print(f"  ... {i + 1}/{len(todo)}  xbrl budget left {budget[0]}", flush=True)
+    if skipped:
+        print(f"  {skipped} indexed symbol(s) skipped after the XBRL budget was spent; "
+              f"their detail is owed to the next run", flush=True)
 
     if stopped:
         # THROTTLED is a failure: the host refused us and the budget was lost.

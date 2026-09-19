@@ -26,7 +26,7 @@ mkdir -p "$REPO/logs"
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   # 1500 files: under an hour at the ~1,150/h NSE tolerated on 2026-09-17 before
   # throttling; the 150-minute wall clock ends the run by 03:30 regardless.
-  "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 1500 --max-minutes 150
+  "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 2500 --max-minutes 150
   RC=$?
   echo "shp=$RC"
   # LAND WHAT THE SESSION JUST ARCHIVED (2026-09-18). Re-parses every archived
