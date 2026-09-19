@@ -199,6 +199,7 @@ def render(run: Run | None = None) -> str:
             failed = [r for r in rs if r.get("status") == "FAILED"]
             pending = [r for r in rs if r.get("status") == "PENDING"]
             nosess = [r for r in rs if r.get("status") == "NO_SESSION"]
+            stopped = [r for r in rs if r.get("status") == "STOPPED"]
             bits = []
             if new:
                 bits.append(f"{len(new)} NEW ({_size(sum(r.get('bytes', 0) for r in new))})")
@@ -214,6 +215,14 @@ def render(run: Run | None = None) -> str:
                 bits.append(f"{pending[-1].get('session_date', '?')} not yet published")
             if nosess:
                 bits.append(f"{len(nosess)} no session (holiday)")
+            # A run that stopped on its own wall clock is NOT a failure — it is
+            # how a backlog run ends — but it is also not nothing, and a row
+            # that falls through every bucket above renders as "no record",
+            # which reads as a feed that did nothing. The backlog is only
+            # visible if the stop is said out loud.
+            if stopped:
+                why = str(stopped[-1].get("note", "stopped"))
+                bits.append(f"STOPPED — {why.removeprefix('run stopped — ')[:60]}")
             out.append(f"  {sid:<22} {', '.join(bits) or 'no record'}")
             # The error text, not just the count. A FAILED row whose reason is
             # "EMPTY ENVELOPE" is a different morning from one whose reason is

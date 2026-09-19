@@ -11,12 +11,33 @@ catalogued as audit defect #1 and then reproduced here.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from src.common.paths import ROOT
 from src.monitor import status
 
 pytestmark = pytest.mark.data
+
+
+#: Numbers in STATUS.md that a COLLECTOR changes without any code changing.
+#:
+#: The backup line carries "N archived session(s) not in it", which counts up
+#: every time a running collector stores a file. On 2026-09-20 the suite could
+#: not go green while the 01:00 SHP session was working: two files landed
+#: between the regenerate and the assert, and the test reported the document as
+#: stale. It was not stale — it was two minutes old on a machine that collects
+#: around the clock.
+#:
+#: A freshness test that fails because the system is DOING ITS JOB teaches
+#: people to regenerate-and-retry until it passes, which is the same habit as
+#: ignoring it. Normalised here so the test keeps asserting what it means to
+#: assert: that the committed document matches what the CODE derives.
+_VOLATILE = (
+    (re.compile(r"\d+ archived session\(s\) not in it"), "N archived session(s) not in it"),
+    (re.compile(r"\d+ commit\(s\) and"), "N commit(s) and"),
+)
 
 
 def test_status_is_not_stale():
@@ -29,9 +50,14 @@ def test_status_is_not_stale():
     derived = status.render(status.evaluate())
     committed = status.STATUS_PATH.read_text()
 
-    # The commit line changes on every commit and would make this fail
-    # constantly for no information. Everything above it is the actual claim.
-    strip = lambda s: s.split("Derived at commit")[0]  # noqa: E731
+    def strip(s: str) -> str:
+        # The commit line changes on every commit and would make this fail
+        # constantly for no information. Everything above it is the actual claim.
+        s = s.split("Derived at commit")[0]
+        for pattern, replacement in _VOLATILE:
+            s = pattern.sub(replacement, s)
+        return s
+
     assert strip(committed) == strip(derived), (
         "docs/STATUS.md is stale. Regenerate: python -m src.monitor.status"
     )

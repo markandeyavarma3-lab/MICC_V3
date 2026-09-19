@@ -35,6 +35,17 @@ WHY THE TIMESTAMP IS WORTH MORE THAN THE STUDY. `available_from` is LOW
 confidence on 5,742 of 5,877 eligible deals, because bulk-deal publication time
 is assumed rather than observed. These filings carry `broadcastDateTime` to the
 second, so this event class is HIGH confidence from its first collected row.
+
+STOPPING IS A FEATURE, ADDED 2026-09-20. This module knew how to keep trying
+and not how to stop. On 2026-09-19 the 22:30 stage ran 159 minutes against a
+refusing host, retrieved 12 files, failed, and was still going when the 01:00
+SHP session started — because a failing fetch costs three attempts at
+(TIMEOUT + 15s) plus backoff, and nothing counted consecutive failures or
+elapsed time. `shp.py` had learned exactly this the day before (0074). Both
+guards are here now: a wall clock (`MAX_MINUTES`) and a breaker
+(`BREAKER_FAILURES`), with the same STOPPED-vs-FAILED distinction — a backlog
+run ending on the clock is expected and exits 0; a host refusing us is a
+failure and exits 1.
 """
 
 from __future__ import annotations
@@ -94,7 +105,39 @@ WINDOW_DAYS = 30
 #: that follow have a handful. Raise deliberately for a catch-up.
 MAX_DETAIL_PER_RUN = 400
 
+#: WALL CLOCK, ADDED 2026-09-20 AFTER IT COST 159 MINUTES.
+#:
+#: On 2026-09-19 the 22:30 collector's insider stage ran for two hours and
+#: thirty-nine minutes, fetched 12 files, failed, and was still running when
+#: the 01:00 SHP session started. NSE was refusing: every fetch spent three
+#: attempts x (TIMEOUT + 15s) plus 5s and 10s of backoff before giving up, and
+#: nothing counted how many had failed in a row or how long the stage had been
+#: going. `shp.py` learned this on 2026-09-18 (0074) and got both guards; this
+#: module is the one that did not, and it failed the same way six weeks later.
+#:
+#: 45 minutes. A healthy daily run does a handful of files and finishes in
+#: under a minute; a run still going at 45 is not going to finish, and the
+#: budget it would spend is better spent by the next slot on a quieter host.
+MAX_MINUTES = 45
+
+#: Circuit breaker. This many CONSECUTIVE network failures means the host is
+#: refusing us, not that these particular filings are missing. A 404 is exempt:
+#: it is a fact about one file (12 old filings 404 permanently) and says
+#: nothing about the host's willingness to serve the next one.
+BREAKER_FAILURES = 5
+
 MANIFEST = ARCHIVE / "manifest.jsonl"
+
+
+class Throttled(RuntimeError):
+    """The host is refusing us. Stop and say so, rather than spending the rest
+    of the budget proving it once per file at two minutes each."""
+
+
+def _is_network_failure(err: str) -> bool:
+    """A 404 is a fact about one file. Everything else that reaches here is the
+    host, or the path to it."""
+    return "404" not in err
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,7 +240,12 @@ def _store(body: bytes, dest: Path) -> None:
 
 
 def capture_window(op, frm: date, to: date, seen: set[str],
-                   budget: list[int]) -> dict:
+                   budget: list[int], streak: list[int] | None = None,
+                   deadline_at: datetime | None = None) -> dict:
+    """`streak` counts CONSECUTIVE network failures ACROSS windows; a success
+    resets it and BREAKER_FAILURES raises Throttled. `deadline_at` is the run's
+    wall-clock cap: detail fetching stops at it, the index still lands."""
+    streak = streak if streak is not None else [0]
     url = INDEX_URL.format(frm=f"{frm:%d-%m-%Y}", to=f"{to:%d-%m-%Y}")
     base = {
         "source_id": SOURCE_ID, "exchange": EXCHANGE, "report_type": REPORT_TYPE,
@@ -206,7 +254,13 @@ def capture_window(op, frm: date, to: date, seen: set[str],
     }
     try:
         body = _get(op, url, REFERER)
+        streak[0] = 0
     except Exception as exc:  # noqa: BLE001 - the record is the deliverable
+        if _is_network_failure(str(exc)):
+            streak[0] += 1
+            if streak[0] >= BREAKER_FAILURES:
+                record({**base, "status": "FAILED", "error": str(exc)[:200]})
+                raise Throttled(f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
         return {**base, "status": "FAILED", "error": str(exc)}
 
     try:
@@ -256,6 +310,13 @@ def capture_window(op, frm: date, to: date, seen: set[str],
     for r in rows:
         if budget[0] <= 0:
             break
+        if deadline_at and datetime.now(UTC) >= deadline_at:
+            # The INDEX is already stored above; only the detail stops here,
+            # and the next run resumes from the URL index. A window whose
+            # detail was cut off is not complete and is not recorded as if it
+            # were — `details_stopped` says so and survives into the manifest.
+            entry["details_stopped"] = "wall clock"
+            break
         xml = (r.get("xmlFileName") or "").strip()
         app = str(r.get("appId") or "").strip()
         if not xml or not app or xml in done_urls:
@@ -271,10 +332,23 @@ def capture_window(op, frm: date, to: date, seen: set[str],
                 "window_from": frm.isoformat(), "fetched_at": datetime.now(UTC).isoformat()}
         try:
             xb = _get(op, xml, "https://www.nseindia.com/")
+            streak[0] = 0
         except Exception as exc:  # noqa: BLE001 - one bad filing must not stop the run
             detail_failures += 1
             record({**xrow, "status": "FAILED", "error": str(exc)[:200]})
             _prior_xbrl[xml] = "GONE" if "404" in str(exc) else "FAILED"
+            if _is_network_failure(str(exc)):
+                streak[0] += 1
+                if streak[0] >= BREAKER_FAILURES:
+                    # THE 159-MINUTE RUN. Every one of these costs three
+                    # attempts at (TIMEOUT + 15s) plus 15s of backoff, so
+                    # proving the host is down one file at a time is the most
+                    # expensive way to learn it.
+                    entry["details_stored"] = got
+                    entry["details_already_held"] = already
+                    entry["detail_failures"] = detail_failures
+                    raise Throttled(
+                        f"{streak[0]} consecutive network failures; last: {str(exc)[:80]}")
             time.sleep(RATE_LIMIT)
             continue
         budget[0] -= 1
@@ -307,8 +381,10 @@ def capture_window(op, frm: date, to: date, seen: set[str],
 
 
 def collect(start: date, end: date | None = None,
-            max_detail: int = MAX_DETAIL_PER_RUN) -> list[Outcome]:
+            max_detail: int = MAX_DETAIL_PER_RUN,
+            max_minutes: int = MAX_MINUTES) -> list[Outcome]:
     end = end or datetime.now(UTC).date()
+    deadline_at = datetime.now(UTC) + timedelta(minutes=max_minutes)
     op = _opener()
     try:
         _get(op, WARMUP, "https://www.google.com/")
@@ -319,14 +395,35 @@ def collect(start: date, end: date | None = None,
     _prior_xbrl.clear()
     _prior_xbrl.update(_index_prior_xbrl())
     budget = [max_detail]
+    streak = [0]
     out: list[Outcome] = []
+    stopped = ""
     for i, (a, b) in enumerate(windows(start, end)):
+        if datetime.now(UTC) >= deadline_at:
+            stopped = f"wall clock: {max_minutes} min reached after {i} window(s)"
+            break
         if i:
             time.sleep(RATE_LIMIT)
-        e = capture_window(op, a, b, seen, budget)
+        try:
+            e = capture_window(op, a, b, seen, budget, streak=streak, deadline_at=deadline_at)
+        except Throttled as exc:
+            stopped = f"THROTTLED after {i} window(s): {exc}"
+            break
         record(e)
         out.append(Outcome((a, b), e["status"], e.get("filings", 0),
                            e.get("details_stored", 0), e.get("error", "")))
+
+    if stopped:
+        # THROTTLED is a failure: the host refused us and the run got less than
+        # it asked for because of something outside this machine. The WALL
+        # CLOCK is not — it is how a backlog run is EXPECTED to end, and a
+        # stage alert for it every night is the alert nobody reads. Same
+        # distinction as shp.py (0074): STOPPED, exit 0, visible in /feeds.
+        status = "FAILED" if stopped.startswith("THROTTLED") else "STOPPED"
+        record({"source_id": SOURCE_ID, "exchange": EXCHANGE, "report_type": REPORT_TYPE,
+                "status": status, "fetched_at": datetime.now(UTC).isoformat(),
+                "error" if status == "FAILED" else "note": f"run stopped — {stopped}"})
+        out.append(Outcome((start, end), status, detail=stopped))
     return out
 
 
@@ -337,16 +434,24 @@ def main() -> int:
     ap.add_argument("--start", type=date.fromisoformat, required=True)
     ap.add_argument("--end", type=date.fromisoformat, default=None)
     ap.add_argument("--max-detail", type=int, default=MAX_DETAIL_PER_RUN)
+    ap.add_argument("--max-minutes", type=int, default=MAX_MINUTES,
+                    help="wall clock; the run stops between fetches, not mid-file")
     args = ap.parse_args()
 
-    results = collect(args.start, args.end, args.max_detail)
+    results = collect(args.start, args.end, args.max_detail, args.max_minutes)
     for r in results:
-        flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "FAILED": "FAIL "}.get(r.status, r.status)
+        flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "FAILED": "FAIL ",
+                "STOPPED": "stop "}.get(r.status, r.status)
         print(f"  {flag} {r.window[0]} .. {r.window[1]}  "
               f"{r.filings:>5} filings  {r.details:>4} xbrl  {r.detail}"[:140])
     failed = sum(r.status == "FAILED" for r in results)
-    print(f"\nINSIDER: {len(results)} window(s), {failed} failed, "
+    stopped = [r for r in results if r.status == "STOPPED"]
+    print(f"\nINSIDER: {len(results) - len(stopped)} window(s), {failed} failed, "
           f"{sum(r.filings for r in results):,} filings indexed")
+    if stopped:
+        # Exit 0: the backlog is resumed next run, and a nightly stage alert
+        # for the expected ending of a catch-up is the alert nobody reads.
+        print(f"  RUN STOPPED: {stopped[-1].detail}")
     return 1 if failed else 0
 
 

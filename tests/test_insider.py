@@ -154,3 +154,97 @@ def test_one_xml_shared_by_many_index_rows_is_fetched_once(tmp_path, monkeypatch
     ins._prior_xbrl.clear()
     e = ins.capture_window(None, date(2026, 6, 1), date(2026, 6, 30), set(), [10])
     assert calls.count("https://x/PIT_7.xml") == 1 and e["detail_failures"] == 1
+
+
+# --- stopping: the 159-minute run of 2026-09-19 -----------------------------------
+
+
+def test_consecutive_network_failures_trip_the_breaker_and_stop_the_run(tmp_path, monkeypatch):
+    """THE 159-MINUTE RUN. On 2026-09-19 the 22:30 stage spent two hours and
+    thirty-nine minutes against a refusing host, retrieved 12 files, failed,
+    and was still going when the 01:00 SHP session started. Each failing fetch
+    costs three attempts at (TIMEOUT + 15s) plus backoff, so proving the host
+    is down one file at a time is the most expensive way to learn it."""
+    import json
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "RATE_LIMIT", 0)
+    calls = []
+    def get(op, url, ref):
+        calls.append(url)
+        if "corporates-pit" in url:
+            return _index_body(40)
+        raise RuntimeError("<urlopen error [Errno 8] nodename nor servname provided>")
+    monkeypatch.setattr(ins, "_get", get)
+    ins._prior_xbrl.clear()
+    out = ins.collect(date(2026, 6, 1), date(2026, 6, 30))
+    assert out[-1].status == "FAILED" and "THROTTLED" in out[-1].detail
+    # Five tries, not forty. The breaker is the whole point.
+    assert len([u for u in calls if "WebXMLFile" in u]) == ins.BREAKER_FAILURES
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    assert rows[-1]["status"] == "FAILED" and "THROTTLED" in rows[-1]["error"]
+
+
+def test_a_404_does_not_trip_the_breaker_because_it_is_one_gone_file(tmp_path, monkeypatch):
+    """12 old filings 404 permanently. A gone file says nothing about the
+    host's willingness to serve the next one, and a breaker that counted them
+    would stop every run on the same twelve."""
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "RATE_LIMIT", 0)
+    def get(op, url, ref):
+        if "corporates-pit" in url:
+            return _index_body(20)
+        raise RuntimeError("HTTP Error 404: Not Found")
+    monkeypatch.setattr(ins, "_get", get)
+    ins._prior_xbrl.clear()
+    out = ins.collect(date(2026, 6, 1), date(2026, 6, 30))
+    assert not any(o.status == "FAILED" and "THROTTLED" in o.detail for o in out)
+
+
+def test_the_wall_clock_stops_the_run_and_is_not_a_failure(tmp_path, monkeypatch):
+    """A backlog run ending on the clock is how a catch-up is EXPECTED to end.
+    Reporting it as FAILED pages the owner nightly for working as designed,
+    which is the alert nobody reads (0074, same rule as shp.py)."""
+    import json
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "RATE_LIMIT", 0)
+    monkeypatch.setattr(ins, "_get", lambda op, url, ref: _index_body(1))
+    ins._prior_xbrl.clear()
+    out = ins.collect(date(2026, 1, 1), date(2026, 6, 30), max_minutes=0)
+    assert out[-1].status == "STOPPED" and "wall clock" in out[-1].detail
+    assert len(out) == 1, "stopped before the first window, not after all of them"
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    assert rows[-1]["status"] == "STOPPED" and "error" not in rows[-1]
+
+
+def test_the_index_still_lands_when_the_clock_stops_only_the_detail(tmp_path, monkeypatch):
+    """The index is one cheap fetch and the detail is many expensive ones, so
+    the deadline cuts the detail and keeps the index — the next run resumes
+    from the URL index rather than re-fetching the window."""
+    from datetime import UTC, date, datetime
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "RATE_LIMIT", 0)
+    calls = []
+    def get(op, url, ref):
+        calls.append(url)
+        if "corporates-pit" in url:
+            return _index_body(5)
+        return b"<xbrl/>"
+    monkeypatch.setattr(ins, "_get", get)
+    ins._prior_xbrl.clear()
+    past = datetime.now(UTC)
+    e = ins.capture_window(None, date(2026, 6, 1), date(2026, 6, 30), set(), [10], deadline_at=past)
+    assert e["status"] in ("STORED", "DUPLICATE"), "the index must still be archived"
+    assert e["filings"] == 5 and e["details_stored"] == 0
+    assert e.get("details_stopped") == "wall clock"
+    assert not [u for u in calls if "WebXMLFile" in u]

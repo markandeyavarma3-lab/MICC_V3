@@ -244,3 +244,28 @@ def test_the_legacy_stage_name_is_read_as_the_current_one(tmp_path, monkeypatch)
     assert "COLLECTION FAILED: deals" in text
     assert "PROCESSING FAILED" not in text
     assert "FAIL  deals" in text
+
+
+def test_a_run_that_stopped_on_its_own_clock_says_so_instead_of_no_record(tmp_path, monkeypatch):
+    """A STOPPED row falls through every bucket — not held, not FAILED, not
+    PENDING — so the feed rendered as "no record", which reads as a feed that
+    did nothing on a night it did 45 minutes of work and has a backlog left.
+    The stop is not a failure and must not page; it is also not nothing."""
+    import json
+
+    start = datetime(2026, 9, 20, 3, 0, tzinfo=UTC)
+    (tmp_path / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in [
+        {"source_id": "nse_insider_pit", "status": "STORED", "bytes": 7000,
+         "fetched_at": (start + timedelta(minutes=1)).isoformat()},
+        {"source_id": "nse_insider_pit", "status": "STOPPED",
+         "note": "run stopped — wall clock: 45 min reached after 1 window(s)",
+         "fetched_at": (start + timedelta(minutes=45)).isoformat()},
+    ]))
+    monkeypatch.setattr(runreport, "RUN_TSV",
+                        _tsv(tmp_path, started=start.isoformat(), rows=[("insider", 0, 2700)]))
+    monkeypatch.setattr(runreport, "ARCHIVE", tmp_path)
+    text = runreport.render()
+    assert "STOPPED — wall clock: 45 min reached" in text
+    assert "no record" not in text
+    # A stop is not a failure: the run is still ALL CLEAN and nothing pages.
+    assert "ALL CLEAN" in text and "COLLECTION FAILED" not in text
