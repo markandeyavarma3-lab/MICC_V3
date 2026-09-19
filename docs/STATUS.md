@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 34  WIRED: 9  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-09-18; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-09-18 15:05 UTC, 4 generation(s), 4 commit(s) and 189 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-09-19 15:22 UTC, 4 generation(s), 0 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -102,7 +102,7 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 | 5.3 | Square-root market impact with sensitivity | BUILT |  |
 | 5.4 | Participation cap and delay cost | WIRED | the cap is applied; DELAY cost is not modelled |
 | 5.5 | Volatility-regime multiplier from India VIX | BUILT |  |
-| 5.6 | Six benchmarks incl. constructed smallcap and CHAR_MATCHED | WIRED | five of six built; CHAR_MATCHED runs per event in outcomes.py. NIFTY50_TR is a PRICE index despite total_return: true, and SMALLCAP_SYNTH is equal-weighted despite free_float_proxy_mcap — both declared in src/warehouse/benchmarks.py |
+| 5.6 | Six benchmarks incl. constructed smallcap and CHAR_MATCHED | WIRED | six of six: five daily series, CHAR_MATCHED per event in outcomes.py. NIFTY500_TR is the official TRI from collected:index_tri since 2026-09-19 (0077), replacing a table nothing wrote. NIFTY50_TR is a PRICE index despite total_return: true, and SMALLCAP_SYNTH is equal-weighted despite free_float_proxy_mcap — both declared in src/warehouse/benchmarks.py |
 | 5.7 | Gross / base / pessimistic reporting | BUILT |  |
 
 ## Phase 6 Outcome study
@@ -111,7 +111,7 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 |---|---|---|---|
 | 6.1 | Register all four experiments, trial counter to 72 | BUILT | 3 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
-| 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 237,271 benchmark rows against FIVE benchmarks — NIFTY500_TR is unbuildable (warehouse.benchmark_n500tr does not exist) and it is the config's declared broad_market_headline |
+| 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 237,271 benchmark rows against five benchmarks. NIFTY500_TR — the config's declared broad_market_headline, unbuildable for 33 days — joined the panel 2026-09-19 (0077) and enters these rows on the next outcomes run |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
 | 6.5 | Monthly-cohort collapse, block bootstrap, NW-HAC | WIRED |  |
 | 6.6 | Three-scheme walk-forward: anchored + rolling + CPCV | — |  |
@@ -148,4 +148,4 @@ VERIFIED: 33  WIRED: 10  BUILT: 9  SPECIFIED: 19  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `439cc60`.
+Derived at commit `6f67b66`.

@@ -19,16 +19,29 @@ test_holdings_power.py` parses this file's AST and refuses any reference to
 the signal columns. Decision 0035: power may use the full universe because
 dispersion cannot distinguish a true effect from a false one.
 
-PRELIMINARY, AND SAYS SO ON EVERY LINE OF OUTPUT. Run 2026-09-18 at the
-owner's request on the 240 companies parsed so far (8% of the universe),
-BEFORE registration, to learn early whether ~20 quarters can say anything.
-Three departures from the registered study, each stated in the report:
-market-relative against the seed's NIFTY 50 (not CHAR_MATCHED — the
-characteristic join is the registered study's work), the seed series ends
-2026-07-07 so the last matured quarter is 2026-Q1, and calendar quarters only
-(the owner's decision to keep off-cycle filings affects the SIGNAL's
+PRELIMINARY, AND SAYS SO ON EVERY LINE OF OUTPUT. Run BEFORE registration, to
+learn early whether ~20 quarters can say anything, and re-run as the sweep
+brings companies in. Two departures from the study it previews, both stated in
+the report: the outcome is market-relative, not CHAR_MATCHED (the
+characteristic join is the registered study's work), and calendar quarters
+only (the owner's decision to keep off-cycle filings affects the SIGNAL's
 definition, not the null dispersion of the outcome). Nothing here is frozen,
 hashed or charged to a family.
+
+RUN TWICE SO FAR.
+
+  2026-09-18, 220 companies (8% of the universe), market-relative against the
+  seed's NIFTY 50 price index — which ends 2026-07-07, so quarters maturing
+  after that date were dropped before they could be counted. MDE 12.05% per
+  quarter against a 1.50% bound (8.03x); 4.89% winsorised (3.26x).
+
+  2026-09-19, the sweep so far, against the NIFTY 500 TOTAL RETURN index
+  (0077) — the same leg exp_004 now reports, refreshed nightly, so nothing is
+  dropped at the recent end any more. See the report for the numbers.
+
+A third departure went away between the two: the first run's market leg was
+not the one the study would use, so its market-relative return was not
+comparable to the study's. It is now.
 """
 
 from __future__ import annotations
@@ -38,8 +51,13 @@ from dataclasses import dataclass
 import duckdb
 import numpy as np
 
-from src.common.paths import COLLECTED, DOCS, SEED, research_db, warehouse_dir
+from src.common.paths import COLLECTED, DOCS, research_db, warehouse_dir
 from src.research import power
+#: The MARKET LEG ONLY, so this file and the study measure the same thing. The
+#: AST guard in tests/test_holdings_power.py exists to keep the signal columns
+#: out of this module; importing anything else from the study module would be
+#: the way around it, and a test pins that this is the only name taken.
+from src.research.holdings import market_tri_sql
 from src.research.measure import identified_px_ctes
 
 HOLDINGS = COLLECTED / "shp" / "shp_holdings.parquet"
@@ -56,6 +74,19 @@ Z_SUM = 1.959964 + 0.841621
 #: registration may or may not clip — but the tails' share of the dispersion
 #: is a fact about the outcome the owner should see before choosing.
 WINSOR = (0.01, 0.99)
+#: The EQ+BE universe the sweep is working through, for the scaling projection.
+UNIVERSE_N = 2886
+#: The first run, kept because the report is overwritten and a power estimate
+#: with nothing to compare it to cannot say whether the sweep is helping.
+FIRST_RUN = {
+    "date": "2026-09-18",
+    "companies": 220,
+    "stock_quarters": 3092,
+    "quarters": 18,
+    "market_leg": "the seed's NIFTY 50 PRICE index, which ends 2026-07-07",
+    "mde": 0.1205,
+    "mde_winsor": 0.0489,
+}
 
 
 @dataclass(frozen=True)
@@ -84,7 +115,6 @@ def _frame(env: str | None = None):
     entry, produces no row — it is not yet matured, not a zero.
     """
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
-    nifty = f"{SEED}/global_indices_daily.parquet"
     con = duckdb.connect(str(research_db(env)), read_only=True)
     try:
         sql = f"""
@@ -111,15 +141,13 @@ def _frame(env: str | None = None):
             FROM entry e
             JOIN ordered x ON x.security_id = e.security_id AND x.rn = e.entry_rn + {HORIZON}
         ),
-        mkt AS (
-            SELECT date, close FROM read_parquet('{nifty}') WHERE symbol = 'NIFTY50'
-        )
+        mkt AS ({market_tri_sql()})
         SELECT m.quarter_end, m.security_id,
                (m.exit_close / m.entry_open - 1.0)
              - (mx.close / me.close - 1.0) AS rel
         FROM matured m
-        JOIN mkt me ON CAST(me.date AS DATE) = CAST(m.entry_date AS DATE)
-        JOIN mkt mx ON CAST(mx.date AS DATE) = CAST(m.exit_date AS DATE)
+        JOIN mkt me ON me.d = CAST(m.entry_date AS DATE)
+        JOIN mkt mx ON mx.d = CAST(m.exit_date AS DATE)
         """
         return con.execute(sql).df()
     finally:
@@ -169,20 +197,35 @@ def assess(df, draws: int = DRAWS, seed: int = SEED_RNG) -> Result:
 
 def render(r: Result, n_isins: int) -> str:
     verdict = ("UNDERPOWERED" if r.mde > BOUND else "POWERED") + " at the plausible bound"
+    # Derived, not written down: the first run's "~10x ... sqrt(10) = 3.2x" was
+    # true of 220 companies and silently false of every run after it.
+    scale = UNIVERSE_N / max(n_isins, 1)
     lines = [
         "# HOLDINGS_POWER_PRELIMINARY.md — exp_004 dispersion, BEFORE registration",
         "",
         "**PRELIMINARY. NOT REGISTERED. NOT FROZEN. NOTHING IS CHARGED TO A FAMILY.**",
         "Generated by `python -m src.research.holdings_power` at the owner's request",
         "on the companies parsed so far. No holding percentage, holder count or",
-        "category was read; the deciles are RANDOM. Departures from the registered",
-        "study: market-relative (seed NIFTY 50, ends 2026-07-07) not CHAR_MATCHED;",
-        "calendar quarters only; a partial universe.",
+        "category was read; the deciles are RANDOM. Departures from the study this",
+        "previews: market-relative, not CHAR_MATCHED; calendar quarters only; a",
+        "partial universe. The market leg is the NIFTY 500 TOTAL RETURN index",
+        "(`holdings.market_tri_sql`, decision 0077) — the same leg exp_004 reports,",
+        "so the two are comparable, and it is current to yesterday.",
+        "",
+        f"## Prior run — {FIRST_RUN['date']}",
+        "",
+        f"{FIRST_RUN['companies']} companies, {FIRST_RUN['stock_quarters']:,} stock-quarters, "
+        f"{FIRST_RUN['quarters']} quarters, against {FIRST_RUN['market_leg']}. "
+        f"MDE {FIRST_RUN['mde']:.2%} ({FIRST_RUN['mde'] / BOUND:.2f}x the bound), "
+        f"{FIRST_RUN['mde_winsor']:.2%} winsorised ({FIRST_RUN['mde_winsor'] / BOUND:.2f}x). "
+        "Recorded here because this file is overwritten on every run, and a power",
+        "estimate that cannot be compared with the previous one says nothing about",
+        "whether the sweep is helping.",
         "",
         f"## Landing: **{verdict}** — MDE {r.mde:.2%} per quarter against a bound of {BOUND:.2%} ({r.ratio:.2f}x)",
         "",
         f"- stock-quarters with a matured 63-session return: **{r.n_stock_quarters:,}** across "
-        f"**{n_isins} companies** (of 2,886 in the universe)",
+        f"**{n_isins} companies** (of {UNIVERSE_N:,} in the universe)",
         f"- quarters with >= {MIN_PER_QUARTER} names: **{r.n_quarters}** "
         f"({r.quarters[0]} -> {r.quarters[-1]}); names per quarter: "
         f"min {min(r.names_per_quarter)}, median {int(np.median(r.names_per_quarter))}, max {max(r.names_per_quarter)}",
@@ -196,11 +239,12 @@ def render(r: Result, n_isins: int) -> str:
         "## How to read it",
         "",
         "The MDE scales as 1/sqrt(names per decile) within a quarter and 1/sqrt(quarters)",
-        "across them. The full universe has ~10x the names of this sample, which cuts the",
-        f"within-quarter term by ~sqrt(10) = 3.2x IF the cross-section is independent — it",
-        "is not; stocks move together within a quarter, and that common component does",
-        "not shrink with names. The honest projection for the full panel is therefore",
-        "BETWEEN this number and this number / 3.2, and only the full run says where.",
+        f"across them. The full universe has ~{scale:.1f}x the names of this sample, which cuts",
+        f"the within-quarter term by ~sqrt({scale:.1f}) = {scale ** 0.5:.1f}x IF the cross-section is",
+        "independent — it is not; stocks move together within a quarter, and that common",
+        "component does not shrink with names. The honest projection for the full panel",
+        f"is therefore BETWEEN this number and this number / {scale ** 0.5:.1f}, and only the full",
+        "run says where.",
         "",
         f"Reaching the bound from here needs ({r.ratio:.2f})^2 = {r.ratio**2:.1f}x the effective",
         "observations. Four more quarters arrive per year.",

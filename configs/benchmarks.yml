@@ -27,12 +27,17 @@ benchmarks:
 
   - id: NIFTY500_TR
     role: broad_market_headline
-    source: warehouse.benchmark_n500tr
-    method: capweight_crsldx+div
-    coverage: "2011-08-17 -> present"
+    source: collected.index_tri      # src/ingest/index_tri.py; index_key NIFTY500, column `tri`
+    method: official_tri             # the exchange's own total-return level; nothing constructed
+    total_return: true
+    coverage: "1995-01-01 -> present"
     official: true
-    note: "Official cap-weighted price index + official dividend-yield
-      reinvestment. niftyindices' own TRI series is not free-fetchable."
+    note: "The official NIFTY 500 Total Returns Index, collected daily from
+      niftyindices (sources.yml nifty500_tri) since 2026-09-19. Replaces
+      `warehouse.benchmark_n500tr`, a capweight+dividend construction that no
+      code ever wrote, and the claim that this series 'is not free-fetchable'
+      — falsified 2026-09-15. The only benchmark here whose total_return the
+      data carries; NIFTY50_TR remains a price index. Decision 0077."
 
   - id: NIFTY_MIDCAP100
     role: mid_cap
