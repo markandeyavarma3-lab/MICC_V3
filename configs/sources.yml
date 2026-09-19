@@ -244,7 +244,7 @@ sources:
     request: "POST, JSON body {cinfo: \"{'name':'NIFTY 500','startDate':'DD-Mon-YYYY','endDate':'DD-Mon-YYYY','indexName':'NIFTY 500'}\"}"
     required_headers: { Origin: "https://www.niftyindices.com", Referer: "https://www.niftyindices.com/reports/historical-data", X-Requested-With: XMLHttpRequest }
     fields: [Index Name, Date, TotalReturnsIndex, NTR_Value]
-    existing_rows: 7860              # collected/index_tri on 2026-09-19; benchmarks.yml's NIFTY500_TR still names warehouse.benchmark_n500tr, which is the next wiring step, not this one
+    existing_rows: 7860              # collected/index_tri on 2026-09-19; wired to benchmarks.yml's NIFTY500_TR the same day (0077), replacing warehouse.benchmark_n500tr, and it is exp_004's market-relative leg
     note: "The benchmark hole, now filled at the byte level. NOT the
       Backpage.aspx path (that returns the HTML page with a 200); the JS posts
       to /BackPage/. benchmarks.yml's note that this series 'is not

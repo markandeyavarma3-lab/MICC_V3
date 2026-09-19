@@ -7,17 +7,20 @@ hold 0 rows, and `charmatch.py` — 251 lines implementing the primary one — i
 imported by nothing; step 5.6's own status note says the only test that mentions
 it reads its source as text and never runs it.
 
-WHAT IS ACTUALLY BUILDABLE, MEASURED RATHER THAN ASSUMED. Four of the six are
+WHAT IS ACTUALLY BUILDABLE, MEASURED RATHER THAN ASSUMED. Five of the six are
 daily series and belong here. CHAR_MATCHED is per-event and lives in
 `outcomes.py`, because a characteristic match has no meaning without an event to
-match. That leaves one that cannot be built at all:
+match.
 
-  NIFTY500_TR — benchmarks.yml points it at `warehouse.benchmark_n500tr`.
-  There is no such table, in this warehouse or the seed, and no code has ever
-  written one. It is UNAVAILABLE, and it is the config's declared
-  `broad_market_headline`. Every result carrying benchmark returns is therefore
-  missing its headline broad-market comparison, and that is stated in the output
-  rather than left to be inferred from a short list.
+  NIFTY500_TR was the sixth and was UNBUILDABLE for 33 days. benchmarks.yml
+  pointed it at `warehouse.benchmark_n500tr`, a cap-weighted-plus-dividend
+  construction that no code in this repository ever wrote, on the stated
+  ground that "niftyindices' own TRI series is not free-fetchable". That was
+  falsified on 2026-09-15: the host serves the official series to a POST, and
+  since 2026-09-19 it is collected nightly. The benchmark the config calls its
+  `broad_market_headline` is now the OFFICIAL total-return index — the only
+  series in this panel whose `total_return: true` the data actually carries.
+  Decision 0077.
 
 TWO CLAIMS IN THE CONFIG THAT THE DATA DOES NOT SUPPORT.
 
@@ -36,11 +39,14 @@ TWO CLAIMS IN THE CONFIG THAT THE DATA DOES NOT SUPPORT.
      Built equal-weighted and declared, because a turnover-weighted series
      labelled as cap-weighted is the same class of error as 1.
 
-COVERAGE IS NOT UNIFORM AND THE GAPS ARE AT BOTH ENDS. The index sources stop at
-2026-07-08 and 2026-06-25 while the price spine reaches 2026-09-02, so recent
-events have no index benchmark; NIFTY50 starts 2007-09-17, so the first twenty
-months of deals have none either. Each benchmark reports its own window and
-`outcomes.py` writes a row only where the benchmark actually covers the event.
+COVERAGE IS NOT UNIFORM AND THE GAPS ARE AT BOTH ENDS. The SEED index sources
+stop at 2026-07-08 and 2026-06-25 while the price spine runs months past them,
+so recent events have no NIFTY50_TR or MIDCAP benchmark; NIFTY50 starts
+2007-09-17, so the first twenty months of deals have none either. NIFTY500_TR
+is the exception at both ends — 1995-01-01 to yesterday, refreshed nightly,
+because it is collected rather than inherited. Each benchmark reports its own
+window and `outcomes.py` writes a row only where the benchmark actually covers
+the event.
 """
 
 from __future__ import annotations
@@ -50,7 +56,7 @@ from dataclasses import dataclass
 import duckdb
 import yaml
 
-from src.common.paths import CONFIGS, SEED, warehouse_dir
+from src.common.paths import COLLECTED, CONFIGS, SEED, warehouse_dir
 
 BENCHMARKS_YML = CONFIGS / "benchmarks.yml"
 PRODUCED_BY = "src.warehouse.benchmarks:build"
@@ -58,14 +64,15 @@ PRODUCED_BY = "src.warehouse.benchmarks:build"
 #: Written by this module, one daily close series per benchmark.
 PANEL = "benchmark_daily"
 
-#: Specified in benchmarks.yml, sourced from a table that does not exist.
-#: Named here so the absence is a declared constant rather than a silent gap.
-UNAVAILABLE: dict[str, str] = {
-    "NIFTY500_TR": "benchmarks.yml sources it from `warehouse.benchmark_n500tr`, "
-                   "which exists in neither the warehouse nor the seed and has "
-                   "never been written by any code in this repository. It is the "
-                   "config's declared broad_market_headline.",
-}
+#: Declared in benchmarks.yml, sourced from something that does not exist.
+#: Named here so an absence is a declared constant rather than a silent gap.
+#:
+#: EMPTY SINCE 2026-09-19 (0077). NIFTY500_TR was its only entry and left it
+#: when `collected:index_tri` landed. The machinery stays: the next benchmark
+#: that cannot be built must be declared here and reported, not quietly
+#: dropped from the panel — which is the failure this constant was written
+#: for and would be the failure again if it were deleted for being empty.
+UNAVAILABLE: dict[str, str] = {}
 
 #: Built per event, not as a daily series — see `src/research/outcomes.py`.
 PER_EVENT: tuple[str, ...] = ("CHAR_MATCHED",)
@@ -110,6 +117,23 @@ def _nifty50_sql() -> str:
       SELECT 'NIFTY50_TR' AS benchmark_id, CAST(date AS DATE) AS date, close
       FROM read_parquet('{SEED}/global_indices_daily.parquet')
       WHERE symbol = 'NIFTY50' AND close > 0
+    """
+
+
+def _nifty500_tri_sql() -> str:
+    """The OFFICIAL NIFTY 500 Total Returns Index — `collected:index_tri`,
+    archived daily from niftyindices by `src/archive/index_tri.py`.
+
+    `tri`, NEVER `ntr`. NTR_Value is the net-of-withholding series and the host
+    did not compute it before ~2014: it is NULL on 4,957 of 7,860 rows. Reading
+    it here would not fail — it would silently start the headline benchmark
+    nineteen years late, which is the class of error this module's docstring is
+    otherwise about.
+    """
+    return f"""
+      SELECT 'NIFTY500_TR' AS benchmark_id, date, tri AS close
+      FROM read_parquet('{COLLECTED}/index_tri/index_tri.parquet')
+      WHERE index_key = 'NIFTY500' AND tri > 0
     """
 
 
@@ -174,6 +198,7 @@ def build(env: str | None = None) -> list[Series]:
 
     parts = {
         "NIFTY50_TR": _nifty50_sql(),
+        "NIFTY500_TR": _nifty500_tri_sql(),
         "NIFTY_MIDCAP100": _midcap_sql(),
         # rank_range from benchmarks.yml, read rather than restated.
         "SMALLCAP_SYNTH": None,
@@ -217,7 +242,7 @@ def build(env: str | None = None) -> list[Series]:
 
 
 def main() -> int:
-    print("BENCHMARK PANEL — Plan 2 §5, four daily series")
+    print("BENCHMARK PANEL — Plan 2 §5, five daily series")
     series = build()
     for s in series:
         print(s.render())

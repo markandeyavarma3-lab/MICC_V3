@@ -197,6 +197,31 @@ def market_series_sql(index_key: str = "NIFTY50") -> str:
         ) QUALIFY ROW_NUMBER() OVER (PARTITION BY d ORDER BY pri) = 1"""
 
 
+def market_tri_sql(index_key: str = "NIFTY500") -> str:
+    """The market leg as a TOTAL RETURN: (d, close) from `collected:index_tri`.
+
+    WHY THE SECONDARY MEASURE MOVED TO THIS (0077). `mkt_rel` subtracts the
+    market's return from the name's, and until 2026-09-19 the only market
+    series available was a PRICE index — it omits dividends, so it understates
+    what the market did and flatters every long-side result by the yield. On
+    the NIFTY 500 that is ~1.2%/yr, ~0.3% per quarter, against this study's own
+    plausible-effect bound of 1.5% per quarter. A fifth of the bound, from a
+    column that was never the thing it was being used as.
+
+    benchmarks.yml has named NIFTY500_TR its `headline_index` since 2026-08-18
+    and pointed at a table nothing wrote; this is that table, at last. One
+    source, no fallback and no union: the series starts 1995-01-01, decades
+    before anything else here, so there is nothing to fall back TO.
+
+    `tri`, never `ntr` — see `src/warehouse/benchmarks._nifty500_tri_sql`.
+    """
+    tri = COLLECTED / "index_tri" / "index_tri.parquet"
+    return f"""
+        SELECT date AS d, tri AS close
+        FROM read_parquet('{tri}')
+        WHERE index_key = '{index_key}' AND tri > 0"""
+
+
 # --- half two: the panel, behind the guard ------------------------------------
 
 
@@ -251,7 +276,9 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
             cases.append(f"WHEN {level}.n >= {min_cell} THEN ({level}.m * {level}.n - COALESCE(own.ret, 0)) / ({level}.n - CASE WHEN own.ret IS NULL THEN 0 ELSE 1 END)")
             levels.append(f"WHEN {level}.n >= {min_cell} THEN '{level}'")
         bench = "CASE " + " ".join(cases) + " END"
-        con.execute(f"CREATE TEMP TABLE mkt AS {market_series_sql()}")
+        # The headline index, total return (0077). `market_series_sql` is the
+        # price leg and is kept for anything that needs NIFTY 50 specifically.
+        con.execute(f"CREATE TEMP TABLE mkt AS {market_tri_sql()}")
         df = con.execute(f"""
             SELECT e.isin, e.quarter_end, e.cohort, e.interval_days, e.is_calendar_quarter,
                    e.d_fpi, e.d_foreign, e.d_mf, e.entry_date, f.exit_date, e.adv20,

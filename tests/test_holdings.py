@@ -208,3 +208,60 @@ def test_an_event_gate_pass_that_costs_eat_is_dead_not_alive():
     v = h.verdict(rs, {}, _panel_for_gate(adv=2e5))   # Rs 2 lakh/day ADV: impact dwarfs the spread
     assert v.event_gate["d_fpi"] and v.portfolio_gate["d_fpi"] < 0
     assert v.landing == "POWERED_DEAD"
+
+
+# --- the market leg (0077) --------------------------------------------------------
+
+
+def test_the_market_leg_is_the_total_return_level_and_never_the_net_one(tmp_path, monkeypatch):
+    """`ntr` is net of withholding and the host did not compute it before
+    ~2014 — NULL on 4,957 of 7,860 rows. Reading it in place of `tri` does not
+    fail; it silently starts the market series nineteen years late and drops
+    every cohort before then for want of a benchmark."""
+    import duckdb
+
+    d = tmp_path / "index_tri"
+    d.mkdir()
+    df = pd.DataFrame(
+        [("1995-01-01", "NIFTY500", 1000.0, None),
+         ("2026-09-18", "NIFTY500", 37000.0, 30000.0),
+         ("2026-09-18", "NIFTY50", 26000.0, 21000.0),   # a different index, not this leg
+         ("2026-09-17", "NIFTY500", 0.0, None)],        # a zero level is not a level
+        columns=["date", "index_key", "tri", "ntr"])
+    duckdb.connect().execute(f"COPY (SELECT * FROM df) TO '{d / 'index_tri.parquet'}' (FORMAT PARQUET)")
+    monkeypatch.setattr(h, "COLLECTED", tmp_path)
+
+    got = duckdb.connect().execute(h.market_tri_sql()).fetchall()
+    assert sorted((str(a), b) for a, b in got) == [("1995-01-01", 1000.0), ("2026-09-18", 37000.0)]
+
+
+def test_the_panel_measures_market_relative_against_the_headline_total_return_index():
+    """0077, and the owner's decision this session. `mkt_rel` subtracted a
+    PRICE index until 2026-09-19, crediting the strategy with the market's
+    dividends — ~0.3%/quarter against this study's own 1.5%/quarter bound."""
+    import inspect
+
+    src = inspect.getsource(h.panel)
+    assert "market_tri_sql()" in src
+    assert "market_series_sql()" not in src
+
+
+def test_the_registration_spec_says_which_market_the_secondary_measure_uses():
+    """The spec is hashed as a whole, so prose that names the wrong benchmark
+    freezes the wrong description of what was measured."""
+    import importlib.util
+    import json
+    from pathlib import Path
+
+    root = Path(h.__file__).resolve().parents[2]
+    spec_mod = importlib.util.spec_from_file_location(
+        "register_exp004", root / "scripts" / "register_exp004.py")
+    reg = importlib.util.module_from_spec(spec_mod)
+    spec_mod.loader.exec_module(reg)
+
+    spec = reg.build_spec((2500, 2500, 2886))
+    assert "NIFTY 500 TOTAL RETURN" in spec["benchmark_policy"].upper()
+    assert "collected:index_tri" in spec["benchmark_policy"]
+    # Both preliminary runs are recorded: one power number with nothing to
+    # compare it against cannot say whether the sweep is helping.
+    assert len(json.loads(spec["exploratory_prior_run"])["runs"]) == 2

@@ -3,6 +3,12 @@
 benchmarks.yml has specified six benchmarks since 2026-08-18 and nothing built
 any of them. `outcome_benchmark_returns` held 0 rows and charmatch.py — 251
 lines implementing the primary one — was imported by nothing.
+
+Five of the six are built here as of 2026-09-19, when the headline index
+stopped being a table nobody had written (0077). Two still deviate from what
+the config claims about them, and those deviations are the point of this file:
+a benchmark that is wrong in a way nothing states is worse than one that is
+missing.
 """
 
 from __future__ import annotations
@@ -29,13 +35,33 @@ def test_every_declared_benchmark_is_built_or_declared_missing(series):
     assert declared == covered, f"unaccounted: {sorted(declared ^ covered)}"
 
 
-def test_the_broad_market_headline_is_unavailable_and_says_so():
-    """NIFTY500_TR is the config's own `broad_market_headline` and is sourced
-    from `warehouse.benchmark_n500tr`, which no code has ever written. Every
-    result carrying benchmark returns is missing its headline comparison."""
-    assert "NIFTY500_TR" in benchmarks.UNAVAILABLE
-    why = benchmarks.UNAVAILABLE["NIFTY500_TR"]
-    assert "benchmark_n500tr" in why and len(why) > 100
+def test_the_broad_market_headline_is_built_from_the_official_total_return_index(series):
+    """NIFTY500_TR is the config's own `broad_market_headline` and for 33 days
+    it was sourced from `warehouse.benchmark_n500tr`, which no code ever wrote,
+    on the stated ground that the official series "is not free-fetchable" — a
+    claim falsified 2026-09-15. It is now the exchange's own TRI (0077), and it
+    is the only series here whose `total_return: true` the data carries."""
+    assert "NIFTY500_TR" not in benchmarks.UNAVAILABLE
+    s = series["NIFTY500_TR"]
+    assert s.official and s.spec_honoured, s.deviation
+    assert s.first == "1995-01-01" and s.rows > 7_500
+
+
+def test_the_headline_index_is_current_where_the_seed_backed_series_is_not(series):
+    """The reason to collect rather than inherit. NIFTY50_TR and MIDCAP come
+    from a seed that stopped in mid-2026 and cannot advance; NIFTY500_TR is
+    fetched nightly, so a study run today has a market leg for a cohort that
+    matured last week."""
+    assert series["NIFTY500_TR"].last > series["NIFTY50_TR"].last
+    assert series["NIFTY500_TR"].last > series["NIFTY_MIDCAP100"].last
+
+
+def test_the_headline_index_reads_the_gross_series_not_the_net_one():
+    """`ntr` (net of withholding) is NULL on 4,957 of 7,860 rows because the
+    host did not compute it before ~2014. Reading it would not fail — it would
+    start the headline benchmark nineteen years late."""
+    sql = benchmarks._nifty500_tri_sql()
+    assert "tri AS close" in sql and "ntr" not in sql
 
 
 def test_nifty50_is_not_the_total_return_series_the_config_claims(series):
@@ -58,6 +84,7 @@ def test_the_constructed_smallcap_declares_its_weighting_deviation(series):
 
 def test_the_official_indices_are_not_marked_constructed(series):
     assert series["NIFTY50_TR"].official and series["NIFTY_MIDCAP100"].official
+    assert series["NIFTY500_TR"].official
     assert not series["EW_TOP500"].official
     assert not series["SMALLCAP_SYNTH"].official
 

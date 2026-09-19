@@ -571,8 +571,10 @@ def steps() -> list[Step]:
         Step("5.6", "5 Costs & benchmarks", "Six benchmarks incl. constructed smallcap and CHAR_MATCHED",
              built=lambda c: c.module("src/research/charmatch.py"),
              wired=lambda c: c.duck_rows.get("outcome_benchmark_returns", 0) > 0,
-             note=lambda c: "five of six built; CHAR_MATCHED runs per event in "
-                            "outcomes.py. NIFTY50_TR is a PRICE index despite "
+             note=lambda c: "six of six: five daily series, CHAR_MATCHED per event in "
+                            "outcomes.py. NIFTY500_TR is the official TRI from "
+                            "collected:index_tri since 2026-09-19 (0077), replacing a "
+                            "table nothing wrote. NIFTY50_TR is a PRICE index despite "
                             "total_return: true, and SMALLCAP_SYNTH is equal-"
                             "weighted despite free_float_proxy_mcap — both "
                             "declared in src/warehouse/benchmarks.py"),
@@ -595,9 +597,9 @@ def steps() -> list[Step]:
              note=lambda c: (
                  f"{c.duck_rows.get('deal_forward_outcomes', 0):,} outcomes, "
                  f"{c.duck_rows.get('outcome_benchmark_returns', 0):,} benchmark rows "
-                 f"against FIVE benchmarks — NIFTY500_TR is unbuildable "
-                 f"(warehouse.benchmark_n500tr does not exist) and it is the "
-                 f"config's declared broad_market_headline")),
+                 f"against five benchmarks. NIFTY500_TR — the config's declared "
+                 f"broad_market_headline, unbuildable for 33 days — joined the panel "
+                 f"2026-09-19 (0077) and enters these rows on the next outcomes run")),
         Step("6.4", "6 Outcome study", "Delisting/merger handling at 3 recovery factors",
              # The predicate named src.research.outcomes.delisting_recovery, a
              # module that was never written under that name. A predicate

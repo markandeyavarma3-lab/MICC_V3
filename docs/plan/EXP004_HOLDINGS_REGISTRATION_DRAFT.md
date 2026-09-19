@@ -1,9 +1,10 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED — revision 2, 2026-09-18. Nothing registered.**
+**Status: DRAFT / PROPOSED — revision 3, 2026-09-19. Nothing registered.**
 Written 2026-09-17 for the owner to argue with; revised after their answers
-and after a PRELIMINARY dispersion run (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
-no signal read, nothing frozen) on the first 220 companies. On acceptance it becomes
+and after two PRELIMINARY dispersion runs (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
+no signal read, nothing frozen) — the first on 220 companies, the second on
+449 with the market leg moved to the NIFTY 500 total return (0077). On acceptance it becomes
 decision 0075, `scripts/register_exp004.py` (plain INSERT, hashed), a
 `TRACK_H_HOLDINGS` family in `trials.yml`, and a dispersion-only power run on
 the pattern of `oi_power.py` — in that order, before any forward return is read.
@@ -39,17 +40,26 @@ have 249 and a handful of events in each. This has ~20 quarters and **the entire
 listed universe in each** — the first structure in this project not starved on
 the cross-section.
 
-**Measured, not guessed (2026-09-18, preliminary, 220 companies, 18 matured
-quarters, random deciles, market-relative):** the within-quarter cross-sectional
-SD of a 63-session market-relative return is **33%**, the 1st/99th percentiles
-are **−45% / +74%**, and the MDE of the decile spread is **12.05% per quarter —
-8× the bound**. Winsorised at those percentiles the MDE is **4.89% — 3.3× the
-bound**. A handful of micro-caps that tripled or collapsed inside a quarter
-carry most of the dispersion.
+**Measured, not guessed (preliminary, random deciles, market-relative).** Run
+twice as the sweep brought companies in:
 
-Scaling to the full universe cuts the within-quarter term by at most √10 ≈ 3.2×
-(less, because stocks move together within a quarter): unclipped ≈ 3.8%, still
-short; **winsorised ≈ 1.5% — at the bound.** So the study is feasible only
+| | 2026-09-18 | 2026-09-19 |
+|---|---|---|
+| companies / matured quarters | 220 / 18 | 449 / 19 |
+| market leg | seed NIFTY 50 price (ends 2026-07-07) | NIFTY 500 total return (0077) |
+| within-quarter cross-sectional SD | 33% | 47% |
+| 1st / 99th percentile | −45% / +74% | −44% / +93% |
+| MDE of the decile spread | **12.05%/quarter — 8.0× the bound** | **9.36% — 6.2×** |
+| winsorised at those percentiles | **4.89% — 3.3×** | **3.39% — 2.3×** |
+
+A handful of micro-caps that tripled or collapsed inside a quarter carry most
+of the dispersion, and the second run's wider SD is those names arriving: the
+sweep reaches down the size distribution, so the cross-section gets more
+dispersed even as the MDE falls.
+
+Scaling to the full universe from the second run cuts the within-quarter term
+by at most √6.4 ≈ 2.5× (less, because stocks move together within a quarter):
+unclipped ≈ 3.7%, still short; **winsorised ≈ 1.3% — at the bound.** So the study is feasible only
 with a tail rule, and that rule has to be chosen NOW, before any signal is
 read, or it becomes a knob. Two candidates, one to be picked in §6:
 
@@ -123,7 +133,7 @@ and counted; the original broadcast is the point-in-time fact.
 | entry_policy | Next session's OPEN after `broadcastDate`, per symbol. Never the quarter-end. |
 | exit_policy | Close of entry + h sessions; 0052 delisting policy; no same-day close. |
 | cost_policy | Portfolio gate: long top decile / short bottom decile, equal-weight within side, rebalanced per quarter, full `costs.yml` stack at the pessimistic level, participation cap applied per name. |
-| benchmark_policy | **CHAR_MATCHED** (primary — it is the momentum control, see §4). Market-relative (NIFTY 500 TRI) reported alongside. Swapping the primary re-registers. |
+| benchmark_policy | **CHAR_MATCHED** (primary — it is the momentum control, see §4). Market-relative reported alongside, against the **NIFTY 500 total return** (`collected:index_tri`, benchmarks.yml's `headline_index`, decision 0077) — not a price index: the ~0.3%/quarter dividend leg is a fifth of this study's own bound. Swapping the primary re-registers. |
 | training_period | **None.** Within-quarter decile ranks have no fitted parameter; there is nothing to hold out and nothing to leak. |
 | validation_period | none |
 | final_test_period | `[sweep: first quarter with q−1 available]` → `[sweep: last quarter whose 63-session horizon has matured]`. Touched once. |
@@ -137,7 +147,7 @@ and counted; the original broadcast is the point-in-time fact.
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
 | kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
 | confounds | momentum APPLICABLE (controlled by CHAR_MATCHED; raw vs matched reported — kill 3); share-count APPLICABLE (flagged — kill 4); index inclusion APPLICABLE, NOT controlled (constituents are one snapshot) — stated limitation; delisting APPLICABLE (0052); size/liquidity APPLICABLE (tiers reported; participation cap — kill 2); industry NOT CONTROLLED (`sector_history` is Phase 3; same degradation `char_panel` already declares). |
-| exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md` (2026-09-18): forward market-relative returns were joined to 3,092 stock-quarters to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
+| exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md`, run twice (2026-09-18: 3,092 stock-quarters; 2026-09-19: 6,749): forward market-relative returns were joined to them to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
 
 ## 7. What would make me not register it
 

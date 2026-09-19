@@ -63,10 +63,11 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
             "period-end, earns a higher 63-session CHAR_MATCHED abnormal return than the bottom "
             "decile, after Benjamini-Hochberg across the three tests.",
         "prior_belief":
-            "Weak-to-moderate. The preliminary dispersion run (HOLDINGS_POWER_PRELIMINARY.md, "
-            "no signal read) put the unclipped MDE at 8x the bound and the winsorised MDE at 3.3x "
-            "on 8% of the universe; the tail rule below is what makes the study askable at all, "
-            "and UNDERPOWERED remains the likeliest landing.",
+            "Weak-to-moderate. The preliminary dispersion runs (HOLDINGS_POWER_PRELIMINARY.md, "
+            "no signal read) put the unclipped MDE at 8.0x the bound on 8% of the universe "
+            "(2026-09-18) and 6.2x on 16% (2026-09-19, 449 companies), winsorised 3.3x then 2.3x. "
+            "It improves with the sweep and is not on a path to 1x; the tail rule below is what "
+            "makes the study askable at all, and UNDERPOWERED remains the likeliest landing.",
         "data_version":
             f"shp_holdings.parquet from src/ingest/shp.py at registration: {held} of {universe_n} "
             f"non-empty companies hold XBRL ({held / universe_n:.1%}); {indexed} indexed. "
@@ -101,8 +102,10 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
         "benchmark_policy":
             "CHAR_MATCHED primary (size/momentum/volatility cell at entry, self-excluded, "
             "min_names_per_cell from benchmarks.yml, degradation ladder SIZE_MOM_VOL -> SIZE_MOM -> "
-            "SIZE — outcomes.py's construction, mirrored in holdings.py). Market-relative (NIFTY 50) "
-            "reported alongside. Swapping the primary re-registers.",
+            "SIZE — outcomes.py's construction, mirrored in holdings.py). Market-relative reported "
+            "alongside, against the NIFTY 500 TOTAL RETURN index (collected:index_tri, "
+            "benchmarks.yml's headline_index, decision 0077) — not a price index: the ~0.3%/quarter "
+            "dividend leg is a fifth of this study's own bound. Swapping the primary re-registers.",
         "training_period": "none — within-cohort decile ranks have no fitted parameter",
         "validation_period": "none",
         "final_test_period": "every cohort whose 63-session horizon has matured at the run; touched once",
@@ -145,10 +148,17 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
             "signal; excluded from the primary and counted. Off-cycle filings inside the cap are kept.",
         "trial_family": FAMILY,
         "exploratory_prior_run": json.dumps({
-            "note": "docs/reports/HOLDINGS_POWER_PRELIMINARY.md, 2026-09-18: dispersion of the "
-                    "outcome under RANDOM deciles, no signal column read (tests parse the SQL). "
-                    "Nothing charged.",
-            "counts_seen": {"companies": 220, "stock_quarters": 3092, "quarters": 18},
+            "note": "docs/reports/HOLDINGS_POWER_PRELIMINARY.md: dispersion of the outcome under "
+                    "RANDOM deciles, no signal column read (tests parse the SQL). Run twice as the "
+                    "sweep brought companies in; the report holds the later one. Nothing charged.",
+            "runs": [
+                {"date": "2026-09-18", "companies": 220, "stock_quarters": 3092, "quarters": 18,
+                 "market_leg": "seed NIFTY 50 price index, ends 2026-07-07",
+                 "mde": 0.1205, "mde_winsor": 0.0489},
+                {"date": "2026-09-19", "companies": 449, "stock_quarters": 6749, "quarters": 19,
+                 "market_leg": "NIFTY 500 total return, collected:index_tri (0077)",
+                 "mde": 0.0936, "mde_winsor": 0.0339},
+            ],
         }),
     }
 

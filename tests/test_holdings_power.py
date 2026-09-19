@@ -91,3 +91,27 @@ def test_a_quarter_with_too_few_names_is_excluded_not_averaged_in():
     thin = pd.DataFrame([("2030-03-31", i, 0.0) for i in range(5)], columns=df.columns)
     r = hp.assess(pd.concat([df, thin]), draws=100)
     assert r.n_quarters == 18 and "2030-03-31" not in r.quarters
+
+
+def test_the_only_thing_borrowed_from_the_study_module_is_the_market_leg():
+    """THE WAY AROUND THE GUARD ABOVE. That guard reads this module's own
+    source, so it sees nothing that arrives by import. `from
+    src.research.holdings import *` would satisfy it completely while pulling
+    in `signals()` — the signal parser — and a later line calling it would
+    read as ordinary. The market leg is shared on purpose, so this file and
+    the study measure the same return; nothing else may be."""
+    tree = ast.parse(inspect.getsource(hp))
+    borrowed = {alias.name for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module == "src.research.holdings"
+                for alias in node.names}
+    assert borrowed == {"market_tri_sql"}, f"borrowed from the study module: {sorted(borrowed)}"
+
+
+def test_the_market_leg_is_the_total_return_index_not_a_price_index():
+    """The first run subtracted a PRICE index, so it credited the strategy with
+    the market's dividends — ~0.3% per quarter against a 1.5% bound. It also
+    read a seed file that ends 2026-07-07, silently dropping every quarter that
+    matured after it."""
+    src = inspect.getsource(hp)
+    assert "market_tri_sql()" in src
+    assert "global_indices_daily" not in src, "the seed price leg is back"

@@ -20,6 +20,15 @@ could not fail. This script:
   - exits 0 only if at least one test FAILED under the perturbation, 1 if
     every test stayed green — so a CI step can require the perturbation to
     bite.
+
+ERROR COUNTS AS A BITE (2026-09-19). The first version read only lines
+beginning "FAILED ", and pytest writes "ERROR " when a test cannot run at all
+— a fixture that raised, a collection error. That is the LOUDEST way a suite
+can catch a regression, and it was being reported as "the tests do not pin
+this rule". Found on the first perturbation of the benchmark panel: removing
+NIFTY500_TR from `build()` makes the module fixture raise BenchmarkError, all
+eight tests ERROR, and this script said nothing failed. A tool built to stop
+green-and-empty tests must not itself report a red suite as green.
 """
 
 from __future__ import annotations
@@ -54,7 +63,13 @@ def main(argv: list[str]) -> int:
         env = {**os.environ, "RESEARCH_ENV": os.environ.get("RESEARCH_ENV", "dev")}
         r = subprocess.run([sys.executable, "-m", "pytest", *tests, "-q", "-p", "no:cacheprovider"],
                            capture_output=True, text=True, env=env)
-        failed = [ln.split(" - ")[0].removeprefix("FAILED ") for ln in r.stdout.splitlines() if ln.startswith("FAILED ")]
+        # "ERROR " as well as "FAILED ": a fixture that raises under the
+        # perturbation errors every test in the file, which is the loudest
+        # possible bite and was previously read as no bite at all.
+        failed = [f"{ln.split(' - ')[0].removeprefix('FAILED ').removeprefix('ERROR ')}"
+                  f"{' (error)' if ln.startswith('ERROR ') else ''}"
+                  for ln in r.stdout.splitlines()
+                  if ln.startswith("FAILED ") or ln.startswith("ERROR ")]
     finally:
         shutil.copy2(backup, file)
         restored = file.read_bytes() == backup.read_bytes()
