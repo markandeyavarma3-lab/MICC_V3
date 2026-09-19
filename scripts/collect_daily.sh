@@ -111,6 +111,16 @@ mkdir -p "$REPO/logs"
   note "index_close" $?
   "$REPO/.venv/bin/python" -m src.ingest.index_close
   note "index_close_parse" $?
+  # NIFTY 500 TOTAL RETURN, DAILY (2026-09-19). benchmarks.yml's NIFTY500_TR
+  # had no table behind it since the project began; 32 annual slices were
+  # probed on 09-15 and then nothing, because a probe is not a collector.
+  # One POST for a 45-day window ending today, overlapping the last run by
+  # six weeks; parsed to collected/index_tri, one row per session, latest
+  # slice wins. Reconciled at zero difference on 27 overlapping sessions.
+  "$REPO/.venv/bin/python" -m src.archive.index_tri
+  note "index_tri" $?
+  "$REPO/.venv/bin/python" -m src.ingest.index_tri
+  note "index_tri_parse" $?
   # INDEX CONSTITUENTS, DAILY (2026-09-18). Six lists — the NIFTY 500 and the
   # four size buckets that compose it, plus Microcap 250. There is NO history
   # route anywhere (probed: nsearchives 404s a dated name; niftyindices serves

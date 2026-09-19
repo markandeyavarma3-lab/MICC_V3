@@ -237,12 +237,14 @@ sources:
     licence: public_disclosure
     route: "https://www.niftyindices.com/BackPage/getTotalReturnIndexString"
     route_kind: dated_range          # BACKFILL-CAPABLE: startDate/endDate, max 1 year per request
-    coverage: "1995-01-01 -> 2026-09-10"   # archived; windows before 1995 return []
-    archived_bytes_only: true        # 32 files under INDEX_TRI/; no warehouse table yet
+    coverage: "1995-01-01 -> today"  # archived; windows before 1995 return []
+    collector: src/archive/index_tri.py   # daily stage `index_tri` since 2026-09-19: one POST, 45-day window ending today
+    parser: src/ingest/index_tri.py       # daily stage `index_tri_parse` -> collected/index_tri/index_tri.parquet, one row per session, latest slice wins; 7,860 sessions on 2026-09-19
+    reconciled: "the 09-19 top-up slice vs the 09-15 backfill slice on 27 overlapping sessions: ZERO difference"
     request: "POST, JSON body {cinfo: \"{'name':'NIFTY 500','startDate':'DD-Mon-YYYY','endDate':'DD-Mon-YYYY','indexName':'NIFTY 500'}\"}"
     required_headers: { Origin: "https://www.niftyindices.com", Referer: "https://www.niftyindices.com/reports/historical-data", X-Requested-With: XMLHttpRequest }
     fields: [Index Name, Date, TotalReturnsIndex, NTR_Value]
-    existing_rows: 0                 # nothing parsed; benchmarks.yml still points NIFTY500_TR at a table that does not exist
+    existing_rows: 7860              # collected/index_tri on 2026-09-19; benchmarks.yml's NIFTY500_TR still names warehouse.benchmark_n500tr, which is the next wiring step, not this one
     note: "The benchmark hole, now filled at the byte level. NOT the
       Backpage.aspx path (that returns the HTML page with a 200); the JS posts
       to /BackPage/. benchmarks.yml's note that this series 'is not
