@@ -47,7 +47,7 @@ import duckdb
 import yaml
 
 from src.common.paths import CONFIGS, research_db, warehouse_dir
-from src.research import costs
+from src.research import charmatch, costs
 
 CALCULATION_VERSION = "6.3.0"
 
@@ -293,10 +293,8 @@ def build(env: str | None = None, cutoff: str | None = None) -> BuildResult:
             res.horizon_rows[label] = len(out)
             res.outcomes += len(out)
 
-        min_cell = int(next(b for b in yaml.safe_load(
-            (CONFIGS / "benchmarks.yml").read_text())["benchmarks"]
-            if b["id"] == "CHAR_MATCHED")["construction"]["min_names_per_cell"])
-        res.benchmarks = _write_benchmarks(con, env, spine, cutoff, min_cell)
+        res.benchmarks = _write_benchmarks(con, env, spine, cutoff,
+                                           charmatch.min_names_per_cell())
         return res
     finally:
         con.close()
@@ -313,15 +311,11 @@ def build(env: str | None = None, cutoff: str | None = None) -> BuildResult:
 # a zero benchmark return for a window the benchmark never saw.
 
 
-#: benchmarks.yml `degrade_order: [industry, volatility, momentum]`. Industry is
-#: already gone (sector_history is unbuilt), so the live ladder starts one rung
-#: down. Recorded per event because a silently degraded match is worse than a
-#: declared one — benchmarks.yml `record_fallback_level: true`.
-MATCH_LEVELS: tuple[tuple[str, str], ...] = (
-    ("SIZE_MOM_VOL", "size_q, mom_q, vol_q"),
-    ("SIZE_MOM", "size_q, mom_q"),
-    ("SIZE", "size_q"),
-)
+#: The ladder, the cell minimum and the self-exclusion are DEFINED ONCE, in
+#: `charmatch.py`, and consumed here and in `holdings.py` (2026-09-20). Two
+#: copies kept equal by hand is how a registered study drifts from the table
+#: it claims to reproduce.
+MATCH_LEVELS = charmatch.MATCH_LEVELS
 
 
 def _peer_returns_sql(spine: str, sessions: int, cutoff: str) -> str:
@@ -362,13 +356,10 @@ def _write_benchmarks(con, env, spine: str, cutoff: str,
     # ASOF, not LATERAL: one merge over sorted inputs rather than a lookup per
     # row. Each name carries the characteristics of the most recent rebalance
     # at or before the date, which is what point-in-time means here.
-    con.execute(f"""CREATE OR REPLACE TEMP TABLE cellmap AS
-        SELECT p.symbol, p.d, c.size_q, c.mom_q, c.vol_q
-        FROM (SELECT DISTINCT symbol, CAST(date AS DATE) AS d
-              FROM read_parquet('{spine}')
-              WHERE CAST(date AS DATE) IN (SELECT d FROM evdates)) p
-        ASOF JOIN read_parquet('{charp}') c
-          ON c.symbol = p.symbol AND c.rebalance_date <= p.d""")
+    con.execute("CREATE OR REPLACE TEMP TABLE cellmap AS " + charmatch.cellmap_sql(
+        f"""SELECT DISTINCT symbol, CAST(date AS DATE) AS d
+            FROM read_parquet('{spine}')
+            WHERE CAST(date AS DATE) IN (SELECT d FROM evdates)""", charp))
 
     horizon_list = con.execute(
         "SELECT DISTINCT horizon_sessions FROM deal_forward_outcomes "
@@ -412,43 +403,18 @@ def _write_benchmarks(con, env, spine: str, cutoff: str,
             JOIN cellmap c ON c.symbol = p.symbol AND c.d = p.d
             WHERE p.ret IS NOT NULL""")
         for level, keys in MATCH_LEVELS:
-            con.execute(f"""CREATE OR REPLACE TEMP TABLE cm_{level} AS
-                SELECT d, {keys}, avg(ret) AS m, COUNT(*) AS n
-                FROM cells GROUP BY d, {keys}""")
+            con.execute(f"CREATE OR REPLACE TEMP TABLE cm_{level} AS "
+                        + charmatch.cell_means_sql(level, keys))
 
-        # ONE PASS, FINEST LEVEL FIRST. The first version inserted each level in
-        # turn and excluded outcomes already matched with a NOT IN against the
-        # table being written. That is a growing anti-join inside its own
-        # INSERT, and it made the degradation ladder quadratic. The ladder is a
-        # CASE over three left joins instead, so every outcome is resolved once
-        # and `match_fallback_level` records which rung answered it.
-        joins, cases, levels = [], [], []
-        for level, keys in MATCH_LEVELS:
-            ks = [k.strip() for k in keys.split(",")]
-            on = " AND ".join(f"{level}.{k} = ec.{k}" for k in ks)
-            joins.append(f"LEFT JOIN cm_{level} {level} "
-                         f"ON {level}.d = ec.d AND {on}")
-            # SELF-EXCLUSION, BUT ONLY WHERE THERE IS A SELF TO EXCLUDE.
-            # The event's own name is usually inside the cell mean and must come
-            # out, or every event is partly benchmarked against itself. A name
-            # that delisted inside the window has NO forward return, so it never
-            # entered the mean, and subtracting it would remove a contribution
-            # that was never added.
-            #
-            # `>=`, not `>`. benchmarks.yml says `min_names_per_cell: 10`, which
-            # is a minimum; `> 10` silently requires eleven and rejects cells the
-            # config accepts.
-            cases.append(
-                f"WHEN {level}.n >= {min_cell} THEN "
-                f"({level}.m * {level}.n - COALESCE(own.ret, 0)) / "
-                f"({level}.n - CASE WHEN own.ret IS NULL THEN 0 ELSE 1 END)")
-            levels.append(f"WHEN {level}.n >= {min_cell} THEN '{level}'")
-        bench = "CASE " + " ".join(cases) + " END"
+        # The ladder — one pass, finest level first, self-excluded, `>=` the
+        # config's minimum — is charmatch.ladder(); its docstring carries the
+        # reasons. This consumer only splices the fragments in.
+        lad = charmatch.ladder(min_cell, event="ec", own="own")
         rows = con.execute(f"""
             INSERT INTO outcome_benchmark_returns
-            SELECT o.outcome_id, 'CHAR_MATCHED', {bench},
-                   o.stock_return - ({bench}),
-                   CASE {' '.join(levels)} END
+            SELECT o.outcome_id, 'CHAR_MATCHED', {lad.bench},
+                   o.stock_return - ({lad.bench}),
+                   {lad.match_level}
             FROM o
             -- CELLMAP, NOT CELLS. `cells` carries only names with a non-null
             -- forward return, so joining events to it excluded EVERY delisted
@@ -459,8 +425,8 @@ def _write_benchmarks(con, env, spine: str, cutoff: str,
             -- survived the window.
             JOIN cellmap ec ON ec.symbol = o.symbol AND ec.d = o.trade_date
             LEFT JOIN cells own ON own.symbol = o.symbol AND own.d = o.trade_date
-            {' '.join(joins)}
-            WHERE ({bench}) IS NOT NULL
+            {lad.joins}
+            WHERE ({lad.bench}) IS NOT NULL
             RETURNING 1""").fetchall()
         written["CHAR_MATCHED"] = written.get("CHAR_MATCHED", 0) + len(rows)
     return written

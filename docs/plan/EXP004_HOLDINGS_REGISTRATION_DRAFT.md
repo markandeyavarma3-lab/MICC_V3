@@ -133,7 +133,7 @@ and counted; the original broadcast is the point-in-time fact.
 | entry_policy | Next session's OPEN after `broadcastDate`, per symbol. Never the quarter-end. |
 | exit_policy | Close of entry + h sessions; 0052 delisting policy; no same-day close. |
 | cost_policy | Portfolio gate: long top decile / short bottom decile, equal-weight within side, rebalanced per quarter, full `costs.yml` stack at the pessimistic level, participation cap applied per name. |
-| benchmark_policy | **CHAR_MATCHED** (primary — it is the momentum control, see §4). Market-relative reported alongside, against the **NIFTY 500 total return** (`collected:index_tri`, benchmarks.yml's `headline_index`, decision 0077) — not a price index: the ~0.3%/quarter dividend leg is a fifth of this study's own bound. Swapping the primary re-registers. |
+| benchmark_policy | **CHAR_MATCHED** (primary — it is the momentum control, see §4; one definition in `charmatch.py`, consumed by `outcomes.py` and `holdings.py` alike). Market-relative reported alongside, against the **NIFTY 500 total return** (`collected:index_tri`, benchmarks.yml's `headline_index`, decision 0077) — not a price index: the ~0.3%/quarter dividend leg is a fifth of this study's own bound. Swapping the primary re-registers. |
 | training_period | **None.** Within-quarter decile ranks have no fitted parameter; there is nothing to hold out and nothing to leak. |
 | validation_period | none |
 | final_test_period | `[sweep: first quarter with q−1 available]` → `[sweep: last quarter whose 63-session horizon has matured]`. Touched once. |

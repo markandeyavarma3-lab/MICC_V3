@@ -59,6 +59,105 @@ class CharMatchError(RuntimeError):
     """The panel cannot be built or does not satisfy its own spec."""
 
 
+# --- the match itself: ONE definition, two consumers -----------------------------
+#
+# Until 2026-09-20 everything below was written out twice — in `outcomes.py`,
+# where every deal outcome gets its CHAR_MATCHED return, and in `holdings.py`,
+# where exp_004 gets the same benchmark for its stock-quarters. The
+# registration draft described the second as "outcomes.py's construction,
+# mirrored in holdings.py", which is an admission that two copies were being
+# kept equal by hand. exp_004's spec is hashed at registration and the
+# construction is frozen with it; if the copies drifted afterwards, the study
+# would measure something different from what the outcome table says it
+# measures, and nothing would notice. The pieces that carry the meaning of the
+# benchmark — the ladder, the cell minimum, the self-exclusion — live here now,
+# and the consumers ask for them.
+
+#: benchmarks.yml `degrade_order: [industry, volatility, momentum]`. Industry is
+#: already gone (sector_history is unbuilt), so the live ladder starts one rung
+#: down. Recorded per event because a silently degraded match is worse than a
+#: declared one — benchmarks.yml `record_fallback_level: true`.
+MATCH_LEVELS: tuple[tuple[str, str], ...] = (
+    ("SIZE_MOM_VOL", "size_q, mom_q, vol_q"),
+    ("SIZE_MOM", "size_q, mom_q"),
+    ("SIZE", "size_q"),
+)
+
+
+def min_names_per_cell() -> int:
+    """benchmarks.yml's `min_names_per_cell` for CHAR_MATCHED, read not restated."""
+    cfg = yaml.safe_load((CONFIGS / "benchmarks.yml").read_text())
+    return int(next(b for b in cfg["benchmarks"] if b["id"] == "CHAR_MATCHED")
+               ["construction"]["min_names_per_cell"])
+
+
+def cellmap_sql(names_sql: str, char_panel_glob: str) -> str:
+    """(symbol, d, size_q, mom_q, vol_q) for every (symbol, d) that `names_sql`
+    yields — each name carrying the characteristics of the most recent
+    rebalance AT OR BEFORE the date, which is what point-in-time means here.
+    ASOF, not LATERAL: one merge over sorted inputs, not a lookup per row."""
+    return f"""
+        SELECT p.symbol, p.d, c.size_q, c.mom_q, c.vol_q
+        FROM ({names_sql}) p
+        ASOF JOIN read_parquet('{char_panel_glob}') c
+          ON c.symbol = p.symbol AND c.rebalance_date <= p.d"""
+
+
+def cell_means_sql(level: str, keys: str, cells: str = "cells") -> str:
+    """The mean forward return and the head-count of one cell at one level,
+    from a `cells(symbol, d, ret, size_q, mom_q, vol_q)` pool."""
+    return f"SELECT d, {keys}, avg(ret) AS m, COUNT(*) AS n FROM {cells} GROUP BY d, {keys}"
+
+
+@dataclass(frozen=True, slots=True)
+class Ladder:
+    """The degradation ladder as three SQL fragments the consumer splices in.
+
+    `joins`: one LEFT JOIN per level against `cm_<LEVEL>`, keyed on the event's
+    date and cell columns. `bench`: the CASE that yields the finest qualifying
+    cell's mean, with the event's own return taken out. `match_level`: the CASE
+    naming which rung answered — recorded, never inferred.
+    """
+    joins: str
+    bench: str
+    match_level: str
+
+
+def ladder(min_cell: int, event: str = "ec", own: str = "own") -> Ladder:
+    """Build the ladder for an event table aliased `event` (carrying d, size_q,
+    mom_q, vol_q) and the event's own forward return aliased `own` (carrying
+    ret, possibly NULL).
+
+    ONE PASS, FINEST LEVEL FIRST. The first version inserted each level in turn
+    and excluded outcomes already matched with a NOT IN against the table being
+    written — a growing anti-join inside its own INSERT, quadratic. A CASE over
+    three left joins resolves every event once.
+
+    SELF-EXCLUSION, BUT ONLY WHERE THERE IS A SELF TO EXCLUDE. The event's own
+    name is usually inside the cell mean and must come out, or every event is
+    partly benchmarked against itself. A name that delisted inside the window
+    has NO forward return, so it never entered the mean, and subtracting it
+    would remove a contribution that was never added.
+
+    `>=`, NOT `>`. benchmarks.yml says `min_names_per_cell: 10`, which is a
+    minimum; `> 10` silently requires eleven and rejects cells the config
+    accepts.
+    """
+    joins, cases, levels = [], [], []
+    for level, keys in MATCH_LEVELS:
+        ks = [k.strip() for k in keys.split(",")]
+        on = " AND ".join(f"{level}.{k} = {event}.{k}" for k in ks)
+        joins.append(f"LEFT JOIN cm_{level} {level} ON {level}.d = {event}.d AND {on}")
+        cases.append(
+            f"WHEN {level}.n >= {min_cell} THEN "
+            f"({level}.m * {level}.n - COALESCE({own}.ret, 0)) / "
+            f"({level}.n - CASE WHEN {own}.ret IS NULL THEN 0 ELSE 1 END)")
+        levels.append(f"WHEN {level}.n >= {min_cell} THEN '{level}'")
+    return Ladder(joins=" ".join(joins),
+                  bench="CASE " + " ".join(cases) + " END",
+                  match_level="CASE " + " ".join(levels) + " END")
+
+
 @lru_cache(maxsize=1)
 def spec() -> dict:
     cfg = yaml.safe_load((CONFIGS / "benchmarks.yml").read_text())
