@@ -102,7 +102,9 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
         "benchmark_policy":
             "CHAR_MATCHED primary (size/momentum/volatility cell at entry, self-excluded, "
             "min_names_per_cell from benchmarks.yml, degradation ladder SIZE_MOM_VOL -> SIZE_MOM -> "
-            "SIZE — outcomes.py's construction, mirrored in holdings.py). Market-relative reported "
+            "SIZE — ONE definition in src/research/charmatch.py, consumed by outcomes.py and "
+            "holdings.py alike; the peer pool is this study's own, over its fixed 63-session "
+            "horizon). Market-relative reported "
             "alongside, against the NIFTY 500 TOTAL RETURN index (collected:index_tri, "
             "benchmarks.yml's headline_index, decision 0077) — not a price index: the ~0.3%/quarter "
             "dividend leg is a fifth of this study's own bound. Swapping the primary re-registers.",

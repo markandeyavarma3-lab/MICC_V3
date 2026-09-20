@@ -35,11 +35,15 @@ collapsed inside a quarter; a spread that exists only in names the cost model
 cannot trade fails kill criterion 2 anyway. Winsorisation is REPORTED as
 robustness, never used for the primary.
 
-CHAR_MATCHED here mirrors `outcomes.py`'s construction — ASOF cell at the
-entry date, cell mean of peers' forward returns on the same entry convention,
-self-excluded, `min_names_per_cell` from benchmarks.yml, the same degradation
-ladder. It is a second copy; unifying the two is recorded as a cost, and the
-test suite compares this copy's benchmark to outcomes' on shared dates.
+CHAR_MATCHED here IS `outcomes.py`'s construction, not a mirror of it: the
+ASOF cell at the entry date, the cell means, the self-excluded degradation
+ladder and `min_names_per_cell` all come from `charmatch.py`, which both
+consumers call. Until 2026-09-20 this module carried a second copy, kept
+equal by hand and recorded as a cost; a hand-kept copy under a frozen spec
+is how a registered study drifts from the table it claims to reproduce.
+What is still this module's own is the PEER POOL — forward returns over
+HORIZON sessions per identified security — because the study's horizon is
+fixed and the outcome table's is a grid.
 """
 
 from __future__ import annotations
@@ -50,10 +54,9 @@ from dataclasses import dataclass, field
 import duckdb
 import numpy as np
 import pandas as pd
-import yaml
 
-from src.common.paths import COLLECTED, CONFIGS, DOCS, SEED, governance_db, research_db, warehouse_dir
-from src.research import power
+from src.common.paths import COLLECTED, DOCS, SEED, governance_db, research_db, warehouse_dir
+from src.research import charmatch, power
 from src.research.measure import identified_px_ctes
 
 EXPERIMENT_ID = "exp_004_holdings_change"
@@ -92,16 +95,12 @@ NOTIONAL_INR = 100 * 1e7
 CAP_SESSIONS = 5
 CAP_PCT_ADV = 0.05
 
-MATCH_LEVELS: tuple[tuple[str, str], ...] = (
-    ("SIZE_MOM_VOL", "size_q, mom_q, vol_q"),
-    ("SIZE_MOM", "size_q, mom_q"),
-    ("SIZE", "size_q"),
-)
-
-
-def _min_cell() -> int:
-    cfg = yaml.safe_load((CONFIGS / "benchmarks.yml").read_text())
-    return int(next(b for b in cfg["benchmarks"] if b["id"] == "CHAR_MATCHED")["construction"]["min_names_per_cell"])
+#: CHAR_MATCHED IS DEFINED ONCE, IN charmatch.py (2026-09-20). This module
+#: used to carry its own copy of the ladder, the cell minimum and the
+#: self-exclusion, "mirrored" from outcomes.py — and a mirror kept by hand is
+#: the way a registered study drifts from the table it claims to reproduce
+#: after its spec is frozen. Now both consumers ask the same function.
+MATCH_LEVELS = charmatch.MATCH_LEVELS
 
 
 # --- half one: signals, from the holdings table only ---------------------------
@@ -232,7 +231,7 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
     sig = sig if sig is not None else signals()
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
     charp = str(warehouse_dir(env) / "char_panel" / "**" / "*.parquet")
-    min_cell = _min_cell()
+    min_cell = charmatch.min_names_per_cell()
     con = duckdb.connect(str(research_db(env)), read_only=True)
     try:
         con.register("sig", sig[["isin", "quarter_end", "broadcast_date", "cohort", "interval_days",
@@ -254,10 +253,8 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
             SELECT e.isin, e.quarter_end, x.close / e.entry_open - 1 AS ret, x.d AS exit_date
             FROM ev e JOIN ordered x ON x.security_id = e.security_id AND x.rn = e.entry_rn + {HORIZON}""")
         # CHAR_MATCHED, on outcomes.py's construction (see the module docstring).
-        con.execute(f"""CREATE TEMP TABLE cellmap AS
-            SELECT p.symbol, p.d, c.size_q, c.mom_q, c.vol_q
-            FROM (SELECT DISTINCT symbol, d FROM ordered WHERE d IN (SELECT DISTINCT entry_date FROM ev)) p
-            ASOF JOIN read_parquet('{charp}') c ON c.symbol = p.symbol AND c.rebalance_date <= p.d""")
+        con.execute("CREATE TEMP TABLE cellmap AS " + charmatch.cellmap_sql(
+            "SELECT DISTINCT symbol, d FROM ordered WHERE d IN (SELECT DISTINCT entry_date FROM ev)", charp))
         con.execute(f"""CREATE TEMP TABLE cells AS
             SELECT o.symbol, o.d, LEAD(o.close, {HORIZON}) OVER w / o.open - 1 AS ret, c.size_q, c.mom_q, c.vol_q
             FROM ordered o JOIN cellmap c ON c.symbol = o.symbol AND c.d = o.d
@@ -268,14 +265,8 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
             SELECT f.symbol, f.d, f.ret, c.size_q, c.mom_q, c.vol_q FROM f JOIN cellmap c ON c.symbol = f.symbol AND c.d = f.d
             WHERE f.ret IS NOT NULL""")
         for level, keys in MATCH_LEVELS:
-            con.execute(f"CREATE TEMP TABLE cm_{level} AS SELECT d, {keys}, avg(ret) AS m, COUNT(*) AS n FROM cells GROUP BY d, {keys}")
-        joins, cases, levels = [], [], []
-        for level, keys in MATCH_LEVELS:
-            ks = [k.strip() for k in keys.split(",")]
-            joins.append(f"LEFT JOIN cm_{level} {level} ON {level}.d = ec.d AND " + " AND ".join(f"{level}.{k} = ec.{k}" for k in ks))
-            cases.append(f"WHEN {level}.n >= {min_cell} THEN ({level}.m * {level}.n - COALESCE(own.ret, 0)) / ({level}.n - CASE WHEN own.ret IS NULL THEN 0 ELSE 1 END)")
-            levels.append(f"WHEN {level}.n >= {min_cell} THEN '{level}'")
-        bench = "CASE " + " ".join(cases) + " END"
+            con.execute(f"CREATE TEMP TABLE cm_{level} AS " + charmatch.cell_means_sql(level, keys))
+        lad = charmatch.ladder(min_cell, event="ec", own="own")
         # The headline index, total return (0077). `market_series_sql` is the
         # price leg and is kept for anything that needs NIFTY 50 specifically.
         con.execute(f"CREATE TEMP TABLE mkt AS {market_tri_sql()}")
@@ -284,8 +275,8 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
                    e.d_fpi, e.d_foreign, e.d_mf, e.entry_date, f.exit_date, e.adv20,
                    f.ret AS raw_ret,
                    f.ret - (mx.close / me.close - 1) AS mkt_rel,
-                   f.ret - ({bench}) AS char_rel,
-                   CASE {' '.join(levels)} END AS match_level,
+                   f.ret - ({lad.bench}) AS char_rel,
+                   {lad.match_level} AS match_level,
                    ec.size_q, ec.mom_q, ec.vol_q
             FROM ev e
             JOIN fwd f ON f.isin = e.isin AND f.quarter_end = e.quarter_end
@@ -293,7 +284,7 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
             LEFT JOIN mkt mx ON mx.d = f.exit_date
             LEFT JOIN cellmap ec ON ec.symbol = e.symbol AND ec.d = e.entry_date
             LEFT JOIN cells own ON own.symbol = e.symbol AND own.d = e.entry_date
-            {' '.join(joins)}
+            {lad.joins}
         """).df()
     finally:
         con.close()
