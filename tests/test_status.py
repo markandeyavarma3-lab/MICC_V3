@@ -258,3 +258,24 @@ def test_the_insider_detail_fetch_reports_total_failure():
     assert "detail_failures and got == 0" in src, (
         "a run where every detail fetch failed is not marked FAILED"
     )
+
+
+@pytest.mark.unit
+def test_every_scheduled_collector_holds_the_machine_awake():
+    """A collector that runs while the laptop sleeps is a collector that runs
+    for two seconds every fifteen minutes.
+
+    Measured 2026-09-20 from pmset's log against the manifest: the 01:00 SHP
+    session started at 01:03:15 and the Mac slept at 01:03:17; the 09-19
+    14:30 session did eighteen minutes of work in its 150-minute budget. Both
+    power profiles sleep after one idle minute and launchd does nothing to
+    stop that. The scripts must hold an idle-sleep assertion for their own
+    lifetime — `caffeinate -i -w $$` — so that a run that dies releases it.
+    """
+    for name in ("collect_daily.sh", "shp_nightly.sh"):
+        script = (ROOT / "scripts" / name).read_text()
+        assert "caffeinate -i -w $$" in script, (
+            f"{name} does not hold the machine awake; on battery it sleeps one "
+            f"minute after launchd starts it and the run does nothing until the "
+            f"wall clock expires"
+        )

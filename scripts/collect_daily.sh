@@ -39,6 +39,21 @@ export RESEARCH_ENV=prod
 # mode 600 and names a password file; absent, alerting stays desktop-only and
 # everything else runs unchanged.
 [ -f "$HOME/.micc_alert_env" ] && . "$HOME/.micc_alert_env"
+
+# HOLD THE MACHINE AWAKE FOR AS LONG AS THIS SCRIPT RUNS (2026-09-20, 0078).
+#
+# Both power profiles sleep after ONE idle minute, and launchd starting a job
+# does nothing to stop that. Measured from pmset's log against the manifest:
+# the 09-20 01:00 SHP session started at 01:03:15 and the Mac slept at
+# 01:03:17; the 09-19 14:30 session did eighteen minutes of work in its 150
+# and dark-woke for two seconds every quarter hour until the clock ran out.
+# What looked like a slow host was a sleeping laptop.
+#
+# `-i` prevents IDLE sleep and works on battery; it does not and cannot stop a
+# closed lid. `-w $$` ties the assertion to this script's lifetime, so a run
+# that dies releases it and nothing is left holding the machine up forever.
+caffeinate -i -w $$ >/dev/null 2>&1 &
+
 # EXIT CODES PROPAGATE. Until 2026-09-03 every stage's status was echoed into a
 # log nobody reads and the script returned 0 unconditionally — so launchd and
 # cron could not tell a total failure from a clean run. That is the same
