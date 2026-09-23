@@ -64,9 +64,9 @@ def compose(stages: list[str], log: str) -> str:
         return ""
     lost = sorted(s for s in stages if s in COLLECTION_STAGES)
     other = sorted(s for s in stages if s not in COLLECTION_STAGES)
-    lines = [f"{len(stages)} stage(s) failed: {', '.join(sorted(stages))}", ""]
+    lines = [f"🚨 {len(stages)} stage(s) failed: {', '.join(sorted(stages))}", ""]
     if lost:
-        lines += [f"COLLECTION: {', '.join(lost)}"]
+        lines += [f"🔴 COLLECTION: {', '.join(lost)}"]
         if ROLLING_STAGE in lost:
             # THE FACT, PER SOURCE, NOT THE BOILERPLATE. On 2026-09-17 this
             # said "recoverable only until the file turns over ... Re-run now"
@@ -89,7 +89,7 @@ def compose(stages: list[str], log: str) -> str:
         lines.append("")
     if other:
         lines += [
-            f"PROCESSING: {', '.join(other)}",
+            f"🟡 PROCESSING: {', '.join(other)}",
             "  Data was fetched but a downstream stage did not finish. Nothing is",
             "  lost; the next run retries. If it repeats, the stage is broken —",
             "  charpanel failed twenty times in a row in September before anyone",

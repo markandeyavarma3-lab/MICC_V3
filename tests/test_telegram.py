@@ -156,3 +156,61 @@ def test_send_names_how_many_parts_got_through_before_it_broke(token, monkeypatc
     monkeypatch.setattr(telegram, "call", flaky)
     text = "\n".join("y" * 80 for _ in range(200))
     assert "2/" in telegram.send(text)
+
+
+# --- format_report: headline vs table ------------------------------------------
+
+
+def test_a_column_zero_line_becomes_a_bold_headline():
+    out = telegram.format_report("ALL CLEAN\n  detail line")
+    assert out.startswith("<b>ALL CLEAN</b>")
+    assert "<pre>  detail line</pre>" in out
+
+
+def test_an_indented_or_blank_line_is_boxed_not_bolded():
+    """The convention every render() in this project already writes to: a
+    section title flush left, its data indented. A data row must never
+    become its own bold headline."""
+    out = telegram.format_report("TITLE\n  row one\n  row two\n\n  row three")
+    assert out.count("<b>") == 1
+    assert "row one\n  row two" in out  # the whole run boxed as ONE block
+
+
+def test_consecutive_headers_produce_consecutive_bold_lines_no_empty_pre():
+    """Two headline lines in a row (a title, then a verdict) must not leave
+    an empty <pre></pre> stranded between them."""
+    out = telegram.format_report("COLLECT RUN — x\n✅ ALL CLEAN")
+    assert out == "<b>COLLECT RUN — x</b>\n<b>✅ ALL CLEAN</b>"
+
+
+def test_html_metacharacters_are_escaped_in_both_headlines_and_tables():
+    """The reason this whole module escapes at all: an unescaped `<` makes
+    Telegram reject the ENTIRE message, headline included."""
+    out = telegram.format_report("A <script> title\n  a <b>row</b>")
+    assert "<script>" not in out and "&lt;script&gt;" in out
+    assert "<pre>  a &lt;b&gt;row&lt;/b&gt;</pre>" in out
+
+
+def test_an_all_blank_report_formats_to_nothing_send_still_never_sends_empty(token, monkeypatch):
+    """format_report("") -> "". Telegram rejects an empty message outright, so
+    send() must fall back to a plain wrap rather than transmitting nothing."""
+    assert telegram.format_report("") == ""
+    assert telegram.format_report("\n\n") == ""
+    sent = {}
+    def fake_call(method, params=None, timeout=20):
+        sent["text"] = params["text"]
+        return {}
+    monkeypatch.setattr(telegram, "call", fake_call)
+    telegram.send("\n\n")
+    assert sent["text"] != "", "an empty body was handed to Telegram"
+
+
+def test_a_raw_send_never_bolds_anything_even_a_column_zero_line(token, monkeypatch):
+    """/log and /verdict: a raw log tail or a markdown file's own headings do
+    not follow the header/indent convention, and running them through the
+    smart formatter would bold nearly every line rather than none."""
+    sent = {}
+    monkeypatch.setattr(telegram, "call", lambda m, params=None, timeout=20: sent.setdefault("text", params["text"]) or {})
+    telegram.send("2026-09-23 collect.log\nline one\nline two", raw=True)
+    assert sent["text"] == "<pre>2026-09-23 collect.log\nline one\nline two</pre>"
+    assert "<b>" not in sent["text"]

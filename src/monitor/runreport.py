@@ -151,16 +151,22 @@ def render(run: Run | None = None) -> str:
 
     bad = run.failed
     verdict = "ALL CLEAN" if not bad else f"FAILED — {len(bad)} stage(s)"
+    mark = "✅" if not bad else "❌"
     out += [f"COLLECT RUN — {when}",
-            f"  {verdict}   {len(run.stages)} stages in {_hms(run.elapsed)}", ""]
+            # FLUSH LEFT, ON PURPOSE. telegram.format_report() bolds a line at
+            # column zero; this is the one line an operator actually needs to
+            # read, so it is the one line that is not indented into the table.
+            f"{mark} {verdict}   {len(run.stages)} stages in {_hms(run.elapsed)}", ""]
 
     if bad:
         # The distinction that decides whether the operator acts NOW or later,
-        # stated before the detail rather than after it.
+        # stated before the detail rather than after it. Also flush left, for
+        # the same reason the verdict line above is: this is the headline the
+        # detail underneath supports, not a row in that detail.
         lost = [s.name for s in bad if s.name in COLLECTION_STAGES]
         proc = [s.name for s in bad if s.name not in COLLECTION_STAGES]
         if lost:
-            out.append(f"  COLLECTION FAILED: {', '.join(lost)}")
+            out.append(f"🔴 COLLECTION FAILED: {', '.join(lost)}")
             if ROLLING_STAGE in lost:
                 # Per-source fact, not boilerplate — see stage_alert.compose.
                 try:
@@ -175,7 +181,7 @@ def render(run: Run | None = None) -> str:
                 out.append("    Dated feeds re-fetch for any past date; the next run retries.")
             out.append("")
         if proc:
-            out += [f"  PROCESSING FAILED: {', '.join(proc)}",
+            out += [f"🟡 PROCESSING FAILED: {', '.join(proc)}",
                     "    Bytes are on disk; the next run retries. Act if it repeats.", ""]
 
     out.append("STAGES")

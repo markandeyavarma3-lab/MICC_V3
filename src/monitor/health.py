@@ -466,7 +466,7 @@ def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
         # reasons and need unrelated fixes, and a combined message trains the
         # reader to skim the one that is actually novel.
         broadcast(
-            "institutional-research: BACKUP AT RISK",
+            "🔴 institutional-research: BACKUP AT RISK",
             f"{backup.summary}\n\nArchived sessions outside a backup cannot be "
             f"re-fetched — the historical endpoint answers 503.\n\nFix with:\n"
             f"  cd {ROOT} && ./scripts/backup.sh\n",
@@ -480,7 +480,7 @@ def check(write_file: bool = True, send: bool = True) -> list[SourceHealth]:
             for r in alerting
         )
         broadcast(
-            "institutional-research: COLLECTION STALE",
+            "🔴 institutional-research: COLLECTION STALE",
             f"{detail}\n\nEvery missed session is permanent — the historical "
             f"endpoint answers 503.\n\nRecover with:\n"
             f"  cd {ROOT} && ./scripts/collect_daily.sh\n\n"
