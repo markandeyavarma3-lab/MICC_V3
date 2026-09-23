@@ -127,7 +127,7 @@ def mark(today: date | None = None, stamp: Path | None = None) -> None:
 
 def render() -> str:
     today = datetime.now(IST).date()
-    out = [f"INSTITUTIONAL RESEARCH — {today.isoformat()}", ""]
+    out = [f"📊 INSTITUTIONAL RESEARCH — {today.isoformat()}", ""]
 
     out.append("LAST RUNS")
     runs = _runs()

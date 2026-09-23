@@ -145,6 +145,54 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def format_report(text: str) -> str:
+    """Plain text in, Telegram HTML out — bold section titles, boxed tables.
+
+    ADDED 2026-09-23, AFTER EVERY REPORT ARRIVED AS ONE FLAT SLAB. Every
+    `render()` in this project (runreport, digest, stage_alert, cmd_health)
+    already writes to one convention because it is how a person writes a
+    readable plain-text report: a section title flush against the left
+    margin, everything under it indented two spaces. `send()` used to ignore
+    that shape completely and wrap the WHOLE message in one `<pre>` block, so
+    "ALL CLEAN", "COLLECTION FAILED: deals" and a 20-row staleness table all
+    arrived in the same undifferentiated monospace slab — legible, but nothing
+    on the screen said which line was the answer.
+
+    This reads the existing convention rather than asking every caller to
+    restate it: a line that starts at column zero becomes a bold headline.
+    A line that is indented or blank is buffered and, once a header ends the
+    run, boxed together in one `<pre>` block — Telegram's fixed-width font,
+    which is what keeps a column-aligned table aligned. The result is a
+    message that is mostly the same bytes it always was, arranged so the
+    headline reads before the table does.
+
+    NOTHING UPSTREAM CHANGES SHAPE FOR THIS. A `render()` function still
+    returns one plain string that prints correctly in a terminal; this is
+    the one place — inside `send()` — where that string is additionally
+    given the structure Telegram can display. A render that wants a line
+    treated as data rather than a headline needs only indent it, which is
+    already the convention every one of them follows for its tables.
+    """
+    out: list[str] = []
+    buf: list[str] = []
+
+    def flush() -> None:
+        if buf:
+            body = "\n".join(buf).strip("\n")
+            if body:
+                out.append(f"<pre>{_escape(body)}</pre>")
+            buf.clear()
+
+    for line in text.split("\n"):
+        if line and not line[0].isspace():
+            flush()
+            out.append(f"<b>{_escape(line)}</b>")
+        else:
+            buf.append(line)
+    flush()
+    return "\n".join(out)
+
+
 def chunks(text: str, limit: int = MAX_CHARS) -> list[str]:
     """Split on line boundaries, never mid-line.
 
@@ -173,12 +221,20 @@ def chunks(text: str, limit: int = MAX_CHARS) -> list[str]:
     return out or [""]
 
 
-def send(text: str, to: str | None = None, monospace: bool = True) -> str:
+def send(text: str, to: str | None = None, raw: bool = False) -> str:
     """Send to the configured chat. Returns a sentence. NEVER RAISES.
 
-    `monospace` wraps each chunk in <pre>, which is what makes a column-aligned
-    report readable on a phone. Telegram renders <pre> in a fixed-width font and
-    stops re-wrapping at the screen edge.
+    `raw` wraps each chunk whole in one `<pre>` block instead of running it
+    through `format_report` — for text that does NOT follow the header/indent
+    convention, such as a raw log tail or a markdown file's own headings,
+    where guessing at structure would bold every line rather than none.
+    Everything else — every render() this project writes — takes the default
+    and gets the section-title-plus-boxed-table treatment.
+
+    THE EMPTY-CHUNK GUARD. `format_report` of an all-blank chunk (possible
+    only at a chunk boundary chunks() introduces) returns "", and Telegram
+    rejects an empty message outright — so a chunk that formats to nothing
+    falls back to the plain wrap rather than being dropped or failing send.
     """
     target = to or chat_id()
     if not token():
@@ -188,7 +244,10 @@ def send(text: str, to: str | None = None, monospace: bool = True) -> str:
     parts = chunks(text)
     sent = 0
     for part in parts:
-        body = f"<pre>{_escape(part)}</pre>" if monospace else _escape(part)
+        if raw:
+            body = f"<pre>{_escape(part)}</pre>"
+        else:
+            body = format_report(part) or f"<pre>{_escape(part)}</pre>"
         try:
             call("sendMessage", {
                 "chat_id": target,

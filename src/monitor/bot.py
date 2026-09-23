@@ -87,8 +87,12 @@ def cmd_help(_: list[str]) -> str:
         "  /verdict   the research result as it currently stands",
         "  /help      this",
         "",
-        "The collector reports here after every run it fails, and once a day",
-        "with the digest — on the first run of the day, whatever hour that is.",
+        # INDENTED ON PURPOSE. telegram.format_report() bolds a line flush
+        # against the left margin — right for a section title, wrong for two
+        # lines of trailing prose, which would otherwise arrive as two stray
+        # bold headlines with nothing between them and the command list above.
+        "  The collector reports here after every run it fails, and once a day",
+        "  with the digest — on the first run of the day, whatever hour that is.",
     ])
 
 
@@ -103,17 +107,27 @@ def cmd_digest(_: list[str]) -> str:
 def cmd_health(_: list[str]) -> str:
     from src.monitor import backup_state, health
 
-    out = ["STALENESS"]
-    for r in health.read():
+    rows = health.read()
+    b = backup_state.read()
+    # THE HEADLINE, ADDED SO THIS COMMAND HAS ONE. Every other report here
+    # opens with a one-line verdict; this one made the reader scan the whole
+    # table to learn there was nothing to see. A source can carry ACKNOWLEDGED
+    # gaps and still not be alerting — only `r.alerting` (an OPEN gap, or
+    # staleness past the source's own threshold) counts against the headline.
+    stale = [r for r in rows if r.alerting]
+    mark = "✅" if not stale and not b.alerting else "⚠️"
+    verdict = ("all sources current" if not stale
+               else f"{len(stale)} source(s) stale: {', '.join(r.source_id for r in stale)}")
+    out = [f"{mark} {verdict}", "", "STALENESS"]
+    for r in rows:
         last = r.last_session.isoformat() if r.last_session else "never"
-        mark = "STALE " if r.alerting else "ok    "
+        row_mark = "STALE " if r.alerting else "ok    "
         bits = [f"{r.sessions_stale} session(s) stale"]
         if r.open_gaps:
             bits.append(f"MISSING: {', '.join(d.isoformat() for d in r.open_gaps[:5])}")
         elif r.gaps:
             bits.append(f"{len(r.gaps)} lost (acknowledged)")
-        out.append(f"  {mark}{r.source_id:<22} last {last}  {', '.join(bits)}")
-    b = backup_state.read()
+        out.append(f"  {row_mark}{r.source_id:<22} last {last}  {', '.join(bits)}")
     out += ["", f"  {'AT RISK' if b.alerting else 'ok    '} backup  {b.summary}"]
     return "\n".join(out)
 
@@ -188,6 +202,9 @@ COMMANDS = {
     "/verdict": cmd_verdict,
 }
 
+#: Replies sent UNFORMATTED — see the call site in `serve()`.
+RAW_REPLY_COMMANDS = frozenset({"/log", "/verdict"})
+
 
 def handle(text: str) -> str:
     """Text in, reply out. Pure enough to test without a network.
@@ -260,8 +277,13 @@ def serve(once: bool = False) -> int:
                 continue
             if not text.startswith("/"):
                 continue
-            print(f"{datetime.now(UTC).isoformat()} {text.split()[0]}")
-            telegram.send(handle(text))
+            word = text.split()[0].split("@", 1)[0].lower()
+            print(f"{datetime.now(UTC).isoformat()} {word}")
+            # /log dumps a raw log tail and /verdict a markdown file's own
+            # headings — neither follows the header/indent convention every
+            # render() here writes to, and running them through the smart
+            # formatter would bold every unindented line rather than none.
+            telegram.send(handle(text), raw=word in RAW_REPLY_COMMANDS)
         if once:
             return 0
 
