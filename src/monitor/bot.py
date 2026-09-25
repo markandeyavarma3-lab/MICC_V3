@@ -137,7 +137,8 @@ def cmd_feeds(_: list[str]) -> str:
     if not rows:
         return "no manifest rows in the last 7 days"
     out = ["SESSIONS HELD — last 7 days"]
-    out += [f"  {sid:<22} {n:>2}  newest {last}" for sid, (n, last) in rows.items()]
+    w = max(len(k) for k in rows)
+    out += [f"  {sid:<{w}}  {n:>2}  newest {last}" for sid, (n, last) in rows.items()]
     return "\n".join(out)
 
 

@@ -94,3 +94,42 @@ more files.
 One more process per run, and a laptop that stays awake for its collection
 windows on battery. Against a sweep that was spending most of its budget
 asleep, this is not a close call.
+
+## Amendment 1 — 2026-09-25: `-i` does not hold a dark wake
+
+**What happened.** Four collector slots in three days went wrong, and the
+first diagnosis given to the owner, "the lid was closed", was right for only
+one of them. `last reboot` and `pmset -g log` together say:
+
+| slot | machine state | cause |
+|---|---|---|
+| 09-23 08:30 | **powered off** until a boot at 09:24 | nothing can run on a switched-off Mac |
+| 09-24 08:30 | **shut down at 00:15**, booted 09:35 | same |
+| 09-24 20:30 | lid open, idle-slept at 20:17 | run launched in a DARK WAKE at 20:41:08; asleep again at 20:41:10 |
+| 09-25 08:30 | lid closed (the 09:43 wake cites the lid) | run launched in a dark wake at 08:30:39; asleep at 08:30:48 |
+
+The 09-24 power log showed no sleep between 00:14 and 09:41, which read as
+"awake and launchd didn't fire". It was the absence of a machine, not the
+presence of one. `kern.boottime` settled it.
+
+**The fixable one is 09-24 20:30.** When launchd starts a job on a sleeping
+Mac, the job runs inside a dark wake: display off, a few seconds granted.
+`caffeinate -i` prevents IDLE sleep; a dark wake ending is not idle sleep, and
+the assertion does not extend it. `caffeinate -u` declares the user active,
+which is what converts a dark wake to a full wake — pmset logged exactly that
+transition at 09:44 the same morning ("DarkWake to FullWake ... due to
+UserActivity Assertion"). Both scripts now run `caffeinate -u -t 5` before the
+`-i` hold. The test that pins `-i` now pins `-u` too.
+
+**Still not fixable in software:** a closed lid on battery (09-25), and a
+powered-off machine (09-23, 09-24). The first needs the lid open or AC power
+with an external display; the second needs the Mac left on.
+
+**Unverified until it happens.** The assertion was confirmed accepted
+(`pmset -g assertions` lists `UserIsActive`), but a dark-wake start with the
+lid open cannot be reproduced on demand. The signature to look for in the
+next such slot is a `DarkWake to FullWake ... UserActivity` line within
+seconds of the run's start, and no "Entering Sleep" until the run ends.
+
+**Cost:** the display lights for about five seconds at each slot that finds
+the Mac asleep with the lid open.

@@ -180,7 +180,12 @@ def format_report(text: str) -> str:
         if buf:
             body = "\n".join(buf).strip("\n")
             if body:
-                out.append(f"<pre>{_escape(body)}</pre>")
+                # A BLANK LINE AFTER EVERY <pre>, NOT JUST A NEWLINE. Telegram
+                # swallows the single newline that follows a </pre>, so the
+                # next headline was glued to the table's last row — the owner
+                # pasted "...the next slot retries.STAGES" and
+                # "failed: dealsFEEDS" on 2026-09-25. Two newlines leave one.
+                out.append(f"<pre>{_escape(body)}</pre>\n")
             buf.clear()
 
     for line in text.split("\n"):
@@ -190,7 +195,7 @@ def format_report(text: str) -> str:
         else:
             buf.append(line)
     flush()
-    return "\n".join(out)
+    return "\n".join(out).rstrip("\n")
 
 
 def chunks(text: str, limit: int = MAX_CHARS) -> list[str]:

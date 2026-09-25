@@ -39,6 +39,18 @@ from src.monitor import backup_state, health
 from src.monitor.stage_alert import COLLECTION_STAGES, ROLLING_STAGE, canonical
 
 RUN_TSV = LOGS / "last_run.tsv"
+
+#: The stage every run notes last — the fallback finish signal for records
+#: written before the `# finished` line existed.
+LAST_STAGE = "backup"
+
+
+def collector_running() -> bool:
+    """A collector process is alive right now. Same check as bot._running()."""
+    import subprocess
+    r = subprocess.run(["pgrep", "-f", "scripts/collect_daily.sh"],
+                       capture_output=True, text=True, check=False)
+    return bool(r.stdout.strip())
 IST = ZoneInfo("Asia/Kolkata")
 
 #: Statuses that mean the bytes are on disk. EMPTY_DAY is a holiday or a quiet
@@ -62,6 +74,9 @@ class Stage:
 class Run:
     started: datetime | None
     stages: list[Stage]
+    #: True once the collector wrote its `# finished` line — or, for a record
+    #: written before that line existed, once the last stage (`backup`) is in.
+    finished: bool = True
 
     @property
     def failed(self) -> list[Stage]:
@@ -90,7 +105,11 @@ def read_run(path: Path | None = None) -> Run:
         return Run(None, [])
     started: datetime | None = None
     stages: list[Stage] = []
+    finished = False
     for line in path.read_text(errors="ignore").splitlines():
+        if line.startswith("# finished "):
+            finished = True
+            continue
         if line.startswith("# started "):
             try:
                 started = datetime.fromisoformat(line[len("# started "):].strip())
@@ -104,7 +123,10 @@ def read_run(path: Path | None = None) -> Run:
             stages.append(Stage(canonical(parts[0]), int(parts[1]), int(parts[2])))
         except ValueError:
             continue
-    return Run(started, stages)
+    # Records written before 2026-09-25 carry no marker. `backup` has always
+    # been the last stage noted, so its presence means the run got to the end.
+    finished = finished or any(s.name == LAST_STAGE for s in stages)
+    return Run(started, stages, finished)
 
 
 def collected_since(since: datetime | None) -> list[dict]:
@@ -150,13 +172,27 @@ def render(run: Run | None = None) -> str:
                 f"  or {RUN_TSV.name} was never written. Check logs/launchd_collect.err.")
 
     bad = run.failed
-    verdict = "ALL CLEAN" if not bad else f"FAILED — {len(bad)} stage(s)"
-    mark = "✅" if not bad else "❌"
+    if not run.finished:
+        # A PARTIAL RECORD IS NOT A VERDICT. /status on 09-25 answered "FAILED
+        # — 4 stages in 73m" for a run with nineteen stages still to go, which
+        # reads as a finished, broken run. Say what it actually is.
+        if collector_running():
+            mark, verdict = "⏳", f"IN PROGRESS — {len(run.stages)} stage(s) done so far"
+        else:
+            last = run.stages[-1].name if run.stages else "none"
+            mark, verdict = "⚠️", (f"INCOMPLETE — stopped after {len(run.stages)} stage(s) "
+                                   f"(last: {last}) and never finished")
+        if bad:
+            verdict += f", {len(bad)} failed so far"
+    else:
+        verdict = "ALL CLEAN" if not bad else f"FAILED — {len(bad)} stage(s)"
+        mark = "✅" if not bad else "❌"
     out += [f"COLLECT RUN — {when}",
             # FLUSH LEFT, ON PURPOSE. telegram.format_report() bolds a line at
             # column zero; this is the one line an operator actually needs to
             # read, so it is the one line that is not indented into the table.
-            f"{mark} {verdict}   {len(run.stages)} stages in {_hms(run.elapsed)}", ""]
+            (f"{mark} {verdict}   {len(run.stages)} stages in {_hms(run.elapsed)}" if run.finished
+             else f"{mark} {verdict}   {_hms(run.elapsed)} so far"), ""]
 
     if bad:
         # The distinction that decides whether the operator acts NOW or later,

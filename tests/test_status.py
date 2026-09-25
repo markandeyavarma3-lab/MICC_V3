@@ -279,3 +279,9 @@ def test_every_scheduled_collector_holds_the_machine_awake():
             f"minute after launchd starts it and the run does nothing until the "
             f"wall clock expires"
         )
+        # 0078 amendment 1: `-i` does not hold a DARK wake. The 09-24 20:30 run
+        # started at 20:41:08 with the lid open and slept at 20:41:10.
+        assert "caffeinate -u" in script, (
+            f"{name} never promotes a dark wake to a full one; a run launched "
+            f"while the Mac sleeps goes back to sleep seconds after it starts"
+        )
