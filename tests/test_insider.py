@@ -248,3 +248,69 @@ def test_the_index_still_lands_when_the_clock_stops_only_the_detail(tmp_path, mo
     assert e["filings"] == 5 and e["details_stored"] == 0
     assert e.get("details_stopped") == "wall clock"
     assert not [u for u in calls if "WebXMLFile" in u]
+
+
+# --- today is not a quiet window (2026-09-25) -------------------------------------
+
+
+def test_a_window_ending_today_that_is_empty_is_pending_not_failed(tmp_path, monkeypatch):
+    """The daily stage's rolling 30-day span always ends today, and windows()
+    always chunks that into a trailing single-day window for today —
+    structurally, every morning. Insider filings trickle in through and after
+    the trading session, so an empty envelope for "today" before most of them
+    exist is not evidence of a retired endpoint; it paged "COLLECTION FAILED:
+    insider" on a schedule for fifteen mornings before anyone looked twice."""
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "_get", lambda op, url, ref: b'{"data": []}')
+    e = ins.capture_window(None, date(2026, 9, 25), date(2026, 9, 25), set(), [10],
+                           today=date(2026, 9, 25))
+    assert e["status"] == "PENDING"
+    assert e["session_date"] == "2026-09-25"
+    assert "not evidence" in e["note"]
+
+
+def test_a_window_ending_in_the_future_that_is_empty_is_also_pending(tmp_path, monkeypatch):
+    """A window whose end has not arrived yet is at least as unfinished as
+    today; the carve-out is `to >= today`, not `to == today`."""
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "_get", lambda op, url, ref: b'{"data": []}')
+    e = ins.capture_window(None, date(2026, 9, 25), date(2026, 9, 26), set(), [10],
+                           today=date(2026, 9, 25))
+    assert e["status"] == "PENDING"
+
+
+def test_a_mature_historical_window_that_is_empty_is_still_failed(tmp_path, monkeypatch):
+    """THE GUARD THIS CANNOT WEAKEN. A 30-day window that ended MONTHS ago and
+    came back empty is exactly the retired-endpoint signature from 2026-04 —
+    the carve-out is for today specifically, not for "empty" in general."""
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "_get", lambda op, url, ref: b'{"data": []}')
+    e = ins.capture_window(None, date(2026, 5, 1), date(2026, 5, 30), set(), [10],
+                           today=date(2026, 9, 25))
+    assert e["status"] == "FAILED"
+    assert "EMPTY ENVELOPE" in e["error"]
+
+
+def test_a_pending_window_is_not_counted_toward_the_breaker_or_reported_as_failed(tmp_path, monkeypatch):
+    """A whole collect() run whose only empty window is today must exit 0 and
+    print no FAILED window."""
+    import json
+    from datetime import date
+    from src.archive import insider as ins
+    monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(ins, "RATE_LIMIT", 0)
+    monkeypatch.setattr(ins, "_get", lambda op, url, ref: b'{"data": []}')
+    out = ins.collect(date(2026, 9, 25), date(2026, 9, 25))
+    assert [o.status for o in out] == ["PENDING"]
+    rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
+    assert rows[-1]["status"] == "PENDING" and "error" not in rows[-1]

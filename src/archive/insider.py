@@ -46,6 +46,18 @@ guards are here now: a wall clock (`MAX_MINUTES`) and a breaker
 (`BREAKER_FAILURES`), with the same STOPPED-vs-FAILED distinction — a backlog
 run ending on the clock is expected and exits 0; a host refusing us is a
 failure and exits 1.
+
+TODAY IS NOT A QUIET WINDOW, ADDED 2026-09-25. The daily stage runs
+`--start 30-days-ago`, so `end` defaults to today and `windows()` always
+chunks the span into a trailing SINGLE-DAY window for today — structurally,
+every morning, not occasionally. Insider filings trickle in through and
+after the trading session, so an empty envelope for "today" at 08:30 IST is
+not the retired-endpoint signal this module exists to catch; it is the day
+being young. That window is now PENDING, not FAILED — fifteen mornings in
+September paged "COLLECTION FAILED: insider" on a schedule before anyone
+looked twice at why. A window whose end is NOT today, empty, is still FAILED:
+the carve-out is for the one day that has not finished happening, not for
+"empty" in general.
 """
 
 from __future__ import annotations
@@ -241,11 +253,13 @@ def _store(body: bytes, dest: Path) -> None:
 
 def capture_window(op, frm: date, to: date, seen: set[str],
                    budget: list[int], streak: list[int] | None = None,
-                   deadline_at: datetime | None = None) -> dict:
+                   deadline_at: datetime | None = None, today: date | None = None) -> dict:
     """`streak` counts CONSECUTIVE network failures ACROSS windows; a success
     resets it and BREAKER_FAILURES raises Throttled. `deadline_at` is the run's
-    wall-clock cap: detail fetching stops at it, the index still lands."""
+    wall-clock cap: detail fetching stops at it, the index still lands.
+    `today` is injectable for tests; `collect()` passes the real date."""
     streak = streak if streak is not None else [0]
+    today = today or datetime.now(UTC).date()
     url = INDEX_URL.format(frm=f"{frm:%d-%m-%Y}", to=f"{to:%d-%m-%Y}")
     base = {
         "source_id": SOURCE_ID, "exchange": EXCHANGE, "report_type": REPORT_TYPE,
@@ -275,6 +289,26 @@ def capture_window(op, frm: date, to: date, seen: set[str],
                 "error": f"no 'data' array; keys={list(payload)[:5]}"}
 
     if not rows:
+        if to >= today:
+            # THE DAY HAS NOT FINISHED HAPPENING YET. `collect()`'s rolling
+            # `--start 30-days-ago` span always ends on today, and windows()
+            # always chunks that into a trailing SINGLE-DAY window for today —
+            # every morning, structurally, not occasionally. Insider filings
+            # trickle in through and after the trading session, so asking for
+            # "today" at 08:30 IST before most of them exist is not evidence
+            # of anything wrong with the endpoint; it is evidence the day is
+            # young. PENDING, not FAILED — the same status and the same
+            # `session_date` key index_close.py uses for a dated feed asked
+            # before publish, so runreport.py's existing PENDING handling
+            # reports it as "not yet published" with no changes needed there.
+            #
+            # Found 2026-09-25: left as FAILED this had paged "COLLECTION
+            # FAILED: insider" on a SCHEDULE, not a fault — fifteen mornings in
+            # September before anyone looked twice at the reason.
+            return {**base, "status": "PENDING", "bytes": len(body), "filings": 0,
+                    "session_date": to.isoformat(),
+                    "note": "today's window returned no filings yet — not "
+                            "evidence of a retired endpoint"}
         # THE WHOLE POINT OF THIS MODULE. A retired endpoint answers 200 with an
         # empty envelope and every green check stays green. Treated as failure.
         return {**base, "status": "FAILED", "bytes": len(body), "filings": 0,
@@ -384,6 +418,10 @@ def collect(start: date, end: date | None = None,
             max_detail: int = MAX_DETAIL_PER_RUN,
             max_minutes: int = MAX_MINUTES) -> list[Outcome]:
     end = end or datetime.now(UTC).date()
+    # SEPARATE FROM `end` ON PURPOSE. An explicit historical --end (a deliberate
+    # backfill) must not read as "today" just because it is this call's last
+    # window — only the real calendar date earns the PENDING carve-out below.
+    today = datetime.now(UTC).date()
     deadline_at = datetime.now(UTC) + timedelta(minutes=max_minutes)
     op = _opener()
     try:
@@ -405,13 +443,13 @@ def collect(start: date, end: date | None = None,
         if i:
             time.sleep(RATE_LIMIT)
         try:
-            e = capture_window(op, a, b, seen, budget, streak=streak, deadline_at=deadline_at)
+            e = capture_window(op, a, b, seen, budget, streak=streak, deadline_at=deadline_at, today=today)
         except Throttled as exc:
             stopped = f"THROTTLED after {i} window(s): {exc}"
             break
         record(e)
         out.append(Outcome((a, b), e["status"], e.get("filings", 0),
-                           e.get("details_stored", 0), e.get("error", "")))
+                           e.get("details_stored", 0), e.get("error") or e.get("note", "")))
 
     if stopped:
         # THROTTLED is a failure: the host refused us and the run got less than
@@ -441,7 +479,7 @@ def main() -> int:
     results = collect(args.start, args.end, args.max_detail, args.max_minutes)
     for r in results:
         flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "FAILED": "FAIL ",
-                "STOPPED": "stop "}.get(r.status, r.status)
+                "STOPPED": "stop ", "PENDING": "pend "}.get(r.status, r.status)
         print(f"  {flag} {r.window[0]} .. {r.window[1]}  "
               f"{r.filings:>5} filings  {r.details:>4} xbrl  {r.detail}"[:140])
     failed = sum(r.status == "FAILED" for r in results)
