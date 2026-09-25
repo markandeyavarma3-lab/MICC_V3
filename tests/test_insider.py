@@ -176,7 +176,9 @@ def test_consecutive_network_failures_trip_the_breaker_and_stop_the_run(tmp_path
         calls.append(url)
         if "corporates-pit" in url:
             return _index_body(40)
-        raise RuntimeError("<urlopen error [Errno 8] nodename nor servname provided>")
+        # A TIMEOUT, not a DNS failure: since 2026-09-25 a DNS failure asks the
+        # local network first (src/common/network.py) — throttling looks like this.
+        raise RuntimeError("<urlopen error timed out>")
     monkeypatch.setattr(ins, "_get", get)
     ins._prior_xbrl.clear()
     out = ins.collect(date(2026, 6, 1), date(2026, 6, 30))

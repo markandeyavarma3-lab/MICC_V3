@@ -109,6 +109,14 @@ mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
+  # WAIT FOR THE NETWORK BEFORE THE FIRST FETCH (2026-09-25). A run launched on
+  # a sleeping Mac starts before the university Wi-Fi has re-associated, and
+  # every fetch in the first minute failed DNS — deals included. Up to three
+  # minutes; a woken radio needs seconds. Not UP after that is a portal login
+  # or an outage, recorded as the `network` stage so the report says WHY the
+  # fetches below failed instead of blaming each source in turn.
+  "$REPO/.venv/bin/python" -m src.common.network --wait 180
+  note "network" $?
   "$REPO/.venv/bin/python" -m src.archive.stopgap
   # `deals`, not `exit` (2026-09-17). The stage was named for the exit code it
   # recorded back when that was all this script recorded; on a phone, "FAIL
