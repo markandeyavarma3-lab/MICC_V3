@@ -53,6 +53,18 @@ export RESEARCH_ENV=prod
 # closed lid. `-w $$` ties the assertion to this script's lifetime, so a run
 # that dies releases it and nothing is left holding the machine up forever.
 caffeinate -i -w $$ >/dev/null 2>&1 &
+#
+# AND WAKE ALL THE WAY UP FIRST (2026-09-25, 0078 amendment 1). A scheduled run
+# that finds the Mac asleep starts inside a DARK WAKE — display off, a few
+# seconds of power granted — and `-i` does not hold a dark wake: it prevents
+# IDLE sleep, and a dark wake ending is not idle sleep. On 09-24 the 20:30 run
+# started at 20:41:08 with the lid OPEN and the Mac was back asleep at
+# 20:41:10; deals failed. `-u` declares the user active, which is what turns a
+# dark wake into a full one — pmset logged exactly that transition at 09:44
+# the same day ("DarkWake to FullWake ... due to UserActivity Assertion").
+# Cost: the display lights for a few seconds at each slot if the lid is open.
+# It cannot help with the lid CLOSED on battery; nothing in software can.
+caffeinate -u -t 5 >/dev/null 2>&1 &
 
 # EXIT CODES PROPAGATE. Until 2026-09-03 every stage's status was echoed into a
 # log nobody reads and the script returned 0 unconditionally — so launchd and
@@ -242,6 +254,12 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "outcomes" $?
   "$REPO/.venv/bin/python" -m src.monitor.health
   note "health" $?
+  # Back up AFTER collecting, every day. 0037 left this manual and it went eight
+  # days without running once; a session archived but not backed up sits on one
+  # disk, and the endpoint that could re-serve it answers 503. The script is a
+  # no-op-ish 11 MB write and prunes itself to three generations.
+  "$REPO/scripts/backup.sh"
+  note "backup" $?
   # THE DAILY DIGEST. One screen answering "did last night work, and is anything
   # rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md each
   # answer a piece of and none answers whole.
@@ -253,14 +271,20 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # lands after noon, and the day gets no digest at all. `--once-daily` asks
   # "has today been reported" instead, so the first run of the day delivers
   # whenever it happens and later runs are no-ops.
+  #
+  # AFTER THE BACKUP, NOT BEFORE (2026-09-25). It ran first, so every digest
+  # reported the backup as it stood BEFORE this run's backup — "AT RISK, 1
+  # archived session not in it" on any day the run collected something, which
+  # is every day. The digest is a report on the finished run, so it goes last.
   "$REPO/.venv/bin/python" -m src.monitor.digest --once-daily --email --telegram || true
-  # Back up AFTER collecting, every day. 0037 left this manual and it went eight
-  # days without running once; a session archived but not backed up sits on one
-  # disk, and the endpoint that could re-serve it answers 503. The script is a
-  # no-op-ish 11 MB write and prunes itself to three generations.
-  "$REPO/scripts/backup.sh"
-  note "backup" $?
 } >> "$LOG" 2>&1
+
+# THE RUN IS OVER, SAID IN THE RECORD (2026-09-25). Without this line the
+# record of a run in flight and the record of a finished run look identical:
+# /status sent mid-run on 09-25 answered "FAILED — 4 stages in 73m" for a run
+# that had 19 stages still to go. runreport reads this line; a record without
+# it is a run still going, or one that died.
+printf '# finished %s\n' "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" >> "$RUN_TSV"
 
 # THE RUN REPORT, ON EVERY RUN INCLUDING THE CLEAN ONES.
 #

@@ -165,3 +165,30 @@ def test_the_alert_still_goes_out_if_the_exposure_lookup_dies(monkeypatch):
     msg = stage_alert.compose(["deals"], log="x.log")
     assert "COLLECTION: deals" in msg
     assert "exposure unavailable: RuntimeError" in msg
+
+
+def test_the_digest_is_sent_after_the_backup_not_before():
+    """It ran first, so every digest reported the backup as it stood BEFORE
+    this run's backup: "AT RISK, 1 archived session not in it" on any day the
+    run collected anything — the owner pasted exactly that on 2026-09-25."""
+    s = (ROOT / "scripts" / "collect_daily.sh").read_text()
+    assert s.index('"$REPO/scripts/backup.sh"') < s.index("-m src.monitor.digest"), (
+        "the digest reports on the backup, so it must run after it"
+    )
+
+
+def test_feeds_ignore_sources_whose_session_date_is_not_a_session(tmp_path, monkeypatch):
+    """An SHP XBRL row's session_date is the filing's QUARTER-END. Counted as a
+    session it read "1 session, newest 2026-09-23" in the week thousands of
+    files were fetched."""
+    import json
+    from datetime import UTC, datetime
+    from src.monitor import digest
+    today = datetime.now(UTC).date().isoformat()
+    (tmp_path / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in [
+        {"source_id": "nse_bulk_deals", "status": "STORED", "session_date": today},
+        {"source_id": "nse_shp_xbrl", "status": "STORED", "session_date": today},
+    ]))
+    monkeypatch.setattr(digest, "ARCHIVE", tmp_path)
+    held = digest._sessions_held()
+    assert "nse_bulk_deals" in held and "nse_shp_xbrl" not in held

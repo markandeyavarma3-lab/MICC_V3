@@ -64,6 +64,13 @@ def _runs(days: int = 3) -> list[tuple[str, list[str]]]:
     return out[-days * 3:]
 
 
+#: Sources whose `session_date` is NOT a trading session. An SHP XBRL row's
+#: session_date is the filing's quarter-end, so "sessions held in the last 7
+#: days" read "1 session, newest 2026-09-23" on 2026-09-25 — an off-cycle
+#: filing's period end, with thousands of files fetched that week unseen.
+NOT_SESSION_DATED = frozenset({"nse_shp_xbrl"})
+
+
 def _sessions_held(since_days: int = 7) -> dict[str, tuple[int, str]]:
     """Sessions each scheduled feed actually holds, and its newest."""
     man = ARCHIVE / "manifest.jsonl"
@@ -79,6 +86,8 @@ def _sessions_held(since_days: int = 7) -> dict[str, tuple[int, str]]:
         except json.JSONDecodeError:
             continue
         sd = r.get("session_date")
+        if r.get("source_id") in NOT_SESSION_DATED:
+            continue
         if (r.get("status") in {"STORED", "DUPLICATE", "EMPTY_DAY"}
                 and sd and sd >= cut):
             held[r.get("source_id", "?")].add(sd)
@@ -140,8 +149,12 @@ def render() -> str:
     out.append("")
 
     out.append("FEEDS — sessions held in the last 7 days")
-    for sid, (n, last) in _sessions_held().items():
-        out.append(f"        {sid:<22} {n:>2} session(s), newest {last}")
+    held = _sessions_held()
+    # Width from the data, not a constant: `niftymicrocap250_constituents` is
+    # 29 characters and broke a 22-wide column into a ragged edge.
+    w = max((len(k) for k in held), default=0)
+    for sid, (n, last) in held.items():
+        out.append(f"  {sid:<{w}}  {n:>2} session(s), newest {last}")
     out.append("")
 
     out.append("STALENESS")

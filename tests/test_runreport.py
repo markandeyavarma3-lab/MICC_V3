@@ -16,10 +16,11 @@ from src.monitor import digest, runreport
 pytestmark = pytest.mark.unit
 
 
-def _tsv(tmp_path, started="2026-09-16T15:00:00+00:00", rows=(("deals", 0, 3),)):
+def _tsv(tmp_path, started="2026-09-16T15:00:00+00:00", rows=(("deals", 0, 3),), finished=True):
     p = tmp_path / "last_run.tsv"
     p.write_text(f"# started {started}\n"
-                 + "".join(f"{n}\t{c}\t{s}\n" for n, c, s in rows))
+                 + "".join(f"{n}\t{c}\t{s}\n" for n, c, s in rows)
+                 + ("# finished 2026-09-16T15:10:00+00:00\n" if finished else ""))
     return p
 
 
@@ -269,3 +270,37 @@ def test_a_run_that_stopped_on_its_own_clock_says_so_instead_of_no_record(tmp_pa
     assert "no record" not in text
     # A stop is not a failure: the run is still ALL CLEAN and nothing pages.
     assert "ALL CLEAN" in text and "COLLECTION FAILED" not in text
+
+
+# --- a run in flight is not a verdict (2026-09-25) --------------------------------
+
+
+def test_a_run_still_in_flight_says_in_progress_not_failed(tmp_path, monkeypatch):
+    """/status sent mid-run on 09-25 answered "FAILED — 4 stages in 73m" for a
+    run with nineteen stages still to go. A partial record is not a verdict."""
+    monkeypatch.setattr(runreport, "RUN_TSV",
+                        _tsv(tmp_path, rows=[("deals", 1, 4396), ("prices", 0, 1)], finished=False))
+    monkeypatch.setattr(runreport, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(runreport, "collector_running", lambda: True)
+    text = runreport.render()
+    assert "IN PROGRESS" in text and "1 failed so far" in text
+    assert "FAILED — " not in text and "ALL CLEAN" not in text
+
+
+def test_a_run_that_died_says_incomplete_and_names_the_last_stage(tmp_path, monkeypatch):
+    monkeypatch.setattr(runreport, "RUN_TSV",
+                        _tsv(tmp_path, rows=[("deals", 0, 3), ("prices", 0, 1)], finished=False))
+    monkeypatch.setattr(runreport, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(runreport, "collector_running", lambda: False)
+    text = runreport.render()
+    assert "INCOMPLETE" in text and "last: prices" in text
+    assert "ALL CLEAN" not in text
+
+
+def test_an_old_record_without_the_marker_is_finished_if_backup_ran(tmp_path):
+    """Records from before the `# finished` line existed must not all read as
+    incomplete: `backup` has always been the last stage noted."""
+    run = runreport.read_run(_tsv(tmp_path, rows=[("deals", 0, 3), ("backup", 0, 40)], finished=False))
+    assert run.finished
+    run = runreport.read_run(_tsv(tmp_path, rows=[("deals", 0, 3)], finished=False))
+    assert not run.finished

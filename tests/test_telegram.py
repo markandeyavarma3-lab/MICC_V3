@@ -214,3 +214,12 @@ def test_a_raw_send_never_bolds_anything_even_a_column_zero_line(token, monkeypa
     telegram.send("2026-09-23 collect.log\nline one\nline two", raw=True)
     assert sent["text"] == "<pre>2026-09-23 collect.log\nline one\nline two</pre>"
     assert "<b>" not in sent["text"]
+
+
+def test_a_headline_after_a_table_is_separated_by_a_blank_line():
+    """Telegram swallows the single newline after </pre>. With only one, the
+    next headline arrived glued to the table's last row — the owner pasted
+    "...the next slot retries.STAGES" and "failed: dealsFEEDS" (2026-09-25)."""
+    out = telegram.format_report("A\n  row\nB\n  row2")
+    assert "</pre>\n\n<b>B</b>" in out
+    assert not out.endswith("\n"), "no trailing blank after the last block"

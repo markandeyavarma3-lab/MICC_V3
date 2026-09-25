@@ -32,6 +32,18 @@ export RESEARCH_ENV=prod
 # closed lid. `-w $$` ties the assertion to this script's lifetime, so a run
 # that dies releases it and nothing is left holding the machine up forever.
 caffeinate -i -w $$ >/dev/null 2>&1 &
+#
+# AND WAKE ALL THE WAY UP FIRST (2026-09-25, 0078 amendment 1). A scheduled run
+# that finds the Mac asleep starts inside a DARK WAKE — display off, a few
+# seconds of power granted — and `-i` does not hold a dark wake: it prevents
+# IDLE sleep, and a dark wake ending is not idle sleep. On 09-24 the 20:30 run
+# started at 20:41:08 with the lid OPEN and the Mac was back asleep at
+# 20:41:10; deals failed. `-u` declares the user active, which is what turns a
+# dark wake into a full one — pmset logged exactly that transition at 09:44
+# the same day ("DarkWake to FullWake ... due to UserActivity Assertion").
+# Cost: the display lights for a few seconds at each slot if the lid is open.
+# It cannot help with the lid CLOSED on battery; nothing in software can.
+caffeinate -u -t 5 >/dev/null 2>&1 &
 
 LOG="$REPO/logs/shp_$(date +%Y-%m).log"
 mkdir -p "$REPO/logs"
