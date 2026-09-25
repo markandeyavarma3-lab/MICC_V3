@@ -285,3 +285,15 @@ def test_every_scheduled_collector_holds_the_machine_awake():
             f"{name} never promotes a dark wake to a full one; a run launched "
             f"while the Mac sleeps goes back to sleep seconds after it starts"
         )
+
+
+@pytest.mark.unit
+def test_every_scheduled_collector_waits_for_the_network_before_fetching():
+    """A run launched on a sleeping Mac fired its first requests before the
+    university Wi-Fi re-associated; every fetch in the first minute failed DNS."""
+    for name, first_fetch in (("collect_daily.sh", "src.archive.stopgap"),
+                              ("shp_nightly.sh", "src.archive.shp")):
+        s = (ROOT / "scripts" / name).read_text()
+        assert "src.common.network --wait" in s, f"{name} never waits for the network"
+        assert s.index("src.common.network --wait") < s.index(first_fetch), (
+            f"{name} waits for the network only after its first fetch")

@@ -67,6 +67,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.common.bounded import bounded  # noqa: E402
+from src.common.network import NetworkDown, counts_against_host  # noqa: E402
 from src.common.hashing import hash_bytes  # noqa: E402
 from src.common.paths import ARCHIVE  # noqa: E402
 
@@ -341,7 +342,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
             body = _get(op, url, REFERER)
             streak[0] = 0
         except Exception as exc:  # noqa: BLE001 - the record is the deliverable
-            if _is_network_failure(str(exc)):
+            if _is_network_failure(str(exc)) and counts_against_host(str(exc)):
                 streak[0] += 1
                 if streak[0] >= BREAKER_FAILURES:
                     record({**base, "status": "FAILED", "error": str(exc)[:200]})
@@ -401,7 +402,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
         except Exception as exc:  # noqa: BLE001 - one bad filing must not stop the run
             failures += 1
             attempted += "404" in str(exc)  # a 404 is final; a network failure is not
-            if _is_network_failure(str(exc)):
+            if _is_network_failure(str(exc)) and counts_against_host(str(exc)):
                 streak[0] += 1
                 if streak[0] >= BREAKER_FAILURES:
                     entry["details_stored"], entry["detail_failures"] = got, failures
@@ -514,6 +515,12 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         except Throttled as exc:
             stopped = f"THROTTLED after {i} symbol(s): {exc}"
             break
+        except NetworkDown as exc:
+            # THIS MACHINE'S NETWORK, NOT THE HOST (2026-09-25). A DNS failure
+            # used to count toward the throttle breaker, so a Wi-Fi radio still
+            # re-associating after sleep stopped whole sessions "THROTTLED".
+            stopped = f"NETWORK DOWN after {i} symbol(s): {exc}"
+            break
         record(e)
         if e["status"] == "EMPTY":
             empties += 1
@@ -533,7 +540,7 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
         # The WALL CLOCK is not: it is how every backlog session is expected
         # to end, and a stage alert for it three times a day is the alert
         # nobody reads. Recorded as STOPPED, exit 0, visible in /feeds.
-        status = "FAILED" if stopped.startswith("THROTTLED") else "STOPPED"
+        status = "STOPPED" if stopped.startswith("wall clock") else "FAILED"
         record({"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
                 "status": status, "fetched_at": datetime.now(UTC).isoformat(),
                 "error" if status == "FAILED" else "note": f"run stopped — {stopped}"})
