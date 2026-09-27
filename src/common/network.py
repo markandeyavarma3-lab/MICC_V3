@@ -55,19 +55,48 @@ def probe() -> str:
 
 
 def wait_for_network(max_seconds: float = 180, poll: float = 10,
-                     _probe=probe, _sleep=time.sleep, _now=time.monotonic) -> tuple[str, float]:
+                     _probe=probe, _sleep=time.sleep, _now=time.monotonic,
+                     _recover=None) -> tuple[str, float]:
     """Probe until UP or `max_seconds` pass. Returns (final state, seconds waited).
 
     Three minutes by default: a woken Mac re-associates in seconds, so a
     network still down after three minutes is a portal or an outage, and
     waiting longer only burns the run's wall clock.
+
+    `_recover`, when given, is tried each time the network is not UP — at
+    most once per RECOVER_EVERY seconds. In production it is
+    portal.login_if_configured: the university portal signs a sleeping Mac
+    out, and waiting alone never brings that back. Tests leave it None, so
+    no unit test can sign anybody in to anything.
     """
     t0 = _now()
     state = _probe()
+    last_try = None
     while state != UP and _now() - t0 < max_seconds:
+        if _recover is not None and (last_try is None or _now() - last_try >= RECOVER_EVERY):
+            last_try = _now()
+            ok, msg = _recover()
+            print(f"  {msg}", flush=True)
+            state = _probe()
+            if state == UP:
+                break
         _sleep(poll)
         state = _probe()
     return state, _now() - t0
+
+
+#: Don't hammer the portal: one sign-in attempt per half minute of waiting.
+RECOVER_EVERY = 30
+
+
+def _portal_recover():
+    from src.common import portal
+    return portal.login_if_configured()
+
+
+def wait_and_recover(max_seconds: float = 180) -> tuple[str, float]:
+    """The production wait: probe, and sign in to the Wi-Fi portal if needed."""
+    return wait_for_network(max_seconds, _recover=_portal_recover)
 
 
 class NetworkDown(RuntimeError):
@@ -99,7 +128,7 @@ def counts_against_host(err: str, max_wait: float = LOCAL_NET_WAIT,
     if not is_local_network_error(err):
         return True
     _probe = _probe or probe
-    _wait = _wait or wait_for_network
+    _wait = _wait or wait_and_recover
     if _probe() == UP:
         return True
     state, waited = _wait(max_wait)
@@ -122,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     """`python -m src.common.network --wait 180` — exit 0 UP, 2 PORTAL, 1 DOWN."""
     argv = sys.argv[1:] if argv is None else argv
     wait = float(argv[argv.index("--wait") + 1]) if "--wait" in argv else 0
-    state, waited = wait_for_network(wait) if wait else (probe(), 0.0)
+    state, waited = wait_and_recover(wait) if wait else (probe(), 0.0)
     hint = {UP: "internet reachable",
             PORTAL: "a captive portal is intercepting — log in to the Wi-Fi",
             DOWN: "no network — Wi-Fi not associated or DNS not answering"}[state]
