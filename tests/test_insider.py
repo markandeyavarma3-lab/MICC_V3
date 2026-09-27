@@ -306,13 +306,17 @@ def test_a_pending_window_is_not_counted_toward_the_breaker_or_reported_as_faile
     """A whole collect() run whose only empty window is today must exit 0 and
     print no FAILED window."""
     import json
-    from datetime import date
+    from datetime import UTC, datetime
     from src.archive import insider as ins
     monkeypatch.setattr(ins, "ARCHIVE", tmp_path)
     monkeypatch.setattr(ins, "MANIFEST", tmp_path / "m.jsonl")
     monkeypatch.setattr(ins, "RATE_LIMIT", 0)
     monkeypatch.setattr(ins, "_get", lambda op, url, ref: b'{"data": []}')
-    out = ins.collect(date(2026, 9, 25), date(2026, 9, 25))
+    # TODAY, NOT A DATE LITERAL. collect() compares against the real calendar
+    # date; this test was written with 2026-09-25 hardcoded and failed on the
+    # 27th — a test that only passes on the day it was written.
+    today = datetime.now(UTC).date()
+    out = ins.collect(today, today)
     assert [o.status for o in out] == ["PENDING"]
     rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
     assert rows[-1]["status"] == "PENDING" and "error" not in rows[-1]
