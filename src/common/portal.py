@@ -60,6 +60,37 @@ class PortalError(RuntimeError):
     """Signing in failed; the message never contains the password."""
 
 
+class PortalUnreachable(PortalError):
+    """The portal could not be reached at all — not a verdict on the credentials."""
+
+
+#: The mtime of a credentials file the portal REJECTED. Retrying rejected
+#: credentials every three minutes is how an account gets locked; once refused,
+#: nothing signs in again until the file changes (i.e. setup is re-run).
+REFUSED_MARK = Path(os.environ.get("WIFI_PORTAL_REFUSED",
+                                   Path(__file__).resolve().parents[2] / "logs" / ".wifi_portal_refused"))
+
+
+def _file_stamp(path: Path) -> str:
+    st = path.stat()
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
+def _refused(path: Path) -> bool:
+    try:
+        return REFUSED_MARK.read_text().strip() == _file_stamp(path)
+    except OSError:
+        return False
+
+
+def _mark_refused(path: Path) -> None:
+    try:
+        REFUSED_MARK.parent.mkdir(parents=True, exist_ok=True)
+        REFUSED_MARK.write_text(_file_stamp(path))
+    except OSError:
+        pass
+
+
 def credentials_path() -> Path:
     return Path(os.environ.get("WIFI_PORTAL_FILE", DEFAULT_FILE))
 
@@ -116,10 +147,15 @@ def login(user: str, password: str, _http=_http) -> str:
     try:
         xml = _http(req)
     except Exception as exc:  # noqa: BLE001
-        raise PortalError(f"portal unreachable: {type(exc).__name__}") from None
+        # THE REASON, NOT JUST THE CLASS. "portal unreachable: URLError" on
+        # 2026-09-27 could not say whether the Wi-Fi was still re-associating
+        # or the portal was down. urllib's reason carries no credentials.
+        reason = getattr(exc, "reason", None) or exc
+        raise PortalUnreachable(f"portal unreachable: {type(exc).__name__}: {str(reason)[:100]}") from None
     status, message = _tag(xml, "status"), _tag(xml, "message")
     if status.upper() == "LIVE":
-        return message or "signed in"
+        # The portal returns its own template unfilled: "You are signed in as {username}".
+        return (message or "signed in").replace("{username}", mask(user))
     # The portal's message can quote what was submitted; never echo the password.
     message = message.replace(password, "***") if password else message
     raise PortalError(f"portal refused sign-in ({status or 'no status'}): {message[:120]}")
@@ -140,17 +176,25 @@ def login_if_configured() -> tuple[bool, str]:
 
     (signed_in, sentence for the log). Not configured is (False, why).
     """
+    path = credentials_path()
     try:
-        creds = load_credentials()
+        creds = load_credentials(path)
     except PortalError as exc:
         return False, f"wifi portal: {exc}"
     if not creds:
         return False, "wifi portal: no credentials configured (python -m src.common.portal --setup)"
+    if _refused(path):
+        return False, ("wifi portal: these credentials were REJECTED by the portal; not retrying "
+                       "(re-run: python -m src.common.portal --setup)")
     user, pw = creds
     try:
-        return True, f"wifi portal: signed in as {mask(user)} ({login(user, pw)})"
-    except PortalError as exc:
+        login(user, pw)
+        return True, f"wifi portal: signed in as {mask(user)}"
+    except PortalUnreachable as exc:
         return False, f"wifi portal: {exc}"
+    except PortalError as exc:
+        _mark_refused(path)
+        return False, f"wifi portal: {exc} — not retrying until setup is re-run"
 
 
 def keep_session() -> str:
@@ -158,40 +202,60 @@ def keep_session() -> str:
 
     Ack -> nothing to do. No ack -> the session is gone: sign in again.
     """
+    path = credentials_path()
     try:
-        creds = load_credentials()
+        creds = load_credentials(path)
     except PortalError as exc:
         return f"wifi portal: {exc}"
     if not creds:
         return "wifi portal: not configured"
-    user, pw = creds
+    user, _ = creds
     if keepalive(user):
         return "wifi portal: session alive"
-    try:
-        return f"wifi portal: session had lapsed; {login(user, pw)} as {mask(user)}"
-    except PortalError as exc:
-        return f"wifi portal: session lapsed and sign-in failed: {exc}"
+    ok, msg = login_if_configured()
+    return msg.replace("wifi portal: ", "wifi portal: session had lapsed; ", 1) if ok else msg
 
 
-def setup(path: Path | None = None) -> int:
-    """Create the credentials file interactively. The password is read with
-    getpass (not echoed) and written straight to a 600 file."""
+def setup(path: Path | None = None, _input=input, _getpass=None, _login=None) -> int:
+    """Create or replace the credentials file — ONLY with credentials the
+    portal has just accepted.
+
+    TEST FIRST, THEN SAVE (2026-09-27). The first version wrote the file and
+    then tested it, so a typo'd ID (one extra digit) replaced credentials that
+    had signed in minutes earlier, and the keep-alive then retried the bad
+    pair every three minutes. Now: rejected -> nothing is written and any
+    existing file is untouched; portal unreachable -> nothing is written,
+    because an untested pair is not saved over a tested one.
+    """
     import getpass
 
     path = path or credentials_path()
-    user = input("KL University Wi-Fi username (your ID): ").strip()
-    pw = getpass.getpass("Password (not shown): ")
+    _getpass = _getpass or getpass.getpass
+    _login = _login or login
+    user = _input("KL University Wi-Fi username (your ID): ").strip()
+    pw = _getpass("Password (not shown): ")
     if not user or not pw:
         print("nothing written: username and password are both required")
         return 1
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    print(f"testing sign-in as {mask(user)} ({len(user)} characters)...")
+    try:
+        msg = _login(user, pw)
+    except PortalUnreachable as exc:
+        print(f"NOT saved — {exc}.\n  Is the Wi-Fi connected to KLEF-SQ / KLEF-SQ-5G? "
+              f"Wait until it shows Connected, then run setup again.")
+        return 1
+    except PortalError as exc:
+        print(f"NOT saved — {exc}.\n  Check the ID ({len(user)} characters typed) and the password."
+              + ("  The existing credentials were left as they were." if path.exists() else ""))
+        return 1
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
         fh.write(f"PORTAL_USERNAME={user}\nPORTAL_PASSWORD={pw}\n")
-    os.chmod(path, 0o600)
-    print(f"written {path} (mode 600). Testing sign-in...")
-    ok, msg = login_if_configured()
-    print(msg)
-    return 0 if ok else 1
+    os.chmod(tmp, 0o600)
+    tmp.replace(path)
+    print(f"saved {path} (mode 600) — portal says: {msg}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -21,6 +21,12 @@ pytestmark = pytest.mark.unit
 FAKE_USER, FAKE_PW = "9999900001", "hunter2-not-real"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_refusal_mark(tmp_path, monkeypatch):
+    """Never read or write the real logs/.wifi_portal_refused from a test."""
+    monkeypatch.setattr(portal, "REFUSED_MARK", tmp_path / "refused")
+
+
 def _creds(tmp_path, mode=0o600, body=None):
     p = tmp_path / "wifi"
     p.write_text(body if body is not None else f"PORTAL_USERNAME={FAKE_USER}\nPORTAL_PASSWORD={FAKE_PW}\n")
@@ -140,3 +146,76 @@ def test_the_keepalive_agent_runs_every_180_seconds_and_holds_no_credentials():
     s = (ROOT / "scripts" / "com.institutional-research.wifi.plist").read_text()
     assert "--keepalive" in s and "<integer>180</integer>" in s
     assert "PORTAL_PASSWORD=" not in s, "a credential value in a tracked file"
+
+
+# --- 2026-09-27: a typo must not break a working setup ---------------------------------
+
+
+def _setup(tmp_path, user, login):
+    path = tmp_path / "creds"
+    rc = portal.setup(path, _input=lambda _: user, _getpass=lambda _: FAKE_PW, _login=login)
+    return rc, path
+
+
+def _refuse(u, p):
+    raise portal.PortalError("portal refused sign-in (LOGIN): Invalid user name/password")
+
+
+def _unreachable(u, p):
+    raise portal.PortalUnreachable("portal unreachable: URLError: [Errno 8] nodename nor servname")
+
+
+def test_setup_saves_only_credentials_the_portal_accepts(tmp_path):
+    rc, path = _setup(tmp_path, FAKE_USER, lambda u, p: "You are signed in as 99******01")
+    assert rc == 0 and path.exists()
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+
+def test_a_rejected_setup_leaves_the_working_credentials_untouched(tmp_path):
+    """The owner typed one extra digit and the working file was replaced."""
+    rc, path = _setup(tmp_path, FAKE_USER, lambda u, p: "ok")
+    before = path.read_text()
+    rc, _ = _setup(tmp_path, FAKE_USER + "0", _refuse)
+    assert rc == 1 and path.read_text() == before
+
+
+def test_an_unreachable_portal_during_setup_saves_nothing(tmp_path):
+    rc, path = _setup(tmp_path, FAKE_USER, _unreachable)
+    assert rc == 1 and not path.exists()
+
+
+def test_rejected_credentials_are_not_retried_until_the_file_changes(tmp_path, monkeypatch):
+    """Retrying a rejected pair every three minutes is how accounts get locked."""
+    creds = _creds(tmp_path)
+    monkeypatch.setenv("WIFI_PORTAL_FILE", str(creds))
+    calls = []
+    monkeypatch.setattr(portal, "login", lambda u, p: calls.append(1) or _refuse(u, p))
+    ok, msg = portal.login_if_configured()
+    assert not ok and len(calls) == 1
+    ok, msg = portal.login_if_configured()
+    assert not ok and len(calls) == 1 and "REJECTED" in msg
+    creds.write_text(f"PORTAL_USERNAME={FAKE_USER}\nPORTAL_PASSWORD=changed-pw\n")
+    portal.login_if_configured()
+    assert len(calls) == 2, "new credentials must be tried"
+
+
+def test_an_unreachable_portal_is_not_remembered_as_a_rejection(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIFI_PORTAL_FILE", str(_creds(tmp_path)))
+    calls = []
+    monkeypatch.setattr(portal, "login", lambda u, p: calls.append(1) or _unreachable(u, p))
+    portal.login_if_configured()
+    portal.login_if_configured()
+    assert len(calls) == 2
+
+
+def test_unreachable_says_why_not_just_urlerror():
+    from urllib.error import URLError
+    def fake(req):
+        raise URLError("[Errno 8] nodename nor servname provided")
+    with pytest.raises(portal.PortalUnreachable, match="nodename nor servname"):
+        portal.login(FAKE_USER, FAKE_PW, _http=fake)
+
+
+def test_the_portals_unfilled_template_is_filled_with_the_masked_id():
+    fake = lambda r: "<status>LIVE</status><message>You are signed in as {username}</message>"  # noqa: E731
+    assert portal.login(FAKE_USER, FAKE_PW, _http=fake) == "You are signed in as 99******01"
