@@ -40,32 +40,6 @@ export RESEARCH_ENV=prod
 # everything else runs unchanged.
 [ -f "$HOME/.micc_alert_env" ] && . "$HOME/.micc_alert_env"
 
-# HOLD THE MACHINE AWAKE FOR AS LONG AS THIS SCRIPT RUNS (2026-09-20, 0078).
-#
-# Both power profiles sleep after ONE idle minute, and launchd starting a job
-# does nothing to stop that. Measured from pmset's log against the manifest:
-# the 09-20 01:00 SHP session started at 01:03:15 and the Mac slept at
-# 01:03:17; the 09-19 14:30 session did eighteen minutes of work in its 150
-# and dark-woke for two seconds every quarter hour until the clock ran out.
-# What looked like a slow host was a sleeping laptop.
-#
-# `-i` prevents IDLE sleep and works on battery; it does not and cannot stop a
-# closed lid. `-w $$` ties the assertion to this script's lifetime, so a run
-# that dies releases it and nothing is left holding the machine up forever.
-caffeinate -i -w $$ >/dev/null 2>&1 &
-#
-# AND WAKE ALL THE WAY UP FIRST (2026-09-25, 0078 amendment 1). A scheduled run
-# that finds the Mac asleep starts inside a DARK WAKE — display off, a few
-# seconds of power granted — and `-i` does not hold a dark wake: it prevents
-# IDLE sleep, and a dark wake ending is not idle sleep. On 09-24 the 20:30 run
-# started at 20:41:08 with the lid OPEN and the Mac was back asleep at
-# 20:41:10; deals failed. `-u` declares the user active, which is what turns a
-# dark wake into a full one — pmset logged exactly that transition at 09:44
-# the same day ("DarkWake to FullWake ... due to UserActivity Assertion").
-# Cost: the display lights for a few seconds at each slot if the lid is open.
-# It cannot help with the lid CLOSED on battery; nothing in software can.
-caffeinate -u -t 5 >/dev/null 2>&1 &
-
 # EXIT CODES PROPAGATE. Until 2026-09-03 every stage's status was echoed into a
 # log nobody reads and the script returned 0 unconditionally — so launchd and
 # cron could not tell a total failure from a clean run. That is the same
@@ -109,14 +83,6 @@ mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
-  # WAIT FOR THE NETWORK BEFORE THE FIRST FETCH (2026-09-25). A run launched on
-  # a sleeping Mac starts before the university Wi-Fi has re-associated, and
-  # every fetch in the first minute failed DNS — deals included. Up to three
-  # minutes; a woken radio needs seconds. Not UP after that is a portal login
-  # or an outage, recorded as the `network` stage so the report says WHY the
-  # fetches below failed instead of blaming each source in turn.
-  "$REPO/.venv/bin/python" -m src.common.network --wait 180
-  note "network" $?
   "$REPO/.venv/bin/python" -m src.archive.stopgap
   # `deals`, not `exit` (2026-09-17). The stage was named for the exit code it
   # recorded back when that was all this script recorded; on a phone, "FAIL

@@ -262,6 +262,7 @@ def test_the_registration_spec_says_which_market_the_secondary_measure_uses():
     spec = reg.build_spec((2500, 2500, 2886))
     assert "NIFTY 500 TOTAL RETURN" in spec["benchmark_policy"].upper()
     assert "collected:index_tri" in spec["benchmark_policy"]
-    # Both preliminary runs are recorded: one power number with nothing to
+    # Every preliminary run is recorded: one power number with nothing to
     # compare it against cannot say whether the sweep is helping.
-    assert len(json.loads(spec["exploratory_prior_run"])["runs"]) == 2
+    runs = json.loads(spec["exploratory_prior_run"])["runs"]
+    assert len(runs) >= 3 and [r["date"] for r in runs] == sorted(r["date"] for r in runs)

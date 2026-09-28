@@ -1,5 +1,7 @@
 # 0060 — Two slots a day, every day: 08:30 and 20:30
 
+**Superseded by:** [0078](0078-two-evening-runs-and-one-shp-session.md) — the collector now runs at 18:30 and 21:00 only.
+
 **Partially superseded by:** [0072](0072-three-slots-a-day-again-2230-restored.md)
 — restores the 22:30 slot this decision removed, on the owner's own later
 request. The rest of this decision (08:30/20:30, every day including

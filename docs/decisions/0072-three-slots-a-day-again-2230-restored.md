@@ -1,5 +1,7 @@
 # 0072 — Three slots a day, again: 22:30 restored
 
+**Superseded by:** [0078](0078-two-evening-runs-and-one-shp-session.md) — the collector now runs at 18:30 and 21:00 only.
+
 **Date:** 2026-09-17
 **Decided by:** Owner, explicitly, after asking "what about the 22:30 backup?"
 and being told plainly that no such slot currently exists — it was removed by

@@ -100,7 +100,6 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 TIMEOUT = 30
 
 from src.common.bounded import bounded
-from src.common.network import NetworkDown, counts_against_host  # noqa: E402
 
 #: Hard bound on ONE attempt — resolution included. `timeout=TIMEOUT` below
 #: bounds the socket after `getaddrinfo` returns; nothing bounds `getaddrinfo`,
@@ -271,7 +270,7 @@ def capture_window(op, frm: date, to: date, seen: set[str],
         body = _get(op, url, REFERER)
         streak[0] = 0
     except Exception as exc:  # noqa: BLE001 - the record is the deliverable
-        if _is_network_failure(str(exc)) and counts_against_host(str(exc)):
+        if _is_network_failure(str(exc)):
             streak[0] += 1
             if streak[0] >= BREAKER_FAILURES:
                 record({**base, "status": "FAILED", "error": str(exc)[:200]})
@@ -372,7 +371,7 @@ def capture_window(op, frm: date, to: date, seen: set[str],
             detail_failures += 1
             record({**xrow, "status": "FAILED", "error": str(exc)[:200]})
             _prior_xbrl[xml] = "GONE" if "404" in str(exc) else "FAILED"
-            if _is_network_failure(str(exc)) and counts_against_host(str(exc)):
+            if _is_network_failure(str(exc)):
                 streak[0] += 1
                 if streak[0] >= BREAKER_FAILURES:
                     # THE 159-MINUTE RUN. Every one of these costs three
@@ -447,12 +446,6 @@ def collect(start: date, end: date | None = None,
             e = capture_window(op, a, b, seen, budget, streak=streak, deadline_at=deadline_at, today=today)
         except Throttled as exc:
             stopped = f"THROTTLED after {i} window(s): {exc}"
-            break
-        except NetworkDown as exc:
-            # THIS MACHINE'S NETWORK, NOT THE HOST (2026-09-25). A DNS failure
-            # used to count toward the throttle breaker, so a Wi-Fi radio still
-            # re-associating after sleep stopped whole sessions "THROTTLED".
-            stopped = f"NETWORK DOWN after {i} window(s): {exc}"
             break
         record(e)
         out.append(Outcome((a, b), e["status"], e.get("filings", 0),
