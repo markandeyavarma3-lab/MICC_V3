@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from src.common import network, portal
+from wifi_portal import portal
 
 pytestmark = pytest.mark.unit
 
@@ -114,36 +114,12 @@ def test_sign_in_messages_never_contain_the_password_or_full_username(tmp_path, 
     assert ok and FAKE_PW not in msg and FAKE_USER not in msg
 
 
-# --- wired into the network wait -----------------------------------------------------------
-
-
-def test_the_network_wait_signs_in_when_the_portal_intercepts():
-    """The university portal signs a sleeping Mac out; waiting alone never
-    brings that back. PORTAL -> sign in -> UP."""
-    states = iter(["PORTAL", "UP"])
-    clock = [0.0]
-    tried = []
-    state, _ = network.wait_for_network(
-        180, poll=10, _probe=lambda: next(states, "UP"),
-        _sleep=lambda s: clock.__setitem__(0, clock[0] + s), _now=lambda: clock[0],
-        _recover=lambda: tried.append(1) or (True, "signed in"))
-    assert state == "UP" and tried == [1]
-
-
-def test_sign_in_is_not_retried_faster_than_every_half_minute():
-    clock = [0.0]
-    tried = []
-    network.wait_for_network(
-        90, poll=10, _probe=lambda: "PORTAL",
-        _sleep=lambda s: clock.__setitem__(0, clock[0] + s), _now=lambda: clock[0],
-        _recover=lambda: tried.append(clock[0]) or (False, "refused"))
-    assert len(tried) <= 90 // network.RECOVER_EVERY + 1
-    assert all(b - a >= network.RECOVER_EVERY for a, b in zip(tried, tried[1:]))
+# --- the keep-alive agent ------------------------------------------------------------------
 
 
 def test_the_keepalive_agent_runs_every_180_seconds_and_holds_no_credentials():
     from src.common.paths import ROOT
-    s = (ROOT / "scripts" / "com.institutional-research.wifi.plist").read_text()
+    s = (ROOT / "wifi_portal" / "com.institutional-research.wifi.plist").read_text()
     assert "--keepalive" in s and "<integer>180</integer>" in s
     assert "PORTAL_PASSWORD=" not in s, "a credential value in a tracked file"
 

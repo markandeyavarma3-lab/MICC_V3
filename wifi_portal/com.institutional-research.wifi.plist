@@ -8,17 +8,17 @@
   seconds, and with no browser tab open nothing does, so the Mac was dropped
   after about ten idle minutes and every fetch after that failed DNS. This
   job sends the same keep-alive on the same 180-second cadence, and signs in
-  again (src/common/portal.py) whenever the portal has let the session lapse.
+  again (wifi_portal/portal.py) whenever the portal has let the session lapse.
 
   StartInterval, not KeepAlive: one short request every three minutes, then
   exit. launchd does not run it while the Mac sleeps; a collector run that
-  wakes the Mac signs in on its own (src/common/network.py, wait_and_recover).
+  wakes the Mac would sign in on its own once wired back in (see wifi_portal/README.md).
 
   Credentials are NOT here and NOT in the repository: ~/.micc_wifi_portal,
-  mode 600, created with `python -m src.common.portal --setup`.
+  mode 600, created with `python -m wifi_portal.portal --setup`.
 
   Install / reload:
-      cp scripts/com.institutional-research.wifi.plist ~/Library/LaunchAgents/
+      cp wifi_portal/com.institutional-research.wifi.plist ~/Library/LaunchAgents/
       launchctl bootout   gui/$UID/com.institutional-research.wifi 2>/dev/null
       launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.institutional-research.wifi.plist
 -->
@@ -31,7 +31,7 @@
     <array>
         <string>/Users/satya_03/Workspace/institutional-research/.venv/bin/python</string>
         <string>-m</string>
-        <string>src.common.portal</string>
+        <string>wifi_portal.portal</string>
         <string>--keepalive</string>
     </array>
 

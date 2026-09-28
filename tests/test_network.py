@@ -129,3 +129,30 @@ def test_a_network_that_stays_down_stops_the_collector_as_network_down_not_throt
     assert "NETWORK DOWN" in out[-1].detail and "THROTTLED" not in out[-1].detail
     rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
     assert "NETWORK DOWN" in rows[-1]["error"]
+
+
+# --- the generic recovery hook (a parked Wi-Fi sign-in plugs in here; wifi_portal/) ---
+
+
+def test_the_network_wait_signs_in_when_the_portal_intercepts():
+    """A recovery step (the parked wifi_portal sign-in, when wired back in)
+    runs while the network is not UP. PORTAL -> recover -> UP."""
+    states = iter(["PORTAL", "UP"])
+    clock = [0.0]
+    tried = []
+    state, _ = network.wait_for_network(
+        180, poll=10, _probe=lambda: next(states, "UP"),
+        _sleep=lambda s: clock.__setitem__(0, clock[0] + s), _now=lambda: clock[0],
+        _recover=lambda: tried.append(1) or (True, "signed in"))
+    assert state == "UP" and tried == [1]
+
+
+def test_sign_in_is_not_retried_faster_than_every_half_minute():
+    clock = [0.0]
+    tried = []
+    network.wait_for_network(
+        90, poll=10, _probe=lambda: "PORTAL",
+        _sleep=lambda s: clock.__setitem__(0, clock[0] + s), _now=lambda: clock[0],
+        _recover=lambda: tried.append(clock[0]) or (False, "refused"))
+    assert len(tried) <= 90 // network.RECOVER_EVERY + 1
+    assert all(b - a >= network.RECOVER_EVERY for a, b in zip(tried, tried[1:]))
