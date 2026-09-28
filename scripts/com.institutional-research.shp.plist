@@ -24,7 +24,7 @@
     <!--
       18:45 DAILY (decision 0078, 2026-09-28): inside the evening window the
       owner keeps the laptop on, after the 18:30 collector and ending by 20:55
-      (--max-minutes 130) before the 21:00 one. Replaces 01:00 / 10:30 / 14:30,
+      (a 130-minute wall clock) before the 21:00 one. Replaces 01:00 / 10:30 / 14:30,
       which mostly found the Mac asleep or offline.
     -->
     <key>StartCalendarInterval</key>
