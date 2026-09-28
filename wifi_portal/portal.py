@@ -1,5 +1,7 @@
 """portal.py — sign this Mac in to the KL University Wi-Fi, and keep it signed in.
 
+PARKED 2026-09-28 — see wifi_portal/README.md. Not imported by the collectors.
+
 WHY. The owner's network is KLEF-SQ / KLEF-SQ-5G, behind a Sophos Firewall
 captive portal at captiveportal.kluniversity.in. A signed-in session stays up
 only while something sends the portal's keep-alive: the portal's own login
@@ -27,7 +29,7 @@ CREDENTIALS NEVER LIVE IN THE REPOSITORY, which is public. They are read from
     PORTAL_USERNAME=<id>
     PORTAL_PASSWORD=<password>
 
-created by the owner with `python -m src.common.portal --setup`, which asks
+created by the owner with `python -m wifi_portal.portal --setup`, which asks
 for the password without echoing it. The file must be mode 600; a readable
 file is refused rather than used. No function in this module prints, logs or
 returns the password, and the username is only ever shown masked.
@@ -68,7 +70,7 @@ class PortalUnreachable(PortalError):
 #: credentials every three minutes is how an account gets locked; once refused,
 #: nothing signs in again until the file changes (i.e. setup is re-run).
 REFUSED_MARK = Path(os.environ.get("WIFI_PORTAL_REFUSED",
-                                   Path(__file__).resolve().parents[2] / "logs" / ".wifi_portal_refused"))
+                                   Path(__file__).resolve().parents[1] / "logs" / ".wifi_portal_refused"))
 
 
 def _file_stamp(path: Path) -> str:
@@ -182,10 +184,10 @@ def login_if_configured() -> tuple[bool, str]:
     except PortalError as exc:
         return False, f"wifi portal: {exc}"
     if not creds:
-        return False, "wifi portal: no credentials configured (python -m src.common.portal --setup)"
+        return False, "wifi portal: no credentials configured (python -m wifi_portal.portal --setup)"
     if _refused(path):
         return False, ("wifi portal: these credentials were REJECTED by the portal; not retrying "
-                       "(re-run: python -m src.common.portal --setup)")
+                       "(re-run: python -m wifi_portal.portal --setup)")
     user, pw = creds
     try:
         login(user, pw)
@@ -270,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         print(msg)
         return 0 if ok else 1
     print(__doc__.split("\n")[0])
-    print("usage: python -m src.common.portal --setup | --login | --keepalive")
+    print("usage: python -m wifi_portal.portal --setup | --login | --keepalive")
     return 2
 
 

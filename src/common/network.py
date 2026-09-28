@@ -64,10 +64,9 @@ def wait_for_network(max_seconds: float = 180, poll: float = 10,
     waiting longer only burns the run's wall clock.
 
     `_recover`, when given, is tried each time the network is not UP — at
-    most once per RECOVER_EVERY seconds. In production it is
-    portal.login_if_configured: the university portal signs a sleeping Mac
-    out, and waiting alone never brings that back. Tests leave it None, so
-    no unit test can sign anybody in to anything.
+    most once per RECOVER_EVERY seconds. Nothing passes one today: the KL
+    University Wi-Fi sign-in that would (wifi_portal/, 2026-09-27) is parked
+    until it can reach the portal while signed out. See wifi_portal/README.md.
     """
     t0 = _now()
     state = _probe()
@@ -85,18 +84,8 @@ def wait_for_network(max_seconds: float = 180, poll: float = 10,
     return state, _now() - t0
 
 
-#: Don't hammer the portal: one sign-in attempt per half minute of waiting.
+#: A recovery step is tried at most once per this many seconds of waiting.
 RECOVER_EVERY = 30
-
-
-def _portal_recover():
-    from src.common import portal
-    return portal.login_if_configured()
-
-
-def wait_and_recover(max_seconds: float = 180) -> tuple[str, float]:
-    """The production wait: probe, and sign in to the Wi-Fi portal if needed."""
-    return wait_for_network(max_seconds, _recover=_portal_recover)
 
 
 class NetworkDown(RuntimeError):
@@ -128,7 +117,7 @@ def counts_against_host(err: str, max_wait: float = LOCAL_NET_WAIT,
     if not is_local_network_error(err):
         return True
     _probe = _probe or probe
-    _wait = _wait or wait_and_recover
+    _wait = _wait or wait_for_network
     if _probe() == UP:
         return True
     state, waited = _wait(max_wait)
@@ -151,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     """`python -m src.common.network --wait 180` — exit 0 UP, 2 PORTAL, 1 DOWN."""
     argv = sys.argv[1:] if argv is None else argv
     wait = float(argv[argv.index("--wait") + 1]) if "--wait" in argv else 0
-    state, waited = wait_and_recover(wait) if wait else (probe(), 0.0)
+    state, waited = wait_for_network(wait) if wait else (probe(), 0.0)
     hint = {UP: "internet reachable",
             PORTAL: "a captive portal is intercepting — log in to the Wi-Fi",
             DOWN: "no network — Wi-Fi not associated or DNS not answering"}[state]
