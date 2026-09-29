@@ -69,7 +69,14 @@ HORIZONS_REPORTED = (21, 63, 126, 252)
 #: 0028's plausible bound, 0.5%/month, over a 63-session quarter.
 BOUND = 0.005 * 3
 FDR_ALPHA = 0.05
-MIN_NAMES_PER_COHORT = 20
+#: Owner decision 2026-09-29, before registration: at least 10 names in each
+#: decile. It was 20 — two names a decile — and the quarters that met only
+#: that were 2018-2021-Q2, when 13-40 early filers carried a filing each: pure
+#: noise that set the MDE. The dispersion-only run (0035) at 50, 100 and 200
+#: gave the SAME MDE (3.80%/quarter vs 10.30% at 20), because nothing sits
+#: between 40 names and the 829 of 2021-Q3; 100 is the principled floor, not a
+#: number tuned to an answer. The study therefore starts at 2021-Q3.
+MIN_NAMES_PER_COHORT = 100
 DECILE = 10
 #: Owner decision 2026-09-18 (interval_policy = a). A change since the previous
 #: filing that spans more than this is a resumption after a filing gap, not a

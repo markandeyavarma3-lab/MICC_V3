@@ -66,9 +66,11 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
             "Weak-to-moderate. The preliminary dispersion runs (HOLDINGS_POWER_PRELIMINARY.md, "
             "no signal read) put the unclipped MDE at 8.0x the bound on 8% of the universe "
             "(2026-09-18), 6.2x on 16% (2026-09-19, 449 companies) and 6.8x on 40% (2026-09-28, "
-            "1,147 companies); winsorised 3.3x, 2.3x, 3.5x. It stopped improving with more names: the "
-            "common within-quarter component does not average away. The tail rule below is what makes "
-            "the study askable at all, and UNDERPOWERED remains the likeliest landing.",
+            "1,147 companies); winsorised 3.3x, 2.3x, 3.5x. Those runs admitted quarters of 20 names; "
+            "the 2018-2021-Q2 quarters (13-40 early filers) set the MDE. At the registered floor of 100 "
+            "names a quarter (2026-09-29, 1,309 companies, 19 quarters from 2021-Q3) it is 2.6x, "
+            "winsorised 1.3x. The tail rule below is what makes the study askable at all, and "
+            "UNDERPOWERED remains the likeliest landing.",
         "data_version":
             f"shp_holdings.parquet from src/ingest/shp.py at registration: {held} of {universe_n} "
             f"non-empty companies hold XBRL ({held / universe_n:.1%}); {indexed} indexed. "
@@ -152,8 +154,9 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
         "trial_family": FAMILY,
         "exploratory_prior_run": json.dumps({
             "note": "docs/reports/HOLDINGS_POWER_PRELIMINARY.md: dispersion of the outcome under "
-                    "RANDOM deciles, no signal column read (tests parse the SQL). Run twice as the "
-                    "sweep brought companies in; the report holds the latest. Nothing charged.",
+                    "RANDOM deciles, no signal column read (tests parse the SQL). Run as the sweep "
+                    "brought companies in; the report holds the latest. The first three used a floor "
+                    "of 20 names a quarter; the fourth the registered 100. Nothing charged.",
             "runs": [
                 {"date": "2026-09-18", "companies": 220, "stock_quarters": 3092, "quarters": 18,
                  "market_leg": "seed NIFTY 50 price index, ends 2026-07-07",
@@ -164,6 +167,10 @@ def build_spec(coverage: tuple[int, int, int]) -> dict:
                 {"date": "2026-09-28", "companies": 1147, "stock_quarters": 17451, "quarters": 21,
                  "market_leg": "NIFTY 500 total return, collected:index_tri (0077)",
                  "mde": 0.1014, "mde_winsor": 0.0520},
+                {"date": "2026-09-29", "companies": 1309, "stock_quarters": 20013, "quarters": 19,
+                 "market_leg": "NIFTY 500 total return, collected:index_tri (0077)",
+                 "min_names_per_quarter": 100,
+                 "mde": 0.0389, "mde_winsor": 0.0195},
             ],
         }),
     }

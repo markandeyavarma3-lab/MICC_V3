@@ -67,7 +67,10 @@ HORIZON = 63
 BOUND = 0.005 * 3
 DRAWS = 2000
 SEED_RNG = 20260918
-MIN_PER_QUARTER = 20  # fewer than two names a decile is not a decile
+#: Must equal holdings.MIN_NAMES_PER_COHORT — a preview on a different floor
+#: previews a different study (tests/test_holdings_power.py pins it). Not
+#: imported: this module may borrow only the market leg from the study.
+MIN_PER_QUARTER = 100  # ten names a decile (owner decision 2026-09-29)
 #: z_{0.975} + z_{0.80}, the multiplier in power.mde for 5% two-sided, 80% power.
 Z_SUM = 1.959964 + 0.841621
 #: Winsorisation for the SECOND estimate. Not a design choice made here — a
