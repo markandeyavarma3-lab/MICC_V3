@@ -164,7 +164,76 @@ def grid(env: str | None = None) -> list[Row]:
     return out
 
 
+def grid_charmatched(env: str | None = None,
+                     populations: tuple[tuple[str, str], ...] = POPULATIONS[:2]) -> list[Row]:
+    """The same power, against CHAR_MATCHED instead of the equal-weighted market.
+
+    WHY (2026-09-29). `grid()` subtracts the day's average return across every
+    name, which leaves each event's size, momentum and volatility exposure in
+    its abnormal return. A registered study would benchmark against peers in
+    the same size x momentum x volatility cell (benchmarks.yml's primary;
+    `charmatch.py`, the one definition outcomes.py and holdings.py use), and
+    that removes common variation the market average cannot. On deals a size
+    match alone cut cohort SD 8.55% -> 5.91% (0028). Power only: the cohort SD
+    and MDE of the abnormal return; no mean is taken (0035).
+    """
+    from src.research import charmatch
+
+    spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+    charp = str(warehouse_dir(env) / "char_panel" / "**" / "*.parquet")
+    min_cell = charmatch.min_names_per_cell()
+    con = duckdb.connect(str(measure.research_db(env)), read_only=True)
+    con.execute("SET memory_limit='8GB'; SET preserve_insertion_order=false; SET threads=4;")
+    out: list[Row] = []
+    try:
+        for hlabel, sessions, months in measure.HORIZONS:
+            con.execute("CREATE OR REPLACE TEMP TABLE rets AS "
+                        + measure._returns_sql(spine, sessions, measure.REPRODUCIBILITY_HORIZON))
+            for label, txn_filter in populations:
+                con.execute(f"CREATE OR REPLACE TEMP TABLE ev AS {_events_sql(txn_filter)}")
+                con.execute("CREATE OR REPLACE TEMP TABLE cellmap AS " + charmatch.cellmap_sql(
+                    "SELECT DISTINCT symbol, CAST(date AS DATE) AS d FROM rets"
+                    " WHERE CAST(date AS VARCHAR) IN (SELECT DISTINCT tdate FROM ev)", charp))
+                con.execute("""CREATE OR REPLACE TEMP TABLE cells AS
+                    SELECT r.symbol, CAST(r.date AS DATE) AS d, r.ret, c.size_q, c.mom_q, c.vol_q
+                    FROM rets r JOIN cellmap c ON c.symbol = r.symbol AND c.d = CAST(r.date AS DATE)
+                    WHERE r.ret IS NOT NULL""")
+                for level, keys in charmatch.MATCH_LEVELS:
+                    con.execute(f"CREATE OR REPLACE TEMP TABLE cm_{level} AS "
+                                + charmatch.cell_means_sql(level, keys))
+                lad = charmatch.ladder(min_cell, event="ec", own="own")
+                df = con.execute(f"""
+                    SELECT ev.tdate, own.ret - ({lad.bench}) AS ab
+                    FROM ev
+                    JOIN rets own ON own.security_id = ev.security_id AND CAST(own.date AS VARCHAR) = ev.tdate
+                    JOIN cellmap ec ON ec.symbol = own.symbol AND ec.d = CAST(own.date AS DATE)
+                    {lad.joins}
+                    WHERE own.ret IS NOT NULL""").df().dropna(subset=["ab"])
+                if len(df) < 30:
+                    continue
+                cohorts = power.cohort_collapse(df["tdate"], df["ab"], freq="M")
+                out.append(Row(
+                    population=label + " (CM)", horizon=hlabel, months=months,
+                    n_events=len(df), n_cohorts=len(cohorts),
+                    cohort_sd=power.cohort_sd(cohorts),
+                    mde=power.mde_serial_corrected(cohorts, label_periods=max(1, round(months))),
+                ))
+    finally:
+        con.close()
+    return out
+
+
 def main() -> int:
+    import sys
+
+    if "--charmatched" in sys.argv:
+        print("INSIDER POWER, CHAR_MATCHED — promoter buy/sell against size x momentum x volatility peers")
+        print(f"  fixed horizon {measure.REPRODUCIBILITY_HORIZON}; power only, no effect estimate (0035)")
+        print(f"\n  {'population':<16}{'horizon':>11}{'n':>8}{'coh':>6}{'sd':>9}"
+              f"{'MDE':>10}{'bound':>9}{'verdict':>14}")
+        for r in grid_charmatched():
+            print(r.render())
+        return 0
     print("INSIDER POWER — promoter buy/sell (reproduces 0046) + three pledge populations")
     print(f"  fixed horizon {measure.REPRODUCIBILITY_HORIZON}; value>0 filter "
           f"(quantity is unreliable — 128 of 14,148 Pledge rows have qty>0)")
