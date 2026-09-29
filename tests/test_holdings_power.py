@@ -22,6 +22,13 @@ pytestmark = pytest.mark.unit
 SIGNAL_COLUMNS = {"pct_shares", "num_shareholders", "num_shares", "category", "category_raw"}
 
 
+def test_the_preview_uses_the_studys_own_minimum_quarter_size():
+    """At 20 the preview read 10.30%/quarter; at the study's 100 it reads 3.80%
+    (2026-09-29). A preview on a different floor previews a different study."""
+    from src.research import holdings
+    assert hp.MIN_PER_QUARTER == holdings.MIN_NAMES_PER_COHORT
+
+
 def test_the_module_never_names_a_signal_column():
     """Parsed from source, not trusted from the docstring. A power module that
     reads the holding percentage is a study without a registration."""

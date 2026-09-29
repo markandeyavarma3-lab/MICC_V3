@@ -1,6 +1,6 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED — revision 3, 2026-09-19. Nothing registered.**
+**Status: DRAFT / PROPOSED — revision 4, 2026-09-29. Nothing registered.**
 Written 2026-09-17 for the owner to argue with; revised after their answers
 and after two PRELIMINARY dispersion runs (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
 no signal read, nothing frozen) — the first on 220 companies, the second on
@@ -43,14 +43,21 @@ the cross-section.
 **Measured, not guessed (preliminary, random deciles, market-relative).** Run
 twice as the sweep brought companies in:
 
-| | 2026-09-18 | 2026-09-19 | 2026-09-28 |
-|---|---|---|---|
-| companies / matured quarters | 220 / 18 | 449 / 19 | 1,147 / 21 |
-| market leg | seed NIFTY 50 price (ends 2026-07-07) | NIFTY 500 total return (0077) | same |
-| within-quarter cross-sectional SD | 33% | 47% | 39% |
-| 1st / 99th percentile | −45% / +74% | −44% / +93% | −44% / +89% |
-| MDE of the decile spread | **12.05%/quarter — 8.0× the bound** | **9.36% — 6.2×** | **10.14% — 6.8×** |
-| winsorised at those percentiles | **4.89% — 3.3×** | **3.39% — 2.3×** | **5.20% — 3.5×** |
+| | 2026-09-18 | 2026-09-19 | 2026-09-28 | **2026-09-29, floor 100** |
+|---|---|---|---|---|
+| companies / matured quarters | 220 / 18 | 449 / 19 | 1,147 / 21 | 1,309 / 19 (2021-Q3 on) |
+| market leg | seed NIFTY 50 price (ends 2026-07-07) | NIFTY 500 total return (0077) | same | same |
+| within-quarter cross-sectional SD | 33% | 47% | 39% | 36% |
+| 1st / 99th percentile | −45% / +74% | −44% / +93% | −44% / +89% | −43% / +90% |
+| MDE of the decile spread | **12.05%/quarter — 8.0× the bound** | **9.36% — 6.2×** | **10.14% — 6.8×** | **3.89% — 2.6×** |
+| winsorised at those percentiles | **4.89% — 3.3×** | **3.39% — 2.3×** | **5.20% — 3.5×** | **1.95% — 1.3×** |
+
+**The minimum quarter size, decided 2026-09-29 before registration: 100 names**
+(ten a decile), up from 20 (two a decile). The first three runs admitted the
+2018 – 2021-Q2 quarters, whose 13–40 early filers set the MDE. At 50, 100 and 200
+the MDE is identical, because nothing sits between 40 names and the 829 of
+2021-Q3, so the floor is the principled one, not a number tuned to the answer.
+The study now starts at 2021-Q3.
 
 **The third run, on 2.5× the companies, came out slightly worse, not better**: the
 shared within-quarter movement does not average away as names are added, and
@@ -151,7 +158,7 @@ and counted; the original broadcast is the point-in-time fact.
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
 | kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
 | confounds | momentum APPLICABLE (controlled by CHAR_MATCHED; raw vs matched reported — kill 3); share-count APPLICABLE (flagged — kill 4); index inclusion APPLICABLE, NOT controlled (constituents are one snapshot) — stated limitation; delisting APPLICABLE (0052); size/liquidity APPLICABLE (tiers reported; participation cap — kill 2); industry NOT CONTROLLED (`sector_history` is Phase 3; same degradation `char_panel` already declares). |
-| exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md`, run three times (2026-09-18: 3,092 stock-quarters; 2026-09-19: 6,749; 2026-09-28: 17,451): forward market-relative returns were joined to them to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
+| exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md`, run four times (2026-09-18: 3,092 stock-quarters; 2026-09-19: 6,749; 2026-09-28: 17,451 — all at a floor of 20 names a quarter; 2026-09-29: 20,013 at the registered floor of 100): forward market-relative returns were joined to them to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
 
 ## 7. What would make me not register it
 
