@@ -147,9 +147,27 @@ sources:
     licence: public_disclosure
     automated_use_permitted: "yes"
     existing_rows: 68                # TWENTY-TWO DAYS: 2026-06-17 -> 2026-07-08
-    note: "History is unobtainable retrospectively — it accrues forward only.
-      This is why Engine E is out of scope for v1. Start collecting immediately
-      so the clock runs."
+    note: "History is unobtainable retrospectively FROM NSE — it accrues forward
+      only. This is why Engine E is out of scope for v1. Start collecting
+      immediately so the clock runs. The FOREIGN side's history is available
+      from NSDL since 2026-09-29: see nsdl_fpi_daily below (1998 -> today). The
+      DOMESTIC (DII) side still has no official archive found."
+
+  - id: nsdl_fpi_daily
+    exchange: NSDL
+    report_type: FPI_DAILY
+    status: CONFIRMED_BACKFILLED     # probed 2026-09-29: every month from Dec 1998 answers
+    cadence: daily
+    licence: public_disclosure
+    route: "https://www.fpi.nsdl.co.in/web/Reports/Archive.aspx"
+    route_kind: dated_archive        # ASP.NET form: POST hdnDate=DD-Mon-YYYY, __EVENTTARGET=btnSubmit1 -> that date's whole month
+    backfill_reach: "1998-12-31 (September 1998 and earlier answer empty)"
+    robots: "fpi.nsdl.co.in serves none; nsdl.co.in allows all but a few query patterns not used"
+    collector: src/archive/fpi_nsdl.py   # daily stage `fpi`: current + previous month, plus up to 4 older months not yet held
+    parser: src/ingest/fpi_nsdl.py       # daily stage `fpi_parse` -> collected/fpi_nsdl/fpi_investment.parquet and fpi_derivatives.parquet
+    fields: [reporting_date, category (Equity/Debt.../Total), route, gross_purchases_cr, gross_sales_cr, net_cr, net_usd_mn, usd_inr]
+    point_in_time: "reporting_date is the day custodians REPORTED the trades (the page's own note: the day after the exchanges' provisional T-day figure). A flow reported on D was not public before D; a study enters no earlier than the next session."
+    reconciled: "route identity stock-exchange + primary = sub-total: 108/108 in Sep 2026; 1999-2010 pages differ only by +/-0.1, NSDL's own 1-dp rounding"
 
   - id: participant_oi
     exchange: NSE

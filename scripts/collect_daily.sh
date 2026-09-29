@@ -122,6 +122,14 @@ mkdir -p "$REPO/logs"
   note "index_tri" $?
   "$REPO/.venv/bin/python" -m src.ingest.index_tri
   note "index_tri_parse" $?
+  # NSDL DAILY FPI FLOWS (2026-09-29, decision 0079). One month per request,
+  # back to December 1998. Daily: the current and previous month, which NSDL
+  # is still filling in and may revise, plus at most four older months not yet
+  # held — capped so a backlog can never eat the evening window.
+  "$REPO/.venv/bin/python" -m src.archive.fpi_nsdl --max 6 --max-minutes 5
+  note "fpi" $?
+  "$REPO/.venv/bin/python" -m src.ingest.fpi_nsdl
+  note "fpi_parse" $?
   # INDEX CONSTITUENTS, DAILY (2026-09-18). Six lists — the NIFTY 500 and the
   # four size buckets that compose it, plus Microcap 250. There is NO history
   # route anywhere (probed: nsearchives 404s a dated name; niftyindices serves
