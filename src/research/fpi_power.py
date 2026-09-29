@@ -1,0 +1,176 @@
+"""fpi_power.py — could a study of daily FPI flows be powered? Dispersion and n only.
+
+PRELIMINARY. NOT REGISTERED. NOTHING IS CHARGED TO A FAMILY. Decision 0035
+allows a power computation before registration because dispersion cannot tell
+a true effect from a false one — provided nothing conditions a return on the
+signal. The NSDL flow AMOUNTS are never read here: only which days carry a
+reported FPI equity flow (`is_daily_flow`), to count observations.
+`tests/test_fpi_power.py` parses this file for `.mean(`/`.median(` and for the
+flow columns, and refuses them.
+
+WHAT IT COMPUTES, per horizon: the number of reporting days with a forward
+market return, the monthly cohorts, the cohort SD of the forward return, the
+Bartlett serial inflation with a lag covering the label overlap (0033), and the
+minimum detectable effect — single-arm (a cohort mean) and two-arm (a tercile
+difference, twice the single-arm MDE at equal arms), exactly as exp_003's
+`oi_power.py` does for derivatives positioning. The verdict compares the
+two-arm MDE with the plausible bound, 0.5%/month x horizon (0028).
+
+THE MARKET LEG is the NIFTY 500 total-return index (`collected:index_tri`,
+1995 -> today; benchmarks.yml headline_index, 0077). It carries closes only,
+so a flow reported on D is entered at the close of the first session AFTER D
+and held `h` sessions: one session later than the earliest possible entry,
+never earlier. NSDL's reporting date is itself the day after the trades
+(src/archive/fpi_nsdl.py), so nothing here can see a flow before it was public.
+
+ONE SERIES, NOT A CROSS-SECTION. Every observation is the same market on a
+different day, so the effective sample is the number of independent months,
+not the number of days. That is why the cohort collapse and the serial
+inflation carry the whole result.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import duckdb
+
+from src.common.paths import COLLECTED, DOCS
+from src.research import power
+
+HORIZONS: tuple[int, ...] = (1, 5, 10, 21, 63, 126, 252)
+PRIMARY = 21
+SESSIONS_PER_MONTH = 21.0
+FLOWS = COLLECTED / "fpi_nsdl" / "fpi_investment.parquet"
+TRI = COLLECTED / "index_tri" / "index_tri.parquet"
+REPORT = DOCS / "reports" / "FPI_POWER_PRELIMINARY.md"
+
+
+def _bound_per_month() -> float:
+    import yaml
+
+    from src.common.paths import CONFIGS
+
+    return float(yaml.safe_load((CONFIGS / "research.yml").read_text())["power"]["plausible_effect_bound_monthly"])
+
+
+BOUND_PER_MONTH = _bound_per_month()
+
+
+@dataclass(frozen=True, slots=True)
+class Row:
+    sessions: int
+    n_obs: int
+    n_cohorts: int
+    cohort_sd: float
+    inflation: float
+    mde_one_arm: float
+    mde_two_arm: float
+    first: str
+    last: str
+
+    @property
+    def bound(self) -> float:
+        return BOUND_PER_MONTH * self.sessions / SESSIONS_PER_MONTH
+
+    @property
+    def ratio(self) -> float:
+        return self.mde_two_arm / self.bound
+
+    @property
+    def verdict(self) -> str:
+        return "POWERED-enough-to-fit" if self.ratio <= 1 else f"UNDERPOWERED ({self.ratio:.2f}x short)"
+
+
+def _sample_sql(sessions: int) -> str:
+    """(reporting day, forward market return) for every day NSDL reported an
+    FPI equity flow. Only the DATE is read from the flows table."""
+    return f"""
+    WITH px AS (
+        SELECT date AS d, tri AS close, ROW_NUMBER() OVER (ORDER BY date) AS i
+        FROM read_parquet('{TRI}') WHERE index_key = 'NIFTY500' AND tri > 0
+    ),
+    fwd AS (
+        SELECT d, i, LEAD(close, {sessions}) OVER (ORDER BY i) / close - 1 AS ret FROM px
+    ),
+    days AS (
+        SELECT DISTINCT reporting_date AS rd FROM read_parquet('{FLOWS}')
+        WHERE category = 'Equity' AND is_daily_flow
+    )
+    SELECT days.rd AS d, f.ret
+    FROM days
+    JOIN fwd f ON f.i = (SELECT MIN(p.i) FROM px p WHERE p.d > days.rd)
+    WHERE f.ret IS NOT NULL
+    ORDER BY 1
+    """
+
+
+def grid() -> list[Row]:
+    con = duckdb.connect()
+    out: list[Row] = []
+    try:
+        for sessions in HORIZONS:
+            df = con.execute(_sample_sql(sessions)).df()
+            cohorts = power.cohort_collapse(df["d"], df["ret"], freq="M")
+            lp = max(1, round(sessions / SESSIONS_PER_MONTH))
+            infl, _ = power.serial_inflation(cohorts, label_periods=lp)
+            one = power.mde_serial_corrected(cohorts, label_periods=lp)
+            out.append(Row(sessions, len(df), len(cohorts), power.cohort_sd(cohorts), infl,
+                           one, 2.0 * one, str(df["d"].min())[:10], str(df["d"].max())[:10]))
+    finally:
+        con.close()
+    return out
+
+
+def render(rows: list[Row]) -> str:
+    prim = next(r for r in rows if r.sessions == PRIMARY)
+    powered = [r for r in rows if r.ratio <= 1]
+    lines = [
+        "# FPI_POWER_PRELIMINARY.md — could daily FPI flows be studied? Dispersion and n only",
+        "",
+        "**PRELIMINARY. NOT REGISTERED. NOTHING IS CHARGED TO A FAMILY.** Generated by",
+        "`python -m src.research.fpi_power`. No flow amount, sign, tercile or mean return",
+        "was read (0035): only which days NSDL reported an FPI equity flow, and the",
+        "unconditional forward return of the NIFTY 500 total-return index after each.",
+        "",
+        f"Sample: {prim.n_obs:,} reporting days, {prim.first} -> {prim.last}, {prim.n_cohorts} monthly cohorts.",
+        "Entry at the close of the first session after the reporting date (0079 point in time).",
+        "MDE two-arm = a tercile difference (2x the single-arm cohort-mean MDE). Bound =",
+        f"{BOUND_PER_MONTH:.1%}/month x horizon months (0028). POWERED only if MDE two-arm <= bound.",
+        "",
+        f"## Landing at the primary horizon ({PRIMARY} sessions): **{prim.verdict}**",
+        "",
+        f"MDE two-arm {prim.mde_two_arm:.2%} against a bound of {prim.bound:.2%}; cohort SD "
+        f"{prim.cohort_sd:.2%}, serial inflation {prim.inflation:.2f}.",
+        "",
+        "| sessions | n obs | cohorts | cohort SD | infl | MDE 1-arm | MDE 2-arm | bound | verdict |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for r in rows:
+        lines.append(f"| {r.sessions} | {r.n_obs:,} | {r.n_cohorts} | {r.cohort_sd:.3%} | {r.inflation:.2f} | "
+                     f"{r.mde_one_arm:.3%} | {r.mde_two_arm:.3%} | {r.bound:.2%} | {r.verdict} |")
+    lines += ["", "## How to read it", ""]
+    if powered:
+        lines += [f"{len(powered)} horizon(s) clear the bound: "
+                  + ", ".join(f"{r.sessions}s ({r.ratio:.2f}x)" for r in powered) + ".",
+                  "A study on those horizons is worth writing and registering. Nothing here",
+                  "is a result: the flow amounts have not been looked at."]
+    else:
+        lines += ["No horizon clears the bound. The flows are a single market-wide series, so",
+                  "27 years is ~330 independent months, and the market's own month-to-month",
+                  "swing is several times the effect a flow signal could plausibly carry.",
+                  "The bound is not loosened to make the study askable."]
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    rows = grid()
+    text = render(rows)
+    REPORT.write_text(text)
+    print(text)
+    print(f"wrote {REPORT}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

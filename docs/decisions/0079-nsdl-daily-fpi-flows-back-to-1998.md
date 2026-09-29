@@ -75,3 +75,17 @@ only differences are ±0.1, which is NSDL's own one-decimal rounding.
 
 About 670 requests for the one-time backfill (a form load and a post per
 month, three seconds apart), then two to six months a day.
+
+## Power, measured the same day
+
+`python -m src.research.fpi_power` (dispersion and n only; the flow amounts
+are never read, 0035) against the NIFTY 500 total-return index, entered the
+session after each reporting date: **UNDERPOWERED at every horizon, 4.2x to
+4.9x short** of the 0.5%/month plausible bound. One month: MDE 2.33% against
+0.50%, on 332 monthly cohorts. The series is one market observed about 330
+independent months; the market's own month-to-month swing (6.1%) is several
+times any plausible flow effect. Detecting one would take about 22x more
+independent months. `docs/reports/FPI_POWER_PRELIMINARY.md`.
+
+This is not a verdict on FPI flows — no study was run — only on whether a
+market-timing study on this series could be answered. It cannot, on its own.
