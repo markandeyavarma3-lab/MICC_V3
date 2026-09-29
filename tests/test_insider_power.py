@@ -111,3 +111,13 @@ def test_the_bound_is_the_same_as_every_other_study():
     r = insider_power.Row("pledge", "252s (12m)", 12.0, 100, 50, 0.3, 0.15)
     assert r.bound == pytest.approx(measure.BOUND_PER_MONTH * 12.0)
     assert not r.powered
+
+
+@pytest.mark.unit
+def test_the_charmatched_variant_uses_the_one_shared_definition():
+    """CHAR_MATCHED is defined once, in charmatch.py (2026-09-20). A power
+    check on a hand-copied ladder would preview a different benchmark."""
+    import inspect
+    src = inspect.getsource(insider_power.grid_charmatched)
+    assert "charmatch.ladder(" in src and "charmatch.cellmap_sql(" in src
+    assert "COALESCE(own.ret, 0)" not in src
