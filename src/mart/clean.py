@@ -77,8 +77,75 @@ def participation_ceiling() -> float:
     return float(c["base_cap_pct_adv"]) * int(c["max_sessions_to_build"])
 
 
-CLEAN_VERSION = "1.1.0"   # 1.1.0 adds the TOO_LARGE participation ceiling
+CLEAN_VERSION = "1.2.0"   # 1.1.0 the TOO_LARGE ceiling; 1.2.0 the promoter flags
 PRODUCED_BY = "src.mart.clean:build"
+
+
+#: Plan 1 §6.6 / §7.1. Three facts per resolved deal, against the point-in-time
+#: promoter list (`src/identity/promoters.py`):
+#:   promoter_related   the participant is a promoter of THIS security on the
+#:                      trade date, by exact normalised name
+#:   internal_transfer  a promoter-related deal with a DIFFERENT promoter of
+#:                      the same security on the opposite side that session —
+#:                      the owner moving shares between its own hands
+#:   list_in_force      the security had any promoter list valid on that date,
+#:                      i.e. the question could be asked at all
+#: The flags do NOT change eligibility. Whether a study excludes promoter deals
+#: is a registration decision, and moving 1,435 sells out of the eligible set
+#: from inside the mart would change every study's sample without one.
+PROMOTER_FLAGS_SQL = """
+CREATE OR REPLACE TEMP TABLE pflag AS
+WITH d AS (
+    SELECT r.raw_deal_id, r.trade_date, dr.security_id, n.norm,
+           CASE WHEN UPPER(r.side_raw) LIKE 'B%' THEN 'BUY'
+                WHEN UPPER(r.side_raw) LIKE 'S%' THEN 'SELL' END AS side
+    FROM institutional_deals_raw r
+    JOIN deal_resolution dr ON dr.raw_deal_id = r.raw_deal_id
+    LEFT JOIN pnorm n ON n.raw = r.client_name_raw
+    WHERE dr.security_id IS NOT NULL
+),
+valid AS (
+    SELECT d.raw_deal_id, d.security_id, d.trade_date, d.side, d.norm,
+           pe.normalized_name AS promoter
+    FROM d JOIN promoter_entities pe
+      ON pe.security_id = d.security_id
+     AND d.trade_date >= pe.valid_from
+     AND (pe.valid_to IS NULL OR d.trade_date < pe.valid_to)
+),
+known AS (SELECT DISTINCT raw_deal_id FROM valid),
+prom AS (SELECT DISTINCT raw_deal_id, security_id, trade_date, side, norm
+         FROM valid WHERE norm = promoter),
+internal AS (
+    SELECT DISTINCT a.raw_deal_id FROM prom a JOIN prom b
+      ON a.security_id = b.security_id AND a.trade_date = b.trade_date
+     AND a.side <> b.side AND a.norm <> b.norm
+)
+SELECT d.raw_deal_id,
+       p.raw_deal_id IS NOT NULL AS promoter_related,
+       i.raw_deal_id IS NOT NULL AS internal_transfer,
+       k.raw_deal_id IS NOT NULL AS list_in_force
+FROM d
+LEFT JOIN (SELECT DISTINCT raw_deal_id FROM prom) p ON p.raw_deal_id = d.raw_deal_id
+LEFT JOIN internal i ON i.raw_deal_id = d.raw_deal_id
+LEFT JOIN known k ON k.raw_deal_id = d.raw_deal_id
+"""
+
+
+def promoter_flags(con: duckdb.DuckDBPyConnection) -> None:
+    """Build temp table `pflag` (raw_deal_id -> the three facts above).
+
+    Participant names are normalised in Python with the one shared rule
+    (`entity_names.normalize`) — a second SQL copy of it would drift — once
+    per DISTINCT name, not per row.
+    """
+    from src.research.entity_names import normalize
+
+    names = [r[0] for r in con.execute(
+        "SELECT DISTINCT client_name_raw FROM institutional_deals_raw"
+        " WHERE client_name_raw IS NOT NULL").fetchall()]
+    con.execute("CREATE OR REPLACE TEMP TABLE pnorm (raw VARCHAR, norm VARCHAR)")
+    con.executemany("INSERT INTO pnorm VALUES (?, ?)", [(n, normalize(n)) for n in names])
+    con.execute(PROMOTER_FLAGS_SQL)
 
 
 @dataclass
@@ -91,6 +158,12 @@ class CleanReport:
     by_reason: dict[str, int] = field(default_factory=dict)
     by_identity: dict[str, int] = field(default_factory=dict)
     by_timing: dict[str, int] = field(default_factory=dict)
+    #: Plan 1 §7.1 promoter flags; see PROMOTER_FLAGS_SQL.
+    promoter_related: int = 0
+    promoter_related_eligible: int = 0
+    internal_transfer: int = 0
+    list_in_force: int = 0
+    promoter_entities: int = 0
 
     def render(self) -> str:
         out = [f"  clean rows        {self.rows:>8,}",
@@ -105,6 +178,18 @@ class CleanReport:
         out.append("\n  available_from confidence:")
         for k, v in sorted(self.by_timing.items(), key=lambda x: -x[1]):
             out.append(f"    {k:<34} {v:>8,}")
+        out.append("\n  promoter flags (Plan 1 §6.6; they do not change eligibility):")
+        if not self.promoter_entities:
+            # FALSE BY ABSENCE IS NOT FALSE BY MEASUREMENT. If the promoters
+            # stage failed, every flag reads FALSE and looks like a finding.
+            out.append("    promoter_entities HOLDS 0 ROWS — every flag below is FALSE for"
+                       " want of a list, not because it was checked."
+                       " Run: python -m src.identity.promoters")
+        out += [f"    {'a promoter list was in force':<34} {self.list_in_force:>8,}"
+                + (f"  ({self.list_in_force / self.rows:.1%} of rows)" if self.rows else ""),
+                f"    {'promoter_related':<34} {self.promoter_related:>8,}",
+                f"    {'  of which eligible':<34} {self.promoter_related_eligible:>8,}",
+                f"    {'internal_transfer':<34} {self.internal_transfer:>8,}"]
         if self.derived_invalidated:
             out.append(
                 f"\n  INVALIDATED {self.derived_invalidated:,} deal_forward_outcomes row(s): "
@@ -163,6 +248,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                 FROM csd GROUP BY 1)
             WHERE days >= {t.min_client_stock_days} AND ratio >= {t.roundtrip_ratio}
         """)
+        promoter_flags(con)
 
         # DERIVED OUTCOMES ARE INVALIDATED BY A REBUILD, AND THE FK ENFORCES IT.
         #
@@ -202,7 +288,9 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                 c.next_d AS entry_date,
                 a.adv20,
                 cs.bought, cs.sold,
-                CASE WHEN h.participant IS NOT NULL THEN TRUE ELSE FALSE END AS is_hft
+                CASE WHEN h.participant IS NOT NULL THEN TRUE ELSE FALSE END AS is_hft,
+                COALESCE(pf.promoter_related, FALSE) AS promoter_related,
+                COALESCE(pf.internal_transfer, FALSE) AS internal_transfer
             FROM institutional_deals_raw r
             JOIN deal_source_files f USING (source_file_id)
             LEFT JOIN deal_resolution dr ON dr.raw_deal_id = r.raw_deal_id
@@ -212,6 +300,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                             AND cs.symbol = UPPER(TRIM(r.symbol_raw))
                             AND cs.trade_date = r.trade_date
             LEFT JOIN hft h ON h.participant = UPPER(TRIM(r.client_name_raw))
+            LEFT JOIN pflag pf ON pf.raw_deal_id = r.raw_deal_id
         ),
         flagged AS (
             SELECT *,
@@ -256,8 +345,8 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
             NULL,
             COALESCE(round_trip, FALSE),
             FALSE,   -- five_day_round_trip: not yet computed
-            FALSE,   -- internal_transfer: needs participant identity
-            FALSE,   -- promoter_related: needs SHP, Phase 3.11
+            internal_transfer,
+            promoter_related,
             FALSE,
             COALESCE(failure = 'UNRESOLVED', FALSE),
             COALESCE(failure = 'UNCOVERED', FALSE),
@@ -285,12 +374,21 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
             "SELECT available_from_confidence, COUNT(*) FROM institutional_deals_clean"
             " GROUP BY 1"
         ).fetchall())
+        prom = con.execute("""
+            SELECT COUNT(*) FILTER (WHERE promoter_related_flag),
+                   COUNT(*) FILTER (WHERE promoter_related_flag AND eligible_for_research),
+                   COUNT(*) FILTER (WHERE internal_transfer_flag)
+            FROM institutional_deals_clean""").fetchone()
+        in_force = con.execute("SELECT COUNT(*) FROM pflag WHERE list_in_force").fetchone()[0]
+        n_entities = con.execute("SELECT COUNT(*) FROM promoter_entities").fetchone()[0]
 
         # Working views are dropped: they are build scaffolding, and leaving
         # them in a persistent database means a stale `cal` can outlive a spine
         # rebuild and silently answer with the old calendar.
         for v in ("cal", "adv", "csd", "hft"):
             con.execute(f"DROP VIEW IF EXISTS {v}")
+        for t in ("pflag", "pnorm"):
+            con.execute(f"DROP TABLE IF EXISTS {t}")
     finally:
         con.close()
 
@@ -308,7 +406,8 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
             (r[0], "input")
             for r in g.execute(
                 "SELECT artefact_hash FROM artefact WHERE logical_name IN"
-                " ('warehouse:institutional_deals_raw','warehouse:security_master')"
+                " ('warehouse:institutional_deals_raw','warehouse:security_master',"
+                "  'warehouse:promoter_entities')"
             ).fetchall()
         ]
     finally:
@@ -324,7 +423,10 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
         parents=parents,
         env=env,
     )
-    return CleanReport(rows, elig, derived, by_reason, by_identity, by_timing)
+    return CleanReport(rows, elig, derived, by_reason, by_identity, by_timing,
+                       promoter_related=prom[0], promoter_related_eligible=prom[1],
+                       internal_transfer=prom[2], list_in_force=in_force,
+                       promoter_entities=n_entities)
 
 
 def main() -> int:

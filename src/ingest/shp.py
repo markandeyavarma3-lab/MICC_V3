@@ -21,6 +21,12 @@ handful the exp_004 draft names, everything else passes through unchanged —
 the same shape as `src/ingest/insider.py`'s `_CATEGORY` map, for the same
 reason: an unrecognised category is information, not noise to be dropped.
 
+NAMED PROMOTERS, A SECOND OUTPUT FROM THE SAME READ. Table II of every filing
+names each promoter-group holder. Those names go to `shp_promoters.parquet`,
+one row per (filing, holder), carrying the filing's broadcast date; the
+point-in-time promoter list is built from it by `src/identity/promoters.py`
+(Plan 1 §6.6, step 3.11).
+
 WHAT IS NOT DERIVED HERE. No return, no rank, no decile. This produces one row
 per (ISIN, quarter, category); what to compute from it is exp_004's question.
 """
@@ -93,6 +99,37 @@ _CONTEXT_CATEGORY = re.compile(
 
 _FACT = re.compile(r'<in-bse-shp:([A-Za-z0-9]+)\s+contextRef="([^"]+)"[^>]*>([^<]*)</in-bse-shp:\1>')
 
+#: Named-holder blocks carry a TYPED member instead of a category: the axis
+#: says which table row the holder sits in, the value numbers the holder. The
+#: name hangs off the duration context (`...001D`) and the percentage off the
+#: instant one (`...001I`); both carry the same typed value, so the pair is
+#: joined on (axis, value), never on the context id.
+_CONTEXT_TYPED = re.compile(
+    r'<xbrldi:typedMember dimension="in-bse-shp:([A-Za-z0-9]+)">\s*'
+    r'<in-bse-shp:[A-Za-z0-9]+>([^<]*)</in-bse-shp:[A-Za-z0-9]+>')
+
+#: The Table II (promoter and promoter group) axes — every named promoter
+#: sits in exactly one of these. Table III (public) uses different axes, and
+#: several public ones look promoter-like by name, so this list was MEASURED,
+#: not read off the taxonomy: on 3,000 random filings the named holders in
+#: these axes sum to the filing's own Promoter category total within 0.15pt in
+#: 2,935 of 2,938 (the other 36 report no promoter holding). Two of the three
+#: misses put a promoter under `DetailsOfSharesHeldByFinancialInstitutionOrBanks`,
+#: which in the 2018-2022 taxonomy is ALSO the public Table III line — adding
+#: it would mislabel every bank that holds shares, so it stays out.
+PROMOTER_AXES = frozenset({
+    "DetailsSharesHeldByIndividualsOrHUFAxis",                        # A1(a)
+    "DetailsOfSharesHeldByCentralGovernmentOrStateGovernmentsAxis",   # A1(b)
+    "DetailsOfSharesHeldByIndianFinancialInstitutionsOrBanksAxis",    # A1(c), 2025+
+    "DetailsOfSharesHeldByOthersIndianShareholdersAxis",              # A1(d)
+    "DetailsOfSharesHeldByNonResidentIndividualsOrForeignIndividualsAxis",  # A2(a)
+    "DetailsOfSharesHeldByForeignInstitutionsAxis",                   # A2(c)
+    "DetailsOfSharesHeldByForeignPortfolioInvestorAxis",              # A2(d)
+    "DetailsOfSharesHeldByOtherForeignShareholdersAxis",              # A2(e)
+})
+
+PROMOTERS_OUT = COLLECTED / "shp" / "shp_promoters.parquet"
+
 
 @dataclass(frozen=True, slots=True)
 class Filing:
@@ -131,6 +168,19 @@ class Holding:
     num_shareholders: float | None
     num_shares: float | None
     revised: bool
+    source_file: str
+
+
+@dataclass(frozen=True, slots=True)
+class NamedPromoter:
+    """One promoter-group holder, by name, in one filing (Plan 1 §6.6)."""
+    isin: str
+    symbol: str
+    quarter_end: str
+    broadcast_date: str
+    axis: str
+    name: str
+    pct_shares: float | None
     source_file: str
 
 
@@ -178,17 +228,31 @@ def parse_master_file(path: str) -> list[Filing]:
 
 
 def parse_xbrl_file(path: str) -> list[Holding]:
+    return _parse_file(path)[0]
+
+
+def parse_promoters_file(path: str) -> list[NamedPromoter]:
+    return _parse_file(path)[1]
+
+
+def _parse_file(path: str) -> tuple[list[Holding], list[NamedPromoter]]:
+    """One read of one filing: its category rows and its named promoters."""
     with gzip.open(path, "rb") as fh:
         text = fh.read().decode("utf-8", "replace")
 
     # context id -> (period date, category member or None)
     ctx: dict[str, tuple[str, str | None]] = {}
+    # context id -> (typed axis, typed value), promoter axes only
+    typed: dict[str, tuple[str, str]] = {}
     for m in _CONTEXT_BLOCK.finditer(text):
         cid, block = m.group(1), m.group(2)
         d = _CONTEXT_DATE.search(block)
         c = _CONTEXT_CATEGORY.search(block)
         if d:
             ctx[cid] = (d.group(1), c.group(1) if c else None)
+        t = _CONTEXT_TYPED.search(block)
+        if t and t.group(1) in PROMOTER_AXES:
+            typed[cid] = (t.group(1), t.group(2).strip())
 
     facts: dict[str, dict[str, str]] = {}
     for m in _FACT.finditer(text):
@@ -246,10 +310,30 @@ def parse_xbrl_file(path: str) -> list[Holding]:
             revised=False,  # from the master, joined below
             source_file=Path(path).name,
         ))
-    return out
+
+    # Named promoters: name and percentage joined on (axis, typed value).
+    holder: dict[tuple[str, str], dict[str, str]] = {}
+    for cref, key in typed.items():
+        holder.setdefault(key, {}).update(facts.get(cref, {}))
+    quarter = next((p for _, p, _ in cat_rows), "")
+    promoters: list[NamedPromoter] = []
+    for (axis, _), d in sorted(holder.items()):
+        name = (d.get("NameOfTheShareholder") or "").strip()
+        if not name:
+            continue
+        raw_pct = _num(d.get("ShareholdingAsAPercentageOfTotalNumberOfShares", ""))
+        promoters.append(NamedPromoter(
+            isin=isin, symbol=symbol, quarter_end=quarter, broadcast_date="", axis=axis,
+            name=name, pct_shares=None if raw_pct is None else raw_pct * factor,
+            source_file=Path(path).name))
+    return out, promoters
 
 
 def parse() -> list[Holding]:
+    return parse_all()[0]
+
+
+def parse_all() -> tuple[list[Holding], list[NamedPromoter]]:
     """Every XBRL, joined to its filing's broadcast date by (symbol, quarter_end).
 
     A holding with no matching filing (the master for that symbol was never
@@ -274,18 +358,27 @@ def parse() -> list[Holding]:
     url_stamp = _xbrl_upload_dates()
 
     out: list[Holding] = []
+    named: list[NamedPromoter] = []
     for f in sorted(glob.glob(XBRL_GLOB, recursive=True)):
-        for h in parse_xbrl_file(f):
+        holdings, promoters = _parse_file(f)
+        stamp: tuple[str, str] | None = None
+        for h in holdings:
             fl = by_isin.get((h.isin, h.quarter_end)) or by_symbol.get((h.symbol, h.quarter_end))
             if fl and fl.broadcast_date:
                 bd, src, rev = fl.broadcast_date, "master", fl.revised
             else:
                 bd, src, rev = url_stamp.get(h.source_file, ""), "xbrl_url" if h.source_file in url_stamp else "", False
+            stamp = stamp or (h.quarter_end, bd)
             out.append(Holding(h.isin, h.symbol, h.company, h.quarter_end, bd, src,
                                h.is_calendar_quarter, h.identity_total,
                                h.category_raw, h.category, h.pct_shares, h.pct_scale_raw,
                                h.num_shareholders, h.num_shares, rev, h.source_file))
-    return out
+        # A promoter row takes its filing's broadcast date from the SAME join
+        # the holdings used — one filing, one timestamp, never two answers.
+        if stamp:
+            named.extend(NamedPromoter(p.isin, p.symbol, stamp[0], stamp[1], p.axis, p.name,
+                                       p.pct_shares, p.source_file) for p in promoters)
+    return out, named
 
 
 def _xbrl_upload_dates() -> dict[str, str]:
@@ -342,12 +435,34 @@ def write(rows: list[Holding]) -> Path:
     return OUT
 
 
+def write_promoters(rows: list[NamedPromoter]) -> Path:
+    import duckdb
+
+    PROMOTERS_OUT.parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    try:
+        con.execute("""CREATE TABLE t (
+            isin VARCHAR, symbol VARCHAR, quarter_end VARCHAR, broadcast_date VARCHAR,
+            axis VARCHAR, name VARCHAR, pct_shares DOUBLE, source_file VARCHAR)""")
+        con.executemany("INSERT INTO t VALUES (?,?,?,?,?,?,?,?)",
+                        [(r.isin, r.symbol, r.quarter_end, r.broadcast_date, r.axis, r.name,
+                          r.pct_shares, r.source_file) for r in rows])
+        tmp = PROMOTERS_OUT.with_suffix(".parquet.partial")
+        con.execute(f"COPY (SELECT * FROM t ORDER BY isin, quarter_end, name) "
+                    f"TO '{tmp}' (FORMAT PARQUET)")
+        tmp.replace(PROMOTERS_OUT)
+    finally:
+        con.close()
+    return PROMOTERS_OUT
+
+
 def main() -> int:
-    rows = parse()
+    rows, promoters = parse_all()
     if not rows:
         print("SHP: no archived XBRL to parse")
         return 0
     write(rows)
+    write_promoters(promoters)
     prov.register_dataset(
         OUT.parent, artefact_type="SOURCE", logical_name="collected:shp",
         produced_by=PRODUCED_BY, pattern="**/*.parquet",
@@ -369,6 +484,8 @@ def main() -> int:
     for r in rows:
         scales[r.pct_scale_raw] = scales.get(r.pct_scale_raw, 0) + 1
     print(f"  pct scale as filed: {scales}  (all normalised to PERCENT)")
+    print(f"  {len(promoters):,} named promoter row(s) from "
+          f"{len({p.source_file for p in promoters}):,} filing(s) -> {PROMOTERS_OUT.name}")
     return 0
 
 

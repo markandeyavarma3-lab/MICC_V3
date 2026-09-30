@@ -130,8 +130,7 @@ def build(env: str | None = None) -> BuildReport:
             f"CREATE OR REPLACE TEMP TABLE _spine_symbols AS"
             f" SELECT DISTINCT symbol FROM read_parquet('{spine}')"
         )
-        con.execute("DELETE FROM symbol_history")
-        con.execute("DELETE FROM security_master")
+        clear_for_rebuild(con)
 
         # One security per ISIN. The canonical symbol is the one held LONGEST,
         # not the most recent: a company that traded 15 years as X and 6 months
@@ -237,6 +236,22 @@ def build(env: str | None = None) -> BuildReport:
         env=env,
     )
     return rep
+
+
+def clear_for_rebuild(con: duckdb.DuckDBPyConnection) -> None:
+    """Empty security_master and everything that references it, children first.
+
+    DuckDB enforces the foreign keys, so deleting a master row that a child
+    still points at is refused — and a refused rebuild here fails the identity
+    stage every night and freezes the mart behind it, which is how
+    deal_forward_outcomes froze the mart for five days (0055).
+    `promoter_entities` is derived from security_master by
+    `src/identity/promoters.py`, which runs straight after this stage and
+    rebuilds it whole, so emptying it here loses nothing.
+    """
+    con.execute("DELETE FROM promoter_entities")
+    con.execute("DELETE FROM symbol_history")
+    con.execute("DELETE FROM security_master")
 
 
 RESOLVE_SQL = """
