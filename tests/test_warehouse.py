@@ -525,10 +525,16 @@ def test_the_identity_rebuild_reads_before_it_destroys():
     """
     import inspect
 
-    src = inspect.getsource(__import__("src.identity.master", fromlist=["build"]).build)
+    master = __import__("src.identity.master", fromlist=["build"])
+    src = inspect.getsource(master.build)
     temp = src.index("_spine_symbols")
-    delete = src.index('DELETE FROM symbol_history')
+    # The deletes live in clear_for_rebuild() since 0080, children first.
+    delete = src.index("clear_for_rebuild(con)")
     assert temp < delete, (
         "the spine is read AFTER the delete; an unreadable partition would "
         "again empty security_master and symbol_history"
     )
+    clear = inspect.getsource(master.clear_for_rebuild)
+    order = [clear.index(f"DELETE FROM {t}") for t in
+             ("promoter_entities", "symbol_history", "security_master")]
+    assert order == sorted(order), "a parent is deleted before a child that references it"

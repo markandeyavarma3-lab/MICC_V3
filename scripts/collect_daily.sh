@@ -207,6 +207,13 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "land" $?
   "$REPO/.venv/bin/python" -m src.identity.master
   note "identity" $?
+  # PROMOTERS STRAIGHT AFTER IDENTITY, BEFORE THE MART. identity empties
+  # promoter_entities (it references security_master, and the FK refuses the
+  # rebuild otherwise); this refills it from the SHP parse, and the mart's
+  # promoter flags read it. Skipped, the flags go FALSE by absence and the
+  # mart's report says so in capitals.
+  "$REPO/.venv/bin/python" -m src.identity.promoters
+  note "promoters" $?
   "$REPO/.venv/bin/python" -m src.mart.clean
   note "mart" $?
   # OUTCOMES MUST FOLLOW THE MART, EVERY TIME.

@@ -510,7 +510,11 @@ def steps() -> list[Step]:
         Step("3.10", "3 Identity", "Review queue for the 1,515 names",
              built=lambda c: c.module("src/identity/review.py")),
         Step("3.11", "3 Identity", "SHP collector and promoter_entities",
-             built=lambda c: c.duck_rows.get("promoter_entities", 0) > 0),
+             built=lambda c: c.duck_rows.get("promoter_entities", 0) > 0,
+             wired=lambda c: "promoter_entities" in c.src_text.get("src/mart/clean.py", ""),
+             verified=lambda c: c.tested(r"test_the_flag_is_point_in_time"),
+             note="point-in-time on broadcast dates; exact normalised-name match, so it "
+                  "under-flags; the SHP sweep (0074) is still adding companies"),
 
         # --- Phase 4+ --------------------------------------------------------
         # PHASES 4-7 WERE ONE ROW EACH UNTIL 2026-09-01, AND THAT UNDER-REPORTED
@@ -536,7 +540,11 @@ def steps() -> list[Step]:
         Step("4.4", "4 Clean mart", "Internal-transfer and promoter-related flags",
              built=lambda c: c.flag_is_real("internal_transfer_flag")
                              and c.flag_is_real("promoter_related_flag"),
-             note=lambda c: "both FALSE on every row; promoter_entities holds 0 rows"),
+             verified=lambda c: c.tested(r"test_internal_transfer_needs_a_different_promoter"),
+             note=lambda c: ("flags only — eligibility unchanged; excluding promoter "
+                             "deals is a registration decision"
+                             if c.flag_is_real("promoter_related_flag")
+                             else "both FALSE on every row; promoter_entities holds 0 rows")),
         Step("4.5", "4 Clean mart", "Size eligibility: >= 0.5% ADV20 and >= Rs 1cr",
              built=lambda c: "min_value" in c.src_text.get("src/mart/clean.py", ""),
              wired=lambda c: "below the ADV20 floor" in c.src_text.get("src/mart/clean.py", ""),
