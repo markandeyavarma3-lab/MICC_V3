@@ -190,6 +190,42 @@ def _write(agg: dict[tuple[str, str, str], list]) -> None:
         con.close()
 
 
+_CLOSE = {"udiff": "ClsPric", "archive": "ClsPric", "secfull": "CLOSE_PRICE", "legacy": "CLOSE"}
+
+
+def closes(symbols: set[str], start: str, end: str) -> list[tuple[str, str, str, str, float]]:
+    """(symbol, series, isin, session, close) for `symbols`, every series, in
+    [start, end] — RAW prices as traded, never adjusted.
+
+    Built for exp_004's exit pricing (0076): a name that leaves the EQ series
+    mid-window keeps trading in BE/BZ, and its honest exit is the price it
+    traded at there. Reads one file per session in the range, the same choice
+    `build()` makes, and only for the symbols asked."""
+    want = {s.upper() for s in symbols}
+    out: list[tuple[str, str, str, str, float]] = []
+    if not want:
+        return out
+    chosen, _ = files()
+    for d in sorted(x for x in chosen if start <= x <= end):
+        path, src = chosen[d]
+        try:
+            reader = csv.DictReader(io.StringIO(_text(path)))
+        except (zipfile.BadZipFile, OSError, EOFError):
+            continue
+        for r in reader:
+            r = {(k or "").strip(): (v or "").strip() for k, v in r.items()}
+            sym = (r.get("TckrSymb") or r.get("SYMBOL") or "").upper()
+            if sym not in want:
+                continue
+            try:
+                px = float(r.get(_CLOSE[src], ""))
+            except ValueError:
+                continue
+            ser = (r.get("SctySrs") or r.get("SERIES") or "").upper()
+            out.append((sym, ser, (r.get("ISIN") or "").upper(), d, px))
+    return out
+
+
 def main() -> int:
     print("LISTING HISTORY — every series, every session, from the full bhavcopy")
     rep = build()
