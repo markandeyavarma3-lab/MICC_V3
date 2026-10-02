@@ -221,6 +221,12 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # mart's report says so in capitals.
   "$REPO/.venv/bin/python" -m src.identity.promoters
   note "promoters" $?
+  # PARTICIPANTS (0083): one per cleaned name, the owner's review rulings
+  # applied. Rebuilt nightly so a ruling made today is in tonight's table.
+  # Nothing downstream reads participant_id yet; a failure here costs nothing
+  # but staleness, and says so.
+  "$REPO/.venv/bin/python" -m src.identity.participants
+  note "participants" $?
   "$REPO/.venv/bin/python" -m src.mart.clean
   note "mart" $?
   # OUTCOMES MUST FOLLOW THE MART, EVERY TIME.
