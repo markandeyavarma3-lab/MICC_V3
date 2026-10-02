@@ -166,3 +166,65 @@ def run(ic: np.ndarray, sequential: FoldSet, cpcv: FoldSet, top_n: list[int],
         r.null_hit_rates = null_hit_rates(ic, sequential, n, reps)
         results.append(r)
     return results, pbo(ic, cpcv)
+
+
+def record(results: list[ProcedureResult], pbo_value: float, manifest: dict, regime: str,
+           candidates: int, commit: str, experiment_id: str | None = None,
+           env: str | None = None, keys: list[str] | None = None,
+           fold_names: list[str] | None = None) -> str:
+    """Write one procedure run: the headline to governance `procedure_result`
+    (write-once), the grid and the per-fold detail to the warehouse. Returns
+    the run_id (sha256 of the manifest, first 16). A CONFIRM run must name its
+    registered experiment; an EXPLORE run must not."""
+    import hashlib
+    import json
+    import sqlite3
+    from datetime import UTC, datetime
+
+    import duckdb
+
+    from src.common.migrate import migrate_duckdb, migrate_sqlite
+    from src.common.paths import governance_db, research_db
+
+    if regime not in ("EXPLORE", "CONFIRM"):
+        raise ValueError(regime)
+    if (regime == "CONFIRM") != (experiment_id is not None):
+        raise ValueError("a CONFIRM run names its registered experiment; an EXPLORE run names none")
+    run_id = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
+    now = datetime.now(UTC).isoformat()
+
+    wh = research_db(env)
+    migrate_duckdb(wh)
+    con = duckdb.connect(str(wh))
+    try:
+        if not con.execute("SELECT 1 FROM scan_run WHERE run_id = ?", [run_id]).fetchone():
+            con.execute("INSERT INTO scan_run VALUES (?, ?, ?, ?)",
+                        [run_id, json.dumps(manifest, sort_keys=True), regime, now])
+            if keys:
+                con.executemany("INSERT INTO scan_cell VALUES (?, ?, ?, ?)",
+                                [(run_id, i, k, k.count("|") + 1) for i, k in enumerate(keys)])
+        for r in results:
+            names = fold_names or [f"fold_{i}" for i in range(len(r.per_fold_test_ic))]
+            con.executemany(
+                "INSERT OR REPLACE INTO scan_fold_result VALUES (?, ?, ?, ?, ?, ?)",
+                [(run_id, "sequential", r.top_n, n, None, t)
+                 for n, t in zip(names, r.per_fold_test_ic, strict=True)])
+    finally:
+        con.close()
+
+    gv = governance_db(env)
+    migrate_sqlite(gv)
+    g = sqlite3.connect(str(gv))
+    try:
+        g.executemany(
+            "INSERT INTO procedure_result (run_id, regime, experiment_id, top_n, folds, effective_folds,"
+            " hit_rate, null_mean, p_vs_null, mean_train_ic, mean_test_ic, degradation, rank_decay, pbo,"
+            " candidates, code_commit, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(run_id, regime, experiment_id, r.top_n, r.folds, r.effective_folds, r.hit_rate,
+              float(np.mean(r.null_hit_rates)) if r.null_hit_rates is not None else None,
+              r.p_vs_null, r.mean_train_ic, r.mean_test_ic, r.degradation, r.rank_decay,
+              pbo_value, candidates, commit, now) for r in results])
+        g.commit()
+    finally:
+        g.close()
+    return run_id
