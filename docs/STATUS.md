@@ -43,7 +43,7 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-01; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-10-02 13:40 UTC, 4 generation(s), 0 commit(s) and 43 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-10-02 13:40 UTC, 4 generation(s), 1 commit(s) and 75 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -77,7 +77,7 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 3.7 | Behavioural PROP_HFT classifier | **VERIFIED** | 310 participants, 97,249 deal rows, 41.2% of the corpus. `ineligibility_reason` shows only 168 because it is a priority-ordered DISPLAY field and 'same-day round trip' outranks it — a membership question must not be answered from it (0056 amendment 3) |
 | 3.8 | Name-pattern classifier for the residual | WIRED | behavioural only; no name-pattern classifier exists |
 | 3.9 | Merge suggestions recorded, never applied | **VERIFIED** |  |
-| 3.12 | Manual fund-house mapping file | **VERIFIED** | renames confirmed by the owner 2026-10-02; Baroda/BNP pre-2022 still open |
+| 3.12 | Manual fund-house mapping file | **VERIFIED** | confirmed by the owner 2026-10-02: renames are one house, mergers two |
 | 3.10 | Review queue for the 1,515 names | **VERIFIED** | 681 names queued on cleaned names (the 1,515 was a 2026-08-16 estimate) |
 | 3.11 | SHP collector and promoter_entities | **VERIFIED** | point-in-time on broadcast dates; exact normalised-name match, so it under-flags; the SHP sweep (0074) is still adding companies |
 
@@ -148,4 +148,4 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `253e1a4`.
+Derived at commit `5743a34`.
