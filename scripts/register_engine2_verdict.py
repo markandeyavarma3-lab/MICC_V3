@@ -10,10 +10,19 @@ IT TOUCHES NO WAREHOUSE. `docs/reports/SEASONALITY_POWER.md` is pure arithmetic
 over figures already measured and committed in configs/. Nothing here reads
 price_spine_adj, and nothing writes seasonality_cell.
 
-FINAL ALPHA-CANDIDATE VERDICT. With Engine 1 (deals) recorded DEAD as
-`engine_1_deals_entity_verdict` and Engine 2 (seasonality) DEAD here, the
-project has no remaining alpha candidate. `params.final_alpha_candidate_verdict`
-marks that, so the claim is queryable rather than only narrated in a memo.
+NOT THE FINAL ALPHA-CANDIDATE VERDICT — CORRECTED 2026-10-02, BEFORE THE FIRST
+REAL REGISTRATION. This script was written 2026-09-12 to mark the project as
+having no remaining alpha candidate, which was true that day. By the time it
+first ran against the real ledger it was not: exp_004 (institutional holding
+change) was rehearsed and waiting on coverage, and promoter sells had measured
+1.13x short. The ledger is append-only, so a stale claim written into it could
+never be withdrawn — only contradicted. `final_alpha_candidate_verdict` is
+False and `remaining_candidates` names what is still open.
+
+SCOPE. The memo is about calendar cells (Track S1, Phase 7). It does not cover
+the signal-combination track (TRACK_S_SIGNALS) or the procedure test
+(TRACK_S_PROCEDURE), whose arithmetic is different: a signal fires many times
+a year, so walk-forward works natively (PLAN_4 §12).
 """
 
 from __future__ import annotations
@@ -53,7 +62,12 @@ def main() -> int:
             "verdict": "DEAD",
             "binding_constraint": "SAMPLE_SIZE",
             "engine_id": "ENGINE_2_SEASONALITY",
-            "final_alpha_candidate_verdict": True,
+            "final_alpha_candidate_verdict": False,
+            "remaining_candidates": [
+                "exp_004_holdings_change — rehearsed, registration pending coverage (0076)",
+                "insider promoter sells, 12m — 1.13x short (docs/reports/INSIDER_POWER.md); re-measure yearly",
+            ],
+            "scope": "Track S1 calendar cells and Phase 7 seasonality; NOT TRACK_S_SIGNALS or TRACK_S_PROCEDURE",
             # The numbers the verdict turns on, so the artefact is queryable
             # without re-reading the prose. All from src/research/seasonality_power.py.
             "mde_bps_monthly_pooled_bonferroni_31_9M": 538,
@@ -73,9 +87,10 @@ def main() -> int:
     )
     print(f"  artefact       : {LOGICAL_NAME}")
     print(f"  hash           : {digest}")
-    print(f"  type           : RESULT")
-    print(f"  verdict        : DEAD (binding constraint: SAMPLE SIZE)")
-    print(f"  final alpha-candidate verdict for the project: YES")
+    print("  type           : RESULT")
+    print("  verdict        : DEAD (binding constraint: SAMPLE SIZE)")
+    print("  final alpha-candidate verdict for the project: NO — exp_004 and promoter sells remain")
+    print("  scope          : calendar seasonality (Track S1 / Phase 7) only")
     return 0
 
 
