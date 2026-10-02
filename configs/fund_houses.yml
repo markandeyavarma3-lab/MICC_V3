@@ -27,11 +27,11 @@
 #
 # CONFIRMED BY THE OWNER 2026-10-02: every `renamed:` group below is one
 # continuous AMC (sponsor change, stake sale, JV exit or rebrand; scheme
-# codes and registration carried over). STILL OPEN: BARODA_BNP_AMC — whether
-# Baroda MF and BNP Paribas MF before their 2022 merger are one house.
+# codes and registration carried over), and Baroda MF and BNP Paribas MF are
+# two houses before their 2022 merger.
 
 status: confirmed
-open_questions: [BARODA_BNP_AMC]
+open_questions: []
 
 groups:
   SBI_FUNDS:
@@ -111,10 +111,18 @@ groups:
   WHITEOAK_AMC:
     name: WhiteOak Capital Asset Management
     pattern: '^WHITE ?OAK CAPITAL (MUTUAL FUND|MF\b|ASSET)'
+  # OWNER RULING 2026-10-02: TWO houses before the 2022 merger — separate
+  # managers making separate decisions, the same rule as L&T and HSBC. The
+  # merged name is a third group from 2022.
   BARODA_BNP_AMC:
-    name: Baroda BNP Paribas Asset Management
-    pattern: '^BARODA BNP PARIBAS (MUTUAL FUND|MF\b)|^BNP PARIBAS MUTUAL FUND|^BARODA (PIONEER )?MUTUAL FUND'
-    renamed: 'Baroda Mutual Fund + BNP Paribas Mutual Fund merged (2022) — owner to rule whether pre-2022 counts as one house'
+    name: Baroda BNP Paribas Asset Management (merged 2022)
+    pattern: '^BARODA BNP PARIBAS (MUTUAL FUND|MF\b)'
+  BARODA_AMC:
+    name: Baroda Asset Management (pre-2022; Baroda Pioneer until 2018)
+    pattern: '^BARODA (PIONEER )?(MUTUAL FUND|MF\b)'
+  BNP_PARIBAS_AMC:
+    name: BNP Paribas Asset Management India (pre-2022)
+    pattern: '^BNP PARIBAS (MUTUAL FUND|MF\b)'
   LIC_AMC:
     name: LIC Mutual Fund Asset Management
     pattern: '^LIC (MUTUAL FUND|MF\b|NOMURA MUTUAL)'

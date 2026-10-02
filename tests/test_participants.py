@@ -148,3 +148,12 @@ def test_a_rejected_suggestion_is_not_suggested_again(wh):
 def test_a_ruling_must_name_a_declared_type(wh):
     with pytest.raises(ValueError, match="not a declared type"):
         R.set_type("ANYONE", "HEDGE_FUND_ISH")
+
+
+def test_baroda_and_bnp_are_two_houses_before_their_merger():
+    """Owner ruling 2026-10-02."""
+    import yaml
+    groups = yaml.safe_load(P.FUND_HOUSES.read_text())["groups"]
+    assert P.fund_house("BARODA PIONEER MUTUAL FUND", groups) == "BARODA_AMC"
+    assert P.fund_house("BNP PARIBAS MUTUAL FUND", groups) == "BNP_PARIBAS_AMC"
+    assert P.fund_house("BARODA BNP PARIBAS MUTUAL FUND", groups) == "BARODA_BNP_AMC"
