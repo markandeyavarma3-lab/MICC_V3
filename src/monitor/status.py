@@ -517,7 +517,7 @@ def steps() -> list[Step]:
              built=lambda c: (ROOT / "configs" / "fund_houses.yml").exists(),
              wired=lambda c: "fund_houses.yml" in c.src_text.get("src/identity/participants.py", ""),
              verified=lambda c: c.tested(r"test_the_fund_house_file_groups_renamed_houses"),
-             note="status: proposed — the renames in it await the owner's confirmation"),
+             note="renames confirmed by the owner 2026-10-02; Baroda/BNP pre-2022 still open"),
         Step("3.10", "3 Identity", "Review queue for the 1,515 names",
              built=lambda c: c.module("src/identity/review.py"),
              wired=lambda c: "review.decisions" in c.src_text.get("src/identity/participants.py", ""),
