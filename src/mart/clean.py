@@ -131,6 +131,52 @@ LEFT JOIN known k ON k.raw_deal_id = d.raw_deal_id
 """
 
 
+#: Plan 1 §7.1, owner decision Q23: a round trip completed within five
+#: SESSIONS, alongside the same-day one. A participant-stock-day leg is
+#: flagged when the same participant traded the opposite side of the same
+#: stock on a DIFFERENT session no more than this many sessions away, either
+#: direction. Same participant key and symbol key as the same-day flag
+#: (`csd`), so the two flags describe one notion at two horizons.
+#:
+#: HALF OF THIS IS HINDSIGHT, SO IT IS A FLAG AND NEVER AN ELIGIBILITY RULE.
+#: A buy on Monday sold back on Thursday is flagged on MONDAY's row, from a
+#: deal published on Thursday. Excluding Monday's buy from a study because of
+#: it removes events using information nobody had at entry — a look-ahead that
+#: flatters any "institutional buys predict returns" result by deleting the
+#: buys that were quickly undone. A study may use this flag to describe its
+#: sample or run a labelled sensitivity, not to choose it. The same-day flag
+#: does not have the problem: both legs are disclosed the same evening.
+ROUND_TRIP_SESSIONS = 5
+
+FIVE_DAY_SQL = """
+CREATE OR REPLACE TEMP TABLE rt5 AS
+WITH sess AS (SELECT d, ROW_NUMBER() OVER (ORDER BY d) AS i FROM (SELECT DISTINCT d FROM cal)),
+legs AS (
+    SELECT c.participant, c.symbol, c.trade_date, c.bought, c.sold, s.i
+    FROM csd c JOIN sess s ON s.d = c.trade_date
+),
+pairs AS (
+    SELECT a.participant, a.symbol, a.trade_date,
+           a.bought = 1 AND b.sold = 1 AS buy_undone,
+           a.sold = 1 AND b.bought = 1 AS sell_undone
+    FROM legs a JOIN legs b
+      ON b.participant = a.participant AND b.symbol = a.symbol
+     AND b.i <> a.i AND abs(b.i - a.i) <= {n}
+)
+-- One row per (leg, side): a day with buys AND sells can be undone both ways,
+-- and the per-row join in build() reads only its own side.
+SELECT DISTINCT participant, symbol, trade_date, 'BUY' AS side FROM pairs WHERE buy_undone
+UNION
+SELECT DISTINCT participant, symbol, trade_date, 'SELL' AS side FROM pairs WHERE sell_undone
+"""
+
+
+def five_day_flags(con: duckdb.DuckDBPyConnection, n: int = ROUND_TRIP_SESSIONS) -> None:
+    """Build temp table `rt5` (participant, symbol, trade_date, side) from the
+    `csd` and `cal` views: every leg with an opposite leg <= n sessions away."""
+    con.execute(FIVE_DAY_SQL.format(n=int(n)))
+
+
 def promoter_flags(con: duckdb.DuckDBPyConnection) -> None:
     """Build temp table `pflag` (raw_deal_id -> the three facts above).
 
@@ -164,6 +210,9 @@ class CleanReport:
     internal_transfer: int = 0
     list_in_force: int = 0
     promoter_entities: int = 0
+    #: Plan 1 §7.1 / Q23; see ROUND_TRIP_SESSIONS. A flag, never a filter.
+    five_day: int = 0
+    five_day_eligible: int = 0
 
     def render(self) -> str:
         out = [f"  clean rows        {self.rows:>8,}",
@@ -178,6 +227,9 @@ class CleanReport:
         out.append("\n  available_from confidence:")
         for k, v in sorted(self.by_timing.items(), key=lambda x: -x[1]):
             out.append(f"    {k:<34} {v:>8,}")
+        out.append("\n  five-session round trips (Q23; hindsight, so a flag and not a filter):")
+        out += [f"    {'five_day_round_trip':<34} {self.five_day:>8,}",
+                f"    {'  of which eligible':<34} {self.five_day_eligible:>8,}"]
         out.append("\n  promoter flags (Plan 1 §6.6; they do not change eligibility):")
         if not self.promoter_entities:
             # FALSE BY ABSENCE IS NOT FALSE BY MEASUREMENT. If the promoters
@@ -248,6 +300,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                 FROM csd GROUP BY 1)
             WHERE days >= {t.min_client_stock_days} AND ratio >= {t.roundtrip_ratio}
         """)
+        five_day_flags(con)
         promoter_flags(con)
 
         # DERIVED OUTCOMES ARE INVALIDATED BY A REBUILD, AND THE FK ENFORCES IT.
@@ -290,7 +343,8 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                 cs.bought, cs.sold,
                 CASE WHEN h.participant IS NOT NULL THEN TRUE ELSE FALSE END AS is_hft,
                 COALESCE(pf.promoter_related, FALSE) AS promoter_related,
-                COALESCE(pf.internal_transfer, FALSE) AS internal_transfer
+                COALESCE(pf.internal_transfer, FALSE) AS internal_transfer,
+                r5.participant IS NOT NULL AS five_day
             FROM institutional_deals_raw r
             JOIN deal_source_files f USING (source_file_id)
             LEFT JOIN deal_resolution dr ON dr.raw_deal_id = r.raw_deal_id
@@ -301,6 +355,11 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
                             AND cs.trade_date = r.trade_date
             LEFT JOIN hft h ON h.participant = UPPER(TRIM(r.client_name_raw))
             LEFT JOIN pflag pf ON pf.raw_deal_id = r.raw_deal_id
+            LEFT JOIN rt5 r5 ON r5.participant = UPPER(TRIM(r.client_name_raw))
+                            AND r5.symbol = UPPER(TRIM(r.symbol_raw))
+                            AND r5.trade_date = r.trade_date
+                            AND r5.side = CASE WHEN UPPER(r.side_raw) LIKE 'B%' THEN 'BUY'
+                                               WHEN UPPER(r.side_raw) LIKE 'S%' THEN 'SELL' END
         ),
         flagged AS (
             SELECT *,
@@ -344,7 +403,8 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
             COALESCE(value_inr, 0.0), adv20, v2adv,
             NULL,
             COALESCE(round_trip, FALSE),
-            FALSE,   -- five_day_round_trip: not yet computed
+            -- Flag only: half of it is hindsight (see ROUND_TRIP_SESSIONS).
+            five_day,
             internal_transfer,
             promoter_related,
             FALSE,
@@ -377,7 +437,9 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
         prom = con.execute("""
             SELECT COUNT(*) FILTER (WHERE promoter_related_flag),
                    COUNT(*) FILTER (WHERE promoter_related_flag AND eligible_for_research),
-                   COUNT(*) FILTER (WHERE internal_transfer_flag)
+                   COUNT(*) FILTER (WHERE internal_transfer_flag),
+                   COUNT(*) FILTER (WHERE five_day_round_trip_flag),
+                   COUNT(*) FILTER (WHERE five_day_round_trip_flag AND eligible_for_research)
             FROM institutional_deals_clean""").fetchone()
         in_force = con.execute("SELECT COUNT(*) FROM pflag WHERE list_in_force").fetchone()[0]
         n_entities = con.execute("SELECT COUNT(*) FROM promoter_entities").fetchone()[0]
@@ -387,7 +449,7 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
         # rebuild and silently answer with the old calendar.
         for v in ("cal", "adv", "csd", "hft"):
             con.execute(f"DROP VIEW IF EXISTS {v}")
-        for t in ("pflag", "pnorm"):
+        for t in ("pflag", "pnorm", "rt5"):
             con.execute(f"DROP TABLE IF EXISTS {t}")
     finally:
         con.close()
@@ -426,7 +488,8 @@ def build(env: str | None = None, t: Thresholds | None = None) -> CleanReport:
     return CleanReport(rows, elig, derived, by_reason, by_identity, by_timing,
                        promoter_related=prom[0], promoter_related_eligible=prom[1],
                        internal_transfer=prom[2], list_in_force=in_force,
-                       promoter_entities=n_entities)
+                       promoter_entities=n_entities,
+                       five_day=prom[3], five_day_eligible=prom[4])
 
 
 def main() -> int:

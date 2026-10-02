@@ -60,7 +60,7 @@ from dataclasses import dataclass
 import duckdb
 
 from src.common.migrate import migrate_duckdb
-from src.common.paths import SEED, research_db, warehouse_dir
+from src.common.paths import COLLECTED, SEED, research_db, warehouse_dir
 from src.governance import provenance as prov
 
 PRODUCED_BY = "src.identity.master:build"
@@ -68,6 +68,9 @@ PRODUCED_BY = "src.identity.master:build"
 #: A security is dead if it has not traded for this long before the spine ends.
 #: universe.yml `delisting.stale_sessions_to_declare_dead`.
 STALE_SESSIONS = 20
+
+#: The full-bhavcopy listing history (src/ingest/listing_history.py).
+LISTING = COLLECTED / "listing" / "series_presence.parquet"
 
 #: `isin_master` IS TWO DATASETS CONCATENATED, and the date format gives it away.
 #: Measured 2026-08-24: 2,528 rows carry ISO first_date AND ISO last_date, while
@@ -130,6 +133,13 @@ def build(env: str | None = None) -> BuildReport:
             f"CREATE OR REPLACE TEMP TABLE _spine_symbols AS"
             f" SELECT DISTINCT symbol FROM read_parquet('{spine}')"
         )
+        # The exit classification reads the spine, the listing history and
+        # the two reason lists — all BEFORE the deletes, for the same reason.
+        exit_inputs(con)
+        con.execute(EXIT_SQL.format(im=im, spine=spine, listing=_listing_src(),
+                                    stale=STALE_SESSIONS - 1,
+                                    first_date=_date("first_date"),
+                                    last_date=_date("last_date")))
         clear_for_rebuild(con)
 
         # One security per ISIN. The canonical symbol is the one held LONGEST,
@@ -152,35 +162,27 @@ def build(env: str | None = None) -> BuildReport:
                 SELECT *, ROW_NUMBER() OVER (PARTITION BY isin ORDER BY held_days DESC, symbol) rn
                 FROM m
             ),
-            spine_last AS (
-                SELECT UPPER(TRIM(symbol)) AS symbol, MAX(date) AS last_trade
-                FROM read_parquet('{spine}') GROUP BY 1
-            ),
-            spine_end AS (SELECT MAX(last_trade) AS e FROM spine_last)
+            ids AS (SELECT isin, ROW_NUMBER() OVER (ORDER BY isin) AS id FROM ranked WHERE rn = 1)
             SELECT
-                ROW_NUMBER() OVER (ORDER BY r.isin),
+                i.id,
                 r.isin, r.symbol, COALESCE(r.company, r.symbol),
                 r.first_date,
-                -- Delisting is DETECTED from the last observed trade, never
-                -- assumed from is_active, which is a current-state flag.
-                CASE WHEN s.last_trade IS NOT NULL
-                      AND s.last_trade < (SELECT e FROM spine_end)
-                     THEN CAST(s.last_trade AS DATE) END,
-                -- UNKNOWN beats inference (standing rule 9). Classifying a
-                -- delisting as MERGER vs SUSPENSION needs corporate actions this
-                -- does not yet read, so it says so rather than guessing.
-                CASE WHEN s.last_trade IS NOT NULL
-                      AND s.last_trade < (SELECT e FROM spine_end)
-                     THEN 'UNKNOWN' END,
-                CASE WHEN s.last_trade IS NULL THEN 'SUSPENDED'
-                     WHEN s.last_trade < (SELECT e FROM spine_end) THEN 'DELISTED'
+                -- Delisting is DETECTED from the last observed trade under any of
+                -- the ISIN's symbols, never assumed from is_active, and only once
+                -- it is STALE_SESSIONS old (universe.yml). See EXIT_SQL.
+                CASE WHEN x.stopped THEN x.eq_last END,
+                x.reason,
+                CASE WHEN x.eq_last IS NULL THEN 'SUSPENDED'
+                     WHEN x.reason = 'ISIN_CHANGE' THEN 'MERGED'
+                     WHEN x.stopped THEN 'DELISTED'
                      ELSE 'ACTIVE' END,
-                NULL,
+                (SELECT s.id FROM ids s WHERE s.isin = x.successor_isin),
                 'v1seed:isin_master',
-                CASE WHEN r.first_date IS NOT NULL AND s.last_trade IS NOT NULL
+                CASE WHEN r.first_date IS NOT NULL AND x.eq_last IS NOT NULL
                      THEN 'HIGH' ELSE 'MEDIUM' END
             FROM ranked r
-            LEFT JOIN spine_last s ON s.symbol = r.symbol
+            JOIN ids i ON i.isin = r.isin
+            LEFT JOIN _exit x ON x.isin = r.isin
             WHERE r.rn = 1
         """)
 
@@ -236,6 +238,175 @@ def build(env: str | None = None) -> BuildReport:
         env=env,
     )
     return rep
+
+
+#: Plan 1 step 3.3 and universe.yml `delisting`. Why each security that left the
+#: EQ price universe left it. Built into temp table `_exit` (isin, eq_last,
+#: any_last, reason) BEFORE security_master is inserted, so status and reason
+#: are written once, never updated under the foreign keys.
+#:
+#:   eq_last   the last EQ-spine session under ANY of the ISIN's symbols. The
+#:             first version joined only the canonical (longest-held) symbol,
+#:             so a renamed company was DELISTED on its rename date: 106 of
+#:             1,041 DELISTED rows on 2026-10-01 were still trading.
+#:   any_last  the last session in ANY series (`collected:listing`, the full
+#:             bhavcopy 2005 -> now), matched by ISIN, and also by symbol where
+#:             the symbol was never held by another ISIN — which is what finds
+#:             a fund unit whose ISIN changed at a split (GOLDBEES).
+#:
+#: A recycled ticker is the trap in both joins: the old company must not borrow
+#: the new one's trades. So a symbol held by more than one ISIN is counted only
+#: up to that ISIN's own last_date for it (+5 days), while a symbol held by one
+#: ISIN is counted throughout — its isin_master last_date is often the export
+#: date, and windowing on it would kill every active company.
+#:
+#: reason, first match wins:
+#:   ISIN_CHANGE    the same symbol continued under a new ISIN (a face-value
+#:                  split, usually): status MERGED, merged_into_id the new one.
+#:   LEFT_UNIVERSE  still trading on NSE in some series within the last 30 days
+#:                  — moved to BE/BZ surveillance, or a fund unit (0040). Not a
+#:                  delisting at all; the research universe is EQ only (0045).
+#:   ACQUISITION / SUSPENSION   NSE's delisted.csv (src/archive/delisted.py),
+#:                  any of the ISIN's symbols, delisted within 400 days of the
+#:                  exit — a reused ticker's old delisting must not match.
+#:   SUSPENSION     BSE's scrip master says Suspended for the ISIN.
+#:   UNKNOWN        nothing says. MERGER is never assigned: universe.yml
+#:                  requires a merged_into_id link, and no source names the
+#:                  acquirer of a company absorbed by another.
+#:
+#: STATUS describes the EQ price universe the research reads (DELISTED = no
+#: longer in it); REASON says what happened at the exchange. LEFT_UNIVERSE is
+#: DELISTED from the universe while still listed on NSE.
+EXIT_SQL = """
+CREATE OR REPLACE TEMP TABLE _exit AS
+WITH syms AS (
+    SELECT UPPER(TRIM(isin)) AS isin, UPPER(TRIM(symbol)) AS symbol,
+           MIN({first_date}) AS vf, MAX({last_date}) AS vt
+    FROM read_parquet('{im}') WHERE isin IS NOT NULL AND symbol IS NOT NULL
+    GROUP BY 1, 2
+),
+-- Only a holder that a LATER holder replaced is capped at its own last date;
+-- the current holder of a reused ticker keeps every trade since.
+capped AS (
+    SELECT a.isin, a.symbol, a.vt FROM syms a
+    WHERE a.vt IS NOT NULL AND EXISTS (
+        SELECT 1 FROM syms b WHERE b.symbol = a.symbol AND b.isin <> a.isin
+          AND b.vf > COALESCE(a.vf, DATE '1990-01-01'))
+),
+reused AS (SELECT symbol FROM syms GROUP BY 1 HAVING COUNT(DISTINCT isin) > 1),
+eq AS (
+    SELECT UPPER(TRIM(symbol)) AS symbol, MAX(CAST(date AS DATE)) AS last_d
+    FROM read_parquet('{spine}') GROUP BY 1
+),
+eq_dates AS (
+    SELECT UPPER(TRIM(symbol)) AS symbol, CAST(date AS DATE) AS d
+    FROM read_parquet('{spine}')
+    WHERE UPPER(TRIM(symbol)) IN (SELECT symbol FROM reused)
+),
+eq_last AS (
+    SELECT s.isin, MAX(e.last_d) AS eq_last
+    FROM syms s JOIN eq e ON e.symbol = s.symbol
+    WHERE s.symbol NOT IN (SELECT symbol FROM reused)
+    GROUP BY 1
+    UNION ALL
+    SELECT s.isin, MAX(d.d)
+    FROM syms s JOIN eq_dates d ON d.symbol = s.symbol
+    LEFT JOIN capped c ON c.isin = s.isin AND c.symbol = s.symbol
+    WHERE c.vt IS NULL OR d.d <= c.vt + INTERVAL 5 DAY
+    GROUP BY 1
+),
+listing AS ({listing}),
+any_last AS (
+    SELECT isin, MAX(last_date) AS any_last FROM listing WHERE isin <> '' GROUP BY 1
+    UNION ALL
+    SELECT s.isin, MAX(l.last_date)
+    FROM syms s JOIN listing l ON l.symbol = s.symbol
+    WHERE s.symbol NOT IN (SELECT symbol FROM reused)
+    GROUP BY 1
+),
+per AS (
+    SELECT s.isin,
+           (SELECT MAX(eq_last) FROM eq_last x WHERE x.isin = s.isin) AS eq_last,
+           (SELECT MAX(any_last) FROM any_last a WHERE a.isin = s.isin) AS any_last
+    FROM (SELECT DISTINCT isin FROM syms) s
+),
+sessions AS (SELECT DISTINCT CAST(date AS DATE) AS d FROM read_parquet('{spine}')),
+dead_line AS (SELECT d FROM sessions ORDER BY d DESC LIMIT 1 OFFSET {stale}),
+listing_end AS (SELECT MAX(last_date) AS e FROM listing),
+nse AS (
+    SELECT DISTINCT s.isin, n.reason, n.delisted_on
+    FROM syms s JOIN _nse_delisted n ON n.symbol = s.symbol
+),
+-- The same symbol carried on, without a break, under a NEW ISIN that starts
+-- within 60 days of this one's last trade and outlived it: a face-value split
+-- or similar.
+-- GSFC 2012, FEDERALBNK 2013, INDNIPPON 2018 — 214 on 2026-10-01.
+successor AS (
+    SELECT a.isin, MIN(b.isin) AS successor_isin
+    FROM syms a JOIN syms b ON b.symbol = a.symbol AND b.isin <> a.isin
+    JOIN per pa ON pa.isin = a.isin
+    JOIN per pb ON pb.isin = b.isin
+    WHERE pb.eq_last > pa.eq_last
+      AND b.vf BETWEEN pa.eq_last - INTERVAL 60 DAY AND pa.eq_last + INTERVAL 60 DAY
+      -- AND THE SYMBOL NEVER STOPPED. isin_master's first_date is not
+      -- day-accurate (real splits show 23-56 days), so the window above
+      -- cannot tell a split from a recycled ticker taken up a month later.
+      -- Continuity can: across a split the symbol trades again within days.
+      AND EXISTS (SELECT 1 FROM eq_dates d WHERE d.symbol = a.symbol
+                  AND d.d > pa.eq_last AND d.d <= pa.eq_last + INTERVAL 10 DAY)
+    GROUP BY 1
+)
+SELECT p.isin, p.eq_last, p.any_last, sc.successor_isin,
+       p.eq_last IS NOT NULL AND p.eq_last < (SELECT d FROM dead_line) AS stopped,
+       CASE
+         WHEN p.eq_last IS NULL OR p.eq_last >= (SELECT d FROM dead_line) THEN NULL
+         WHEN sc.successor_isin IS NOT NULL THEN 'ISIN_CHANGE'
+         WHEN p.any_last >= (SELECT e FROM listing_end) - INTERVAL 30 DAY THEN 'LEFT_UNIVERSE'
+         WHEN (SELECT MIN(reason) FROM nse n WHERE n.isin = p.isin AND n.reason IS NOT NULL
+                 AND abs(date_diff('day', n.delisted_on,
+                                   GREATEST(p.eq_last, COALESCE(p.any_last, p.eq_last)))) <= 400)
+              IS NOT NULL
+           THEN (SELECT MIN(reason) FROM nse n WHERE n.isin = p.isin AND n.reason IS NOT NULL
+                   AND abs(date_diff('day', n.delisted_on,
+                                     GREATEST(p.eq_last, COALESCE(p.any_last, p.eq_last)))) <= 400)
+         WHEN EXISTS (SELECT 1 FROM _bse b WHERE b.isin = p.isin AND b.listing_status = 'Suspended')
+           THEN 'SUSPENSION'
+         ELSE 'UNKNOWN'
+       END AS reason
+FROM per p
+LEFT JOIN successor sc ON sc.isin = p.isin
+"""
+
+
+def _listing_src() -> str:
+    """The listing history, or an empty relation of its shape. Without it every
+    stopped security falls through to the list-based reasons or UNKNOWN —
+    worse, but never a failed identity stage."""
+    if LISTING.exists():
+        return f"SELECT * FROM read_parquet('{LISTING}')"
+    return ("SELECT NULL::VARCHAR AS symbol, NULL::VARCHAR AS series, NULL::VARCHAR AS isin,"
+            " NULL::DATE AS first_date, NULL::DATE AS last_date, NULL::INTEGER AS sessions"
+            " WHERE FALSE")
+
+
+def exit_inputs(con: duckdb.DuckDBPyConnection) -> None:
+    """Load the two small reason sources into temp tables `_nse_delisted`
+    (symbol, reason, delisted_on) and `_bse` (isin, listing_status). Missing
+    sources load empty: a reason that cannot be looked up is UNKNOWN, never
+    an error that stops the identity stage."""
+    from src.archive import delisted
+
+    con.execute("CREATE OR REPLACE TEMP TABLE _nse_delisted"
+                " (symbol VARCHAR, reason VARCHAR, delisted_on DATE)")
+    rows = [(r["symbol"], r["reason"], r["delisted_on"] or None) for r in delisted.latest()]
+    if rows:
+        con.executemany("INSERT INTO _nse_delisted VALUES (?, ?, CAST(? AS DATE))", rows)
+    bse = SEED / "bse_scrip_master.parquet"
+    if bse.exists():
+        con.execute(f"CREATE OR REPLACE TEMP TABLE _bse AS SELECT UPPER(TRIM(isin)) AS isin,"
+                    f" listing_status FROM read_parquet('{bse}')")
+    else:
+        con.execute("CREATE OR REPLACE TEMP TABLE _bse (isin VARCHAR, listing_status VARCHAR)")
 
 
 def clear_for_rebuild(con: duckdb.DuckDBPyConnection) -> None:
