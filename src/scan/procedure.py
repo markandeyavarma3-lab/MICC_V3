@@ -79,6 +79,15 @@ class ProcedureResult:
         return float((np.sum(self.null_hit_rates >= self.hit_rate) + 1) / (len(self.null_hit_rates) + 1))
 
 
+def _top(tr: np.ndarray, cand: np.ndarray, n: int) -> np.ndarray:
+    """The n candidates with the largest |train IC|, largest first. A partial
+    selection (argpartition), then a sort of the n: a full sort of 1.9M
+    candidates per fold per null rep was the run's bottleneck."""
+    a = np.abs(tr[cand])
+    part = np.argpartition(-a, n - 1)[:n] if n < len(cand) else np.arange(len(cand))
+    return cand[part[np.argsort(-a[part], kind="stable")]]
+
+
 def select_and_test(ic: np.ndarray, fs: FoldSet, top_n: int, decay: bool = True) -> ProcedureResult:
     train_sel, test_sel, decays = [], [], []
     for f in fs.folds:
@@ -87,7 +96,7 @@ def select_and_test(ic: np.ndarray, fs: FoldSet, top_n: int, decay: bool = True)
         if usable.sum() < top_n:
             continue
         cand = np.where(usable)[0]
-        order = cand[np.argsort(-np.abs(tr[cand]))][:top_n]
+        order = _top(tr, cand, top_n)
         sign = np.sign(tr[order])
         train_sel.append(float(np.mean(np.abs(tr[order]))))
         test_sel.append(float(np.mean(sign * te[order])))
@@ -145,27 +154,46 @@ def null_hit_rates(ic: np.ndarray, fs: FoldSet, top_n: int, reps: int = 200,
     training selected: on pure noise the null hit rate sat near 0.1 and noise
     read as 'searching works', p = 0.016. A test caught it; the sign flip has
     no such coupling."""
+    return null_hit_rates_multi(ic, fs, [top_n], reps, seed, block)[top_n]
+
+
+def null_hit_rates_multi(ic, fs: FoldSet, top_ns: list[int], reps: int = 200,
+                         seed: int = 20261002, block: int = NULL_BLOCK_SESSIONS) -> dict[int, np.ndarray]:
+    """The null for every N from ONE pass: each rep flips once, takes each
+    fold's train and test means once, and reads the top-N hit for every N off
+    the same largest-N selection. Same seed, same signs as one call per N."""
     rng = np.random.default_rng(seed)
     T = ic.shape[0]
     if hasattr(ic, "mean_over"):
         block = 1            # an atlas.BlockIC is already one row per block
     blocks = np.arange(T) // block
-    out = np.empty(reps)
+    nmax = max(top_ns)
+    out = {n: np.empty(reps) for n in top_ns}
     for r in range(reps):
         signs = rng.choice([-1.0, 1.0], size=blocks[-1] + 1)[blocks]
         flipped = ic * signs if hasattr(ic, "mean_over") else ic * signs[:, None]
-        out[r] = select_and_test(flipped, fs, top_n, decay=False).hit_rate
+        tests = {n: [] for n in top_ns}
+        for f in fs.folds:
+            tr, te = _means(flipped, f.train), _means(flipped, f.test)
+            cand = np.where(~np.isnan(tr) & ~np.isnan(te))[0]
+            if len(cand) < nmax:
+                continue
+            order = _top(tr, cand, nmax)
+            for n in top_ns:
+                sel = order[:n]
+                tests[n].append(float(np.mean(np.sign(tr[sel]) * te[sel])))
+        for n in top_ns:
+            out[n][r] = float(np.mean(np.array(tests[n]) > 0)) if tests[n] else float("nan")
     return out
 
 
 def run(ic: np.ndarray, sequential: FoldSet, cpcv: FoldSet, top_n: list[int],
         reps: int = 200) -> tuple[list[ProcedureResult], float]:
     """The procedure test for every N, each with its measured null, plus PBO."""
-    results = []
-    for n in top_n:
-        r = select_and_test(ic, sequential, n)
-        r.null_hit_rates = null_hit_rates(ic, sequential, n, reps)
-        results.append(r)
+    results = [select_and_test(ic, sequential, n) for n in top_n]
+    nulls = null_hit_rates_multi(ic, sequential, top_n, reps)
+    for r in results:
+        r.null_hit_rates = nulls[r.top_n]
     return results, pbo(ic, cpcv)
 
 
