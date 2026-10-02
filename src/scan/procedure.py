@@ -30,6 +30,7 @@ would overstate the evidence.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -37,9 +38,13 @@ import numpy as np
 from src.scan.folds import FoldSet
 
 
-def _means(ic: np.ndarray, idx: np.ndarray) -> np.ndarray:
-    """Per-candidate mean IC over sessions `idx` (ic is T x K, NaN = no IC)."""
-    with np.errstate(invalid="ignore"):
+def _means(ic, idx: np.ndarray) -> np.ndarray:
+    """Per-candidate mean IC over `idx`: sessions of a (T x K) daily array, or
+    blocks of an atlas.BlockIC (which weights each block by its sessions)."""
+    if hasattr(ic, "mean_over"):
+        return ic.mean_over(idx)
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         return np.nanmean(ic[idx], axis=0)
 
 
@@ -141,11 +146,14 @@ def null_hit_rates(ic: np.ndarray, fs: FoldSet, top_n: int, reps: int = 200,
     no such coupling."""
     rng = np.random.default_rng(seed)
     T = ic.shape[0]
+    if hasattr(ic, "mean_over"):
+        block = 1            # an atlas.BlockIC is already one row per block
     blocks = np.arange(T) // block
     out = np.empty(reps)
     for r in range(reps):
         signs = rng.choice([-1.0, 1.0], size=blocks[-1] + 1)[blocks]
-        out[r] = select_and_test(ic * signs[:, None], fs, top_n).hit_rate
+        flipped = ic * signs if hasattr(ic, "mean_over") else ic * signs[:, None]
+        out[r] = select_and_test(flipped, fs, top_n).hit_rate
     return out
 
 
