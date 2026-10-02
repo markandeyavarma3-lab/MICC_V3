@@ -74,3 +74,26 @@ def test_the_null_is_centred_on_noise_not_biased_against_it():
     noise look significant at p = 0.016."""
     null = procedure.null_hit_rates(_ic(), SEQ, 10, reps=80)
     assert 0.35 < null.mean() < 0.65
+
+
+def test_partial_selection_picks_what_a_full_sort_picks():
+    rng = np.random.default_rng(9)
+    tr = rng.normal(size=5000)
+    cand = np.arange(5000)
+    full = cand[np.argsort(-np.abs(tr))][:100]
+    assert (procedure._top(tr, cand, 100) == full).all()
+
+
+def test_the_shared_null_pass_equals_the_one_n_at_a_time_reference():
+    """The reference is the original algorithm, written out: same seed, same
+    block signs, select_and_test per N."""
+    ic = _ic(k=120, seed=4)
+    multi = procedure.null_hit_rates_multi(ic, SEQ, [1, 10], reps=15)
+    for n in (1, 10):
+        rng = np.random.default_rng(20261002)
+        blocks = np.arange(ic.shape[0]) // procedure.NULL_BLOCK_SESSIONS
+        ref = []
+        for _ in range(15):
+            signs = rng.choice([-1.0, 1.0], size=blocks[-1] + 1)[blocks]
+            ref.append(procedure.select_and_test(ic * signs[:, None], SEQ, n, decay=False).hit_rate)
+        assert np.allclose(multi[n], ref)
