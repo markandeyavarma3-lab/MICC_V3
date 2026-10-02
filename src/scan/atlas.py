@@ -29,7 +29,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -44,24 +43,54 @@ from src.scan.procedure import NULL_BLOCK_SESSIONS
 BLOCK = NULL_BLOCK_SESSIONS
 
 
-@dataclass
 class BlockIC:
     """Per-candidate IC as block sums and counts, (B x K) each. Duck-types the
-    (T x K) daily array the procedure test takes: fold indices are BLOCKS."""
-    sums: np.ndarray
-    counts: np.ndarray
+    (T x K) daily array the procedure test takes: fold indices are BLOCKS.
+
+    A fold mean is a sum over a few CONTIGUOUS runs of blocks (a sequential
+    fold's training set is one run, a CPCV training set at most three), so it
+    is read off cumulative sums in O(runs x K) — at 1.9M candidates the direct
+    sum over ~100 blocks per fold made the 200-rep null take hours. The count
+    cumsum is shared by every sign-flipped copy the null makes; only the sums
+    change sign."""
+
+    def __init__(self, sums: np.ndarray, counts: np.ndarray, _cn: np.ndarray | None = None):
+        self.sums, self.counts = sums, counts
+        self._cs: np.ndarray | None = None
+        self._cn = _cn
 
     @property
     def shape(self) -> tuple[int, int]:
         return self.sums.shape
 
+    def _cum(self) -> tuple[np.ndarray, np.ndarray]:
+        if self._cs is None:
+            z = np.zeros((1, self.sums.shape[1]), dtype=np.float32)
+            self._cs = np.concatenate([z, np.cumsum(self.sums, axis=0, dtype=np.float32)])
+        if self._cn is None:
+            z = np.zeros((1, self.counts.shape[1]), dtype=np.int32)
+            self._cn = np.concatenate([z, np.cumsum(self.counts, axis=0, dtype=np.int32)])
+        return self._cs, self._cn
+
     def mean_over(self, idx: np.ndarray) -> np.ndarray:
-        n = self.counts[idx].sum(axis=0)
+        cs, cn = self._cum()
+        idx = np.unique(idx)
+        if not len(idx):
+            return np.full(self.sums.shape[1], np.nan)
+        breaks = np.flatnonzero(np.diff(idx) != 1)
+        starts = np.r_[idx[0], idx[breaks + 1]]
+        stops = np.r_[idx[breaks], idx[-1]] + 1
+        tot = np.zeros(self.sums.shape[1], dtype=np.float64)
+        n = np.zeros(self.sums.shape[1], dtype=np.int64)
+        for a, b in zip(starts, stops, strict=True):
+            tot += cs[b] - cs[a]
+            n += cn[b] - cn[a]
         with np.errstate(invalid="ignore", divide="ignore"):
-            return np.where(n > 0, self.sums[idx].sum(axis=0) / n, np.nan)
+            return np.where(n > 0, tot / n, np.nan)
 
     def __mul__(self, signs: np.ndarray) -> BlockIC:
-        return BlockIC(self.sums * signs.reshape(-1, 1), self.counts)
+        self._cum()
+        return BlockIC(self.sums * signs.reshape(-1, 1).astype(np.float32), self.counts, _cn=self._cn)
 
 
 def to_blocks(daily_ic: np.ndarray, block: int = BLOCK) -> tuple[np.ndarray, np.ndarray]:
