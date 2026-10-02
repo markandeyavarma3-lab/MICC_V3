@@ -333,6 +333,13 @@ signals:
   # Computed from the families and depth at run time, never hard-coded, and the
   # realised count sets the bar. A test greps for hard-coded literals.
   record_actual_combination_count: true
+  # The forward window the IC is measured over (src/scan/ic.py), after the
+  # mandatory one-session gap. 21 sessions is primary: a monthly holding is the
+  # shortest whose turnover the costs.yml stack leaves room for, and short
+  # windows are where bid-ask bounce lives. 5 is reported, never the headline.
+  # Declared 2026-10-02, before any candidate was scored on real data.
+  horizons_sessions: [21, 5]
+  primary_horizon_sessions: 21
 
 # =============================================================================
 # COSTS AND REALITY
