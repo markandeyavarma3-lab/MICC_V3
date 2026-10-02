@@ -33,7 +33,13 @@ delisting:
   # ignoring it is an upward one. Both are wrong; the predecessor did the second.
   detect_from: last_traded_date
   stale_sessions_to_declare_dead: 20
-  classify_into: [MERGER, ACQUISITION, SUSPENSION, UNKNOWN]
+  # Decision 0082 adds two that are not exits from the exchange at all, and are
+  # the two commonest reasons a security leaves the EQ price universe:
+  # ISIN_CHANGE (the same symbol continues under a new ISIN; merged_into_id
+  # names it) and LEFT_UNIVERSE (still trading on NSE, outside the EQ series or
+  # as a fund unit — decisions 0040, 0045). MERGER is defined but never
+  # assigned: no source names the acquirer, and the link below is required.
+  classify_into: [ISIN_CHANGE, LEFT_UNIVERSE, MERGER, ACQUISITION, SUSPENSION, UNKNOWN]
   merged_into_requires_link: true    # security_master.merged_into_id
   include_in_research: true          # OWNER DECISION: use them, do not drop them
 

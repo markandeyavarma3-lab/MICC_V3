@@ -478,7 +478,10 @@ def steps() -> list[Step]:
              verified=lambda c: c.tested(r"test_.*resolve|test_.*point_in_time")),
         Step("3.3", "3 Identity", "Delisting detection and classification",
              built=lambda c: "DELISTED" in c.src_text.get("src/identity/master.py", ""),
-             note="delisting_reason is UNKNOWN for all — MERGER vs SUSPENSION needs corporate actions"),
+             wired=lambda c: "EXIT_SQL" in c.src_text.get("src/identity/master.py", ""),
+             verified=lambda c: c.tested(r"test_a_new_isin_on_the_same_symbol_is_an_isin_change"),
+             note="six reasons (0082): ISIN_CHANGE and LEFT_UNIVERSE are not exits at all; "
+                  "~487 stay UNKNOWN, mostly mergers no source names; step 6.4 does not read it yet"),
         Step("3.4", "3 Identity", "Resolve the unmatched deal symbols",
              built=lambda c: c.duck_rows.get("symbol_history", 0) > 0,
              wired=lambda c: "deal_resolution" in c.src_text.get("src/identity/master.py", ""),
@@ -535,8 +538,11 @@ def steps() -> list[Step]:
         Step("4.3", "4 Clean mart", "Same-day and 5-day round-trip flags",
              built=lambda c: c.flag_is_real("same_day_round_trip_flag"),
              wired=lambda c: c.flag_is_real("five_day_round_trip_flag"),
+             verified=lambda c: c.tested(r"test_the_window_is_sessions_not_calendar_days"),
              note=lambda c: "same-day is real; five-day is FALSE on every row"
-                            if not c.flag_is_real("five_day_round_trip_flag") else ""),
+                            if not c.flag_is_real("five_day_round_trip_flag")
+                            else "five-day counts SESSIONS, both directions; half of it is "
+                                 "hindsight, so it is a flag and never an eligibility rule"),
         Step("4.4", "4 Clean mart", "Internal-transfer and promoter-related flags",
              built=lambda c: c.flag_is_real("internal_transfer_flag")
                              and c.flag_is_real("promoter_related_flag"),

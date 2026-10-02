@@ -205,6 +205,13 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # session instead of on the next audit.
   "$REPO/.venv/bin/python" -m src.ingest.land
   note "land" $?
+  # WHY A SECURITY LEFT THE UNIVERSE (0082). identity reads both of these:
+  # NSE's delisted list (one small CSV) and the all-series listing history,
+  # rebuilt from the full bhavcopy so tonight's file is in it (~25 s).
+  "$REPO/.venv/bin/python" -m src.archive.delisted
+  note "delisted" $?
+  "$REPO/.venv/bin/python" -m src.ingest.listing_history
+  note "listing" $?
   "$REPO/.venv/bin/python" -m src.identity.master
   note "identity" $?
   # PROMOTERS STRAIGHT AFTER IDENTITY, BEFORE THE MART. identity empties
