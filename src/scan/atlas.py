@@ -150,6 +150,7 @@ class Atlas:
         self.pos = {i: k for k, i in enumerate(self.ids)}
         self.total = S.combination_count(len(self.ids), depth)
         self._mo: fastic.Moments | None = None
+        self.stack = self.fwd_c = self.slots = self.adv_c = self.vol_c = None
 
     # --- identity of the grid -------------------------------------------------
     def manifest(self, commit: str = "") -> dict:
@@ -190,6 +191,12 @@ class Atlas:
                 stack[k] = fastic.compress(x, slots)
                 ctx._cache.clear()      # ~78 MB a rolling array; holding all of them would not fit
             self._mo = fastic.moments(stack, fwd, self.min_names)
+            # Kept for the cost check (src/scan/portfolio.py), which rebuilds
+            # the handful of SELECTED candidates as real portfolios.
+            self.stack, self.fwd_c, self.slots = stack, fwd, slots
+            adv = ctx.roll(ctx.turnover, 20, "median")
+            self.adv_c = fastic.compress(adv, slots)
+            self.vol_c = fastic.compress(ctx.roll(ctx.r, 63, "std"), slots)
         return self._mo
 
     def score_many(self, cands: list[tuple[tuple[str, int], ...]]) -> tuple[np.ndarray, np.ndarray]:
@@ -212,6 +219,41 @@ class Atlas:
         sums = np.stack(out_s, axis=1)
         counts = np.stack(out_c, axis=1)
         return sums, counts
+
+    def partial_all(self, factors: list[str]) -> BlockIC:
+        """Every candidate's PARTIAL IC net of `factors` (decision 0085), as
+        block sums and counts in the canonical order — computed in memory
+        from the moments, not sharded: it is a second statistic over the same
+        grid, rebuilt in minutes."""
+        mo = self.prepare()
+        missing = [f for f in factors if f not in self.pos]
+        if missing:
+            raise ValueError(f"attribution factor(s) not in the grid: {missing}")
+        F = np.array([self.pos[f] for f in factors])
+        s_parts, c_parts = [], []
+        buf: dict[int, list] = {}
+        order: list[tuple[int, int]] = []
+        for c in S.combinations_of(self.ids, self.depth):
+            d = len(c)
+            buf.setdefault(d, []).append(c)
+            order.append((d, len(buf[d]) - 1))
+        out: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        for d, cands in buf.items():
+            ss, cc = [], []
+            for lo in range(0, len(cands), self.BATCH):
+                part = cands[lo:lo + self.BATCH]
+                idx = np.array([[self.pos[i] for i, _ in c] for c in part], dtype=np.int64)
+                sg = np.array([[s for _, s in c] for c in part], dtype=np.float64)
+                bs, bc = fastic.block_sums(fastic.batch_partial_ic(mo, idx, sg, F), BLOCK)
+                ss.append(bs)
+                cc.append(bc)
+            out[d] = (np.concatenate(ss, axis=1), np.concatenate(cc, axis=1))
+        # Depths are enumerated in order (all depth 1, then 2, then 3), so the
+        # canonical order is the depth blocks concatenated.
+        for d in sorted(out):
+            s_parts.append(out[d][0])
+            c_parts.append(out[d][1])
+        return BlockIC(np.concatenate(s_parts, axis=1), np.concatenate(c_parts, axis=1))
 
     def run(self, commit: str = "", limit_shards: int | None = None) -> int:
         """Compute missing shards; returns how many were written this call."""

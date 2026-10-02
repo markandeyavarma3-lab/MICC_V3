@@ -48,6 +48,7 @@ class Moments:
     ciy: np.ndarray        # (T, K) float32
     cyy: np.ndarray        # (T,) float64, NaN on a date without an IC
     n: np.ndarray          # (T,) names in J_t
+    ok: np.ndarray | None = None   # (T, U) bool: J_t itself, for rebuilding portfolios
 
 
 def _universe_slots(universe: np.ndarray) -> np.ndarray:
@@ -78,12 +79,14 @@ def moments(base: np.ndarray, fwd: np.ndarray, min_names: int = 100) -> Moments:
     ciy = np.full((T, K), np.nan, dtype=np.float32)
     cyy = np.full(T, np.nan)
     n = np.zeros(T, dtype=np.int64)
+    okm = np.zeros(fwd.shape, dtype=bool)
     for t in range(T):
         x = base[:, t, :]
         y = fwd[t]
         ok = np.isfinite(y) & np.isfinite(x).all(axis=0)
         m = int(ok.sum())
         n[t] = m
+        okm[t] = ok
         if m < min_names:
             continue
         z = rankdata(x[:, ok], axis=1) / m
@@ -93,7 +96,7 @@ def moments(base: np.ndarray, fwd: np.ndarray, min_names: int = 100) -> Moments:
         cii[t] = (z @ z.T).astype(np.float32)
         ciy[t] = (z @ yr).astype(np.float32)
         cyy[t] = float(yr @ yr)
-    return Moments(cii, ciy, cyy, n)
+    return Moments(cii, ciy, cyy, n, okm)
 
 
 def batch_ic(mo: Moments, idx: np.ndarray, signs: np.ndarray) -> np.ndarray:
@@ -119,3 +122,42 @@ def block_sums(ic: np.ndarray, block: int) -> tuple[np.ndarray, np.ndarray]:
     sums = np.add.reduceat(np.where(ok, ic, 0.0), starts, axis=0).astype(np.float32)
     counts = np.add.reduceat(ok.astype(np.int32), starts, axis=0).astype(np.int16)
     return sums, counts
+
+
+def batch_partial_ic(mo: Moments, idx: np.ndarray, signs: np.ndarray, factors: np.ndarray) -> np.ndarray:
+    """(T, B) daily PARTIAL rank-composite IC: the candidate's IC after the
+    forward return and the candidate are both linearly purged, within each
+    date, of the base signals in `factors` (indices into the moments).
+
+    The attribution decision 0085 declares: exploration found the wide search
+    selects momentum and low-volatility composites, so the CONFIRM run reports
+    how much of the selected set's IC is left once those are removed. From the
+    same moments — no re-ranking:
+
+      cov_r(x, y) = cov(x, y) - cov(x, F) Cff^-1 cov(F, y)
+      var_r(x)    = var(x)    - cov(x, F) Cff^-1 cov(F, x)
+      var_r(y)    = Cyy       - cov(y, F) Cff^-1 cov(F, y)
+    """
+    B, d = idx.shape
+    T = mo.cyy.shape[0]
+    F = np.asarray(factors, dtype=np.int64)
+    cff = mo.cii[:, F][:, :, F].astype(np.float64)                     # (T, f, f)
+    cfy = mo.ciy[:, F].astype(np.float64)                               # (T, f)
+    with np.errstate(invalid="ignore"):
+        inv = np.linalg.pinv(np.where(np.isfinite(cff), cff, 0.0))     # (T, f, f)
+    num = np.zeros((T, B))
+    var = np.zeros((T, B))
+    cxf = np.zeros((T, B, len(F)))
+    for a in range(d):
+        num += signs[:, a] * mo.ciy[:, idx[:, a]]
+        cxf += signs[:, a][None, :, None] * mo.cii[:, idx[:, a]][:, :, F]
+        for b in range(d):
+            var += (signs[:, a] * signs[:, b]) * mo.cii[:, idx[:, a], idx[:, b]]
+    proj = np.einsum("tbf,tfg->tbg", cxf, inv)                          # cov(x,F) Cff^-1
+    num_r = num - np.einsum("tbg,tg->tb", proj, cfy)
+    var_r = var - np.einsum("tbg,tbg->tb", proj, cxf)
+    yy_r = mo.cyy - np.einsum("tf,tfg,tg->t", cfy, inv, cfy)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        ic = num_r / np.sqrt(var_r * yy_r[:, None])
+    ic[~np.isfinite(ic)] = np.nan
+    return ic

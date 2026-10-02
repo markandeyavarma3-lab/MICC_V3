@@ -72,3 +72,12 @@ def test_a_single_fold_is_refused():
 def test_a_test_window_mostly_past_the_data_is_dropped_not_kept_short():
     fs = folds.from_config(S)["sequential"]
     assert fs.folds[-1].name == "seq_2025"      # 2026's window would be 9 months of 24
+
+
+def test_the_confirm_design_tests_only_2016_onwards_in_independent_years():
+    fs = folds.confirm(S)
+    first = min(S[f.test[0]] for f in fs.folds)
+    assert first >= date(2016, 1, 1)
+    assert fs.nominal >= 10 and fs.effective >= fs.nominal - 0.5     # disjoint windows
+    for a, b in zip(fs.folds, fs.folds[1:], strict=False):
+        assert a.test.max() < b.test.min()

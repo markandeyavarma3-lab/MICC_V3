@@ -73,3 +73,30 @@ def test_block_sums_match_the_reference_blocking():
     for k in range(3):
         rs, rc = atlas.to_blocks(ic[:, k], 21)
         assert np.allclose(s[:, k], rs) and (c[:, k] == rc).all()
+
+
+def test_the_partial_ic_is_the_correlation_of_residualised_ranks():
+    base, fwd = _data()
+    mo = fastic.moments(base, fwd, min_names=100)
+    idx, sg, F = np.array([[1, 3]]), np.array([[1.0, -1.0]]), np.array([0, 2])
+    fast = fastic.batch_partial_ic(mo, idx, sg, F)[:, 0]
+    for t in range(T):
+        m = _common(base, fwd, t)
+        if m.sum() < 100:
+            continue
+        n = m.sum()
+        r = [rankdata(base[i, t, m]) / n for i in range(K)]
+        comp = (r[1] - r[3]) / 2
+        y = rankdata(fwd[t, m]) / n
+        X = np.column_stack([np.ones(n), r[0], r[2]])
+        rc = comp - X @ np.linalg.lstsq(X, comp, rcond=None)[0]
+        ry = y - X @ np.linalg.lstsq(X, y, rcond=None)[0]
+        direct = np.corrcoef(rc, ry)[0, 1]
+        assert fast[t] == pytest.approx(direct, abs=1e-4), t
+
+
+def test_a_candidate_that_is_only_a_factor_has_no_partial_ic():
+    base, fwd = _data()
+    mo = fastic.moments(base, fwd, min_names=100)
+    p = fastic.batch_partial_ic(mo, np.array([[0]]), np.array([[1.0]]), np.array([0, 2]))
+    assert np.nanmax(np.abs(p)) < 1e-3

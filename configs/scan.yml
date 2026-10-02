@@ -208,6 +208,18 @@ folds:
     embargo_sessions: 21
   # Reported alongside: a fold count is not an evidence count.
   report_effective_fold_count: true
+  # THE CONFIRM DESIGN (exp_005, decision 0085). Exploration (2005-2015) had 5
+  # sequential folds, ~3 independent, and a perfect 5/5 hit rate still gave
+  # p ~ 0.09 against the measured null: too few folds to conclude anything.
+  # The registered run tests 2016+ in DISJOINT one-year windows, so every fold
+  # is independent evidence; training stays anchored at 2005.
+  confirm:
+    mode: anchored_expanding
+    train_start: "2005-01-01"
+    first_test_start: "2016-01-01"
+    test_years: 1
+    step_years: 1
+    embargo_sessions: 21
 
 # =============================================================================
 # THE HEADLINE — testing the procedure, not the patterns
