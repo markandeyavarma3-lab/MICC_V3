@@ -30,8 +30,11 @@ def test_the_panel_refuses_to_run_unregistered(monkeypatch, tmp_path):
 def _holdings(tmp_path, rows):
     import duckdb
     p = tmp_path / "h.parquet"
-    df = pd.DataFrame(rows, columns=["isin", "quarter_end", "broadcast_date", "is_calendar_quarter",
-                                     "revised", "identity_total", "category", "pct_shares"])
+    cols = ["isin", "quarter_end", "broadcast_date", "is_calendar_quarter",
+            "revised", "identity_total", "category", "pct_shares"]
+    extra = ["num_shareholders", "num_shares", "category_raw"]
+    df = pd.DataFrame([r if len(r) == len(cols) + 3 else (*r, 10.0, float("nan"), r[6]) for r in rows],
+                      columns=cols + extra)
     duckdb.connect().execute(f"COPY (SELECT * FROM df) TO '{p}' (FORMAT PARQUET)")
     return p
 
@@ -146,7 +149,7 @@ def test_the_tail_rule_is_per_cohort_and_uses_the_pessimistic_cap():
     df.loc[df.index[:3], "adv20"] = 20.1e7
     t = h.tradeable(df)
     assert t["tradeable"].sum() == 3
-    assert h.CAP_SESSIONS * h.CAP_PCT_ADV * 20e7 == pytest.approx(5e7)
+    assert pytest.approx(5e7) == h.CAP_SESSIONS * h.CAP_PCT_ADV * 20e7
 
 
 # --- verdict, gate, report --------------------------------------------------------
@@ -266,3 +269,107 @@ def test_the_registration_spec_says_which_market_the_secondary_measure_uses():
     # compare it against cannot say whether the sweep is helping.
     runs = json.loads(spec["exploratory_prior_run"])["runs"]
     assert len(runs) >= 3 and [r["date"] for r in runs] == sorted(r["date"] for r in runs)
+
+
+# --- exits: the names that did not reach the horizon (0076, owner 2026-10-02) ----
+
+from datetime import date, timedelta  # noqa: E402
+
+CAL = [date(2025, 1, 1) + timedelta(days=i) for i in range(40)]
+
+
+def _ev(**kw):
+    base = dict(isin="I1", quarter_end="2024-12-31", symbol="ACME", entry_date=CAL[0],
+                entry_open=100.0, entry_open_raw=50.0, own_exit_date=None, own_exit_close=float("nan"),
+                last_eq_date=CAL[3], last_eq_close=80.0)
+    base.update(kw)
+    return pd.DataFrame([base])
+
+
+def _later(rows):
+    return pd.DataFrame(rows, columns=["symbol", "d", "close", "adjusted"])
+
+
+def test_a_name_that_reaches_the_horizon_exits_there():
+    out = h.price_exits(_ev(own_exit_date=CAL[5], own_exit_close=110.0, last_eq_date=CAL[30]),
+                        CAL, _later([]), 5).iloc[0]
+    assert out["exit_reason"] == "HORIZON" and out["ret"] == pytest.approx(0.10)
+
+
+def test_a_name_moved_to_another_series_exits_at_its_real_price_against_the_raw_entry():
+    """The 105: left EQ for BE and kept trading. Its BE price is raw, so the
+    entry must be the raw open too — never the adjusted one."""
+    out = h.price_exits(_ev(), CAL, _later([("ACME", CAL[4], 45.0, False),
+                                             ("ACME", CAL[5], 40.0, False),
+                                             ("ACME", CAL[9], 30.0, False)]), 5).iloc[0]
+    assert out["exit_reason"] == "MOVED"
+    assert out["exit_date"] == CAL[5] and out["ret"] == pytest.approx(40.0 / 50.0 - 1)
+
+
+def test_a_new_isin_on_the_same_symbol_exits_on_the_adjusted_spine():
+    out = h.price_exits(_ev(), CAL, _later([("ACME", CAL[5], 120.0, True),
+                                             ("ACME", CAL[8], 121.0, True)]), 5).iloc[0]
+    assert out["exit_reason"] == "MOVED" and out["ret"] == pytest.approx(0.20)
+
+
+def test_a_name_that_stopped_everywhere_is_priced_at_the_recovery_factors():
+    out = h.price_exits(_ev(), CAL, _later([]), 5).iloc[0]
+    assert out["exit_reason"] == "STOPPED"
+    assert out["ret"] == pytest.approx(-1.0)                 # rf 0.0, the headline (0052)
+    assert out["ret_rf25"] == pytest.approx(80 * 0.25 / 100 - 1)
+    assert out["ret_rf50"] == pytest.approx(80 * 0.50 / 100 - 1)
+
+
+def test_a_name_that_moved_then_stopped_before_the_exit_is_stopped_at_its_last_trade():
+    out = h.price_exits(_ev(), CAL, _later([("ACME", CAL[4], 45.0, False)]), 5).iloc[0]
+    assert out["exit_reason"] == "STOPPED" and out["exit_date"] == CAL[4]
+    assert out["ret_rf50"] == pytest.approx(45 * 0.5 / 50 - 1)
+
+
+def test_a_window_past_the_data_or_a_name_still_trading_is_censored_not_priced():
+    past = h.price_exits(_ev(entry_date=CAL[-3]), CAL, _later([]), 5).iloc[0]
+    live = h.price_exits(_ev(last_eq_date=CAL[-2]), CAL, _later([]), 5).iloc[0]
+    assert past["exit_reason"] == "CENSORED" and live["exit_reason"] == "CENSORED"
+    assert np.isnan(past["ret"]) and np.isnan(live["ret"])
+
+
+# --- the robustness lines the spec promises ---------------------------------------
+
+
+def test_holder_counts_and_the_share_change_flag_come_from_the_filing(tmp_path):
+    p = _holdings(tmp_path, [
+        ("I1", "2026-03-31", "2026-04-20", True, False, 100.0, "FPI_Cat1", 10.0, 40.0, None, "x"),
+        ("I1", "2026-03-31", "2026-04-20", True, False, 100.0, "Promoter", 60.0, 5.0, 1000.0,
+         "ShareholdingOfPromoterAndPromoterGroupMember"),
+        ("I1", "2026-06-30", "2026-07-15", True, False, 100.0, "FPI_Cat1", 9.0, 46.0, None, "x"),
+        ("I1", "2026-06-30", "2026-07-15", True, False, 100.0, "Promoter", 60.0, 5.0, 2000.0,
+         "ShareholdingOfPromoterAndPromoterGroupMember"),   # a 1:1 bonus
+    ])
+    s = h.signals(p)
+    assert list(s["d_n_fpi"]) == [6.0]
+    assert bool(s["share_change"].iloc[0]) is True
+
+
+def test_the_block_bootstrap_ci_brackets_the_mean_and_is_seeded():
+    x = pd.Series(np.random.default_rng(3).normal(0.02, 0.05, size=40))
+    lo, hi = h.block_bootstrap_ci(x)
+    assert lo < x.mean() < hi and h.block_bootstrap_ci(x) == (lo, hi)
+    assert all(np.isnan(v) for v in h.block_bootstrap_ci(pd.Series([0.1, 0.2])))
+
+
+def test_kill_4_names_a_spread_that_lives_in_corporate_actions():
+    real = _res("d_fpi", 0.05, 0.01, 0.01)
+    robust = {h.KILL4: [_res("d_fpi", 0.001, 0.01, 0.5)]}
+    v = h.verdict([real, _res("d_foreign", 0.0, 0.01, 0.9), _res("d_mf", 0.0, 0.01, 0.9)],
+                  robust, _panel_for_gate())
+    assert any("kill 4" in k for k in v.kills["d_fpi"])
+
+
+def test_run_computes_every_robustness_line_the_spec_names():
+    """The spec promised seven robustness lines and the code computed three.
+    run() cannot execute unregistered, so its source is the contract."""
+    import inspect
+    src = inspect.getsource(h.run)
+    for promised in ("market-relative", "winsorised", "holder-count", "horizon",
+                     "recovery factor", "KILL2", "KILL3", "KILL4", "calendar filings only"):
+        assert promised in src, promised

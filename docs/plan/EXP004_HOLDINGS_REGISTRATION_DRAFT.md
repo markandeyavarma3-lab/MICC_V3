@@ -1,6 +1,6 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED — revision 4, 2026-09-29. Nothing registered.**
+**Status: DRAFT / PROPOSED — revision 5, 2026-10-02 (the registration rehearsal, §9). Nothing registered.**
 Written 2026-09-17 for the owner to argue with; revised after their answers
 and after two PRELIMINARY dispersion runs (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
 no signal read, nothing frozen) — the first on 220 companies, the second on
@@ -137,12 +137,12 @@ and counted; the original broadcast is the point-in-time fact.
 | hypothesis | The top decile of filing-over-filing change in a stock's institutional holding — FPI (Cat I + II), all foreign institutions, and mutual funds, each a separate test — ranked within quarter, earns a higher CHAR_MATCHED abnormal return over the next 63 sessions than the bottom decile, after multiplicity. |
 | prior_belief | Weak-to-moderate. The literature finds a short-horizon effect for active institutions; Indian evidence is thin, the panel is 20 quarters, and the honest expectation is UNDERPOWERED against 0028's bound. |
 | data_version | SHP XBRL `[sweep: N symbols, Q quarters, first→last]`, source `nse_shp_xbrl` (0074); prices `price_spine_adj` as of `[sweep date]`; `char_panel` as of same; identity by **ISIN** (0069), never symbol. |
-| universe_definition | Every ISIN with (a) a non-revised XBRL filing (`revised = false`, per the master's `revisedStatus`) and a prior filing, (b) a spine price on the entry session, (c) a CHAR_MATCHED bucket, (d) `identity_total` within 1pt of 100. Series EQ/BE at filing. **Off-cycle filings are kept as observations (owner decision 2026-09-18)**: the signal is the change since the PREVIOUS filing, whatever its date, and the interval in days is carried on every row and reported by bucket; a change over 3 weeks and a change over 3 months are both observations, and the robustness section shows the calendar-only result. Counts of exclusions reported per reason. |
+| universe_definition | Every ISIN with (a) an XBRL filing (revised ones KEPT — see revised_policy) and a prior filing, (b) an EQ spine session after broadcast (the entry) — **survival to the horizon NOT required (owner decision 2026-10-02; see exit_policy)**, (c) a CHAR_MATCHED bucket, (d) `identity_total` within 1pt of 100. Series EQ/BE at filing. **Off-cycle filings are kept as observations (owner decision 2026-09-18)**: the signal is the change since the PREVIOUS filing, whatever its date, and the interval in days is carried on every row and reported by bucket; a change over 3 weeks and a change over 3 months are both observations, and the robustness section shows the calendar-only result. Counts of exclusions reported per reason. |
 | signal_definition | Three tested signals, each Δ`pct_shares` (percent, scale-normalised — see `src/ingest/shp.py`) since the previous filing. **FPI** = `FPI_Cat1` + `FPI_Cat2` + `FPI_Undivided` — three taxonomies map to one series: undivided `InstitutionsForeignPortfolioInvestorMember` (2020–22), `…Catergory…` (NSE's own typo, 2022–24), `…Category…` (2025+); they never co-occur. **All foreign institutions** = `ForeignInst_Total` (`InstitutionsForeignMember`, which ALSO holds FDI, FVCI and sovereign funds — the parser's first label, "FPI_Total", was wrong and is corrected); no counterpart exists in the old taxonomy, so this signal starts in 2022 and is NULL before. **MF** = `MutualFund`. **A category absent from a filing is zero within that filing's taxonomy** — V1.1+ omits zero holdings, and a fund's exit is a signal. **Robustness (reported, not tested)**: Δ`num_shareholders` under the same members. Depth measured 2026-09-18 on 8% of the universe: FPI and MF from 2021Q3, FOREIGN from 2022Q2. |
 | interpretation_mode | CROSS_SECTIONAL — ranks are within-quarter; the estimator is the mean over quarters of the decile-spread return. |
 | holding_period | Primary 63 sessions (one quarter). Reported: 21, 63, 126, 252. A quarterly signal held for 252 sessions overlaps 3 of 4 cohorts; declared here as the departure from research.yml's 12-month primary, for the same reason 0067 declared 21. |
 | entry_policy | Next session's OPEN after `broadcastDate`, per symbol. Never the quarter-end. |
-| exit_policy | Close of entry + h sessions; 0052 delisting policy; no same-day close. |
+| exit_policy | **Revised 2026-10-02 (owner decision).** HORIZON: close of the name's own h-th EQ session after entry. MOVED: it left EQ but still traded at the calendar exit date — as a new ISIN on the same symbol (adjusted spine) or in another series such as BE/BZ (0082; raw bhavcopy, against the raw entry) — exit at its last close on or before that date. STOPPED: traded nowhere on or after the exit date — 0052, last close × 0.0 headline, 0.25 and 0.50 reported. CENSORED: the window runs past the data — excluded, counted. Market leg over the calendar window. No same-day close. `holdings.price_exits()`. |
 | cost_policy | Portfolio gate: long top decile / short bottom decile, equal-weight within side, rebalanced per quarter, full `costs.yml` stack at the pessimistic level, participation cap applied per name. |
 | benchmark_policy | **CHAR_MATCHED** (primary — it is the momentum control, see §4; one definition in `charmatch.py`, consumed by `outcomes.py` and `holdings.py` alike). Market-relative reported alongside, against the **NIFTY 500 total return** (`collected:index_tri`, benchmarks.yml's `headline_index`, decision 0077) — not a price index: the ~0.3%/quarter dividend leg is a fifth of this study's own bound. Swapping the primary re-registers. |
 | training_period | **None.** Within-quarter decile ranks have no fitted parameter; there is nothing to hold out and nothing to leak. |
@@ -156,7 +156,7 @@ and counted; the original broadcast is the point-in-time fact.
 | interval_policy | **DECIDED 2026-09-18 (a): cap at 200 days.** A change spanning more than 200 days between filings is a resumption after a filing gap (20 changes spanned 400–1,096 days on the sample), not a quarterly signal. Excluded from the primary, counted. Every ordinary quarter and every off-cycle filing that follows one is kept. |
 | permutation_policy | Moving-block bootstrap over quarters, block = 2 quarters, 10,000 draws, seed 20260917. Within-quarter label permutation (1,000) as the null calibration, per `nullcal.py`'s method. |
 | pass_bar | Event gate: decile spread at 63 sessions clears the serial-corrected MDE **and** the plausible bound (0.5%/month × 3) at BH-FDR 5%; **and** portfolio gate (0003): the long–short beats CHAR_MATCHED net of costs on the evaluation period. Both. |
-| kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag (share-count change) → corporate action, not holding. |
+| kill_criteria | (1) MDE at 63s > plausible bound → **UNDERPOWERED**, reported as such, no fitting. (2) Spread survives only above the participation cap → liquidity, not information. (3) Spread present in the raw-return version and absent in CHAR_MATCHED → momentum, not institutions. (4) Spread driven by the denominator flag → corporate action, not holding: shares outstanding moved by more than **5%** between the two filings (`SHARE_CHANGE_FLAG`, fixed 2026-10-02 — the draft said "abnormal" and named no number), and the spread falls below half the bound without those rows. |
 | confounds | momentum APPLICABLE (controlled by CHAR_MATCHED; raw vs matched reported — kill 3); share-count APPLICABLE (flagged — kill 4); index inclusion APPLICABLE, NOT controlled (constituents are one snapshot) — stated limitation; delisting APPLICABLE (0052); size/liquidity APPLICABLE (tiers reported; participation cap — kill 2); industry NOT CONTROLLED (`sector_history` is Phase 3; same degradation `char_panel` already declares). |
 | exploratory_prior_run | `docs/reports/HOLDINGS_POWER_PRELIMINARY.md`, run four times (2026-09-18: 3,092 stock-quarters; 2026-09-19: 6,749; 2026-09-28: 17,451 — all at a floor of 20 names a quarter; 2026-09-29: 20,013 at the registered floor of 100): forward market-relative returns were joined to them to measure their DISPERSION under random deciles. No holding percentage, holder count or category was read (`tests/test_holdings_power.py` parses the module's SQL for the signal columns and refuses them). Nothing charged to a family. |
 
@@ -190,3 +190,45 @@ On acceptance, in order:
    and n only, refuses to run without the hash, and prints the MDE against the
    bound. **The owner reads that number before step 5 exists.**
 5. Only then: the study.
+
+## 9. The registration rehearsal (revision 5, 2026-10-02)
+
+`scripts/register_exp004.py --rehearse` registers into a throwaway copy of the
+governance db, reads the row back, recomputes the hash, and deletes the copy.
+Run before the sweep reaches 95% so that registration day is one command. The
+real registry was checked byte-identical before and after. It found:
+
+1. **Six spec fields would have been hashed and not stored.** The script kept
+   only fields with a registry column: `tail_rule`, `signal_definition`,
+   `confounds`, `revised_policy`, `interval_policy` and `trial_family` would
+   have vanished, leaving a hash nobody could recompute and none of the rules
+   the study turns on. Fixed: they ride in `configuration_json`, and the
+   insert is committed only if the stored row reproduces the hash.
+2. **Survivorship in the universe.** (b) required 63 sessions after entry
+   while exit_policy cited 0052. 111 of 26,443 filing pairs stopped in EQ
+   inside the window: 105 moved to BE/BZ and kept trading, and 6 stopped. The
+   owner chose to price them (exit_policy above). This is counted only: no
+   return was read.
+3. **Seven promised outputs that the code never computed:**
+   - the horizons 21, 126 and 252;
+   - the holder-count signal;
+   - the winsorised variant;
+   - the market-relative variant;
+   - the recovery-factor variants;
+   - the block-bootstrap CI;
+   - kill criterion 4.
+
+   All are now in `holdings.run()`, and a test reads its source for each one.
+4. **Exclusions were dropped, not counted.** 705 filings had no security for
+   the ISIN. Further filings had no EQ session after broadcast, or were
+   censored. All are now counted per reason.
+5. **The draft contradicted itself** on revised filings (this table said
+   "non-revised"; the 2026-09-18 decision keeps them). The script always
+   followed the decision, and the draft now does too.
+6. **Guards added:** registration refuses with uncommitted code (the
+   recorded commit must be the code that runs), and refuses if any named
+   input cannot be read. Seven inputs are opened and counted.
+
+Spec hash at rehearsal: `bc4b2d8d8baf…`. It will differ on registration day,
+because `data_version` carries the coverage then.
+

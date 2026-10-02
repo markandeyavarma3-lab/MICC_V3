@@ -57,6 +57,7 @@ import pandas as pd
 
 from src.common.paths import COLLECTED, DOCS, SEED, governance_db, research_db, warehouse_dir
 from src.research import charmatch, power
+from src.research.delisting import RECOVERY_FACTORS, STILL_TRADING_SESSIONS
 from src.research.measure import identified_px_ctes
 
 EXPERIMENT_ID = "exp_004_holdings_change"
@@ -82,6 +83,12 @@ DECILE = 10
 #: filing that spans more than this is a resumption after a filing gap, not a
 #: quarterly signal; 86 of 3,253 changes spanned 201-1,096 days on the sample.
 INTERVAL_CAP_DAYS = 200
+
+#: Kill criterion 4 (0076): a change between two filings is a CORPORATE ACTION,
+#: not a holding decision, when shares outstanding moved by more than this.
+#: Fixed 2026-10-02 before registration; the draft said "abnormal" and named
+#: no number, which is a threshold the result would have chosen.
+SHARE_CHANGE_FLAG = 0.05
 
 #: The three tested signals: which parsed categories sum to each.
 #: FPI is one series across two taxonomies: undivided to 2024, Cat I + II from
@@ -138,7 +145,16 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
                COALESCE(SUM(CASE WHEN category IN ('FPI_Cat1','FPI_Cat2','FPI_Undivided') THEN pct_shares END), 0) AS fpi,
                CASE WHEN BOOL_OR(category = 'Institutions_Total_OldTaxonomy') THEN NULL
                     ELSE COALESCE(SUM(CASE WHEN category = 'ForeignInst_Total' THEN pct_shares END), 0) END AS foreign,
-               COALESCE(SUM(CASE WHEN category = 'MutualFund' THEN pct_shares END), 0) AS mf
+               COALESCE(SUM(CASE WHEN category = 'MutualFund' THEN pct_shares END), 0) AS mf,
+               -- The holder-count twins (robustness only, never tested): the
+               -- same members, counting holders instead of shares.
+               COALESCE(SUM(CASE WHEN category IN ('FPI_Cat1','FPI_Cat2','FPI_Undivided') THEN num_shareholders END), 0) AS n_fpi,
+               CASE WHEN BOOL_OR(category = 'Institutions_Total_OldTaxonomy') THEN NULL
+                    ELSE COALESCE(SUM(CASE WHEN category = 'ForeignInst_Total' THEN num_shareholders END), 0) END AS n_foreign,
+               COALESCE(SUM(CASE WHEN category = 'MutualFund' THEN num_shareholders END), 0) AS n_mf,
+               -- Shares outstanding: the three top-level classes, as identity_total sums them.
+               SUM(CASE WHEN lower(category_raw) IN ('shareholdingofpromoterandpromotergroupmember',
+                       'publicshareholdingmember', 'nonpromoternonpublicmember') THEN num_shares END) AS shares
         FROM read_parquet('{path}')
         WHERE broadcast_date <> ''
         GROUP BY 1,2,3,4,5,6
@@ -152,6 +168,11 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
     ok["prev_quarter_end"] = prev["quarter_end"]
     for s in ("fpi", "foreign", "mf"):
         ok[f"d_{s}"] = ok[s] - prev[s]
+        ok[f"d_n_{s}"] = ok[f"n_{s}"] - prev[f"n_{s}"]
+    # KILL CRITERION 4's flag: the share count moved by more than
+    # SHARE_CHANGE_FLAG between the two filings — a bonus, rights issue, QIP
+    # or merger, where a holding's percentage moves without anyone trading.
+    ok["share_change"] = ((ok["shares"] / prev["shares"] - 1).abs() > SHARE_CHANGE_FLAG).fillna(False)
     ok = ok[ok["prev_quarter_end"].notna()].copy()
     counts["first_filings_excluded"] = len(wide) - counts["identity_excluded"] - len(ok)
     ok["interval_days"] = (pd.to_datetime(ok["quarter_end"]) - pd.to_datetime(ok["prev_quarter_end"])).dt.days
@@ -231,18 +252,35 @@ def market_tri_sql(index_key: str = "NIFTY500") -> str:
 # --- half two: the panel, behind the guard ------------------------------------
 
 
-def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Signals joined to entry, forward returns, CHAR_MATCHED benchmark and the
-    tradeable flag. Refuses to run unregistered."""
+#: The signal columns the panel carries: the three tested signals, their
+#: holder-count twins (robustness, reported never tested) and the
+#: share-count-change flag kill criterion 4 reads.
+SIGNAL_COLS = ["d_fpi", "d_foreign", "d_mf", "d_n_fpi", "d_n_foreign", "d_n_mf", "share_change"]
+
+
+def panel(env: str | None = None, sig: pd.DataFrame | None = None,
+          horizon: int = HORIZON) -> pd.DataFrame:
+    """Signals joined to entry, the exit at `horizon` sessions (`price_exits`),
+    the CHAR_MATCHED benchmark and the tradeable flag. Refuses to run
+    unregistered.
+
+    EVERY ROW THAT DOES NOT REACH THE PANEL IS COUNTED BY REASON, as the
+    spec's universe definition promises (`.attrs["counts"]`): no security
+    for the ISIN, no EQ session after broadcast, a window still open
+    (CENSORED). The first version dropped all three in inner joins."""
+    from src.ingest.listing_history import closes as allseries_closes
+
     registered_hash(env)
     sig = sig if sig is not None else signals()
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+    raw = str(warehouse_dir(env) / "price_spine" / "**" / "*.parquet")
     charp = str(warehouse_dir(env) / "char_panel" / "**" / "*.parquet")
     min_cell = charmatch.min_names_per_cell()
+    counts: dict[str, int] = {"signal_rows": len(sig)}
     con = duckdb.connect(str(research_db(env)), read_only=True)
     try:
         con.register("sig", sig[["isin", "quarter_end", "broadcast_date", "cohort", "interval_days",
-                                 "is_calendar_quarter", "d_fpi", "d_foreign", "d_mf"]])
+                                 "is_calendar_quarter", *SIGNAL_COLS]])
         con.execute(f"""CREATE TEMP TABLE ordered AS
             WITH {identified_px_ctes(spine)}
             SELECT security_id, symbol, CAST(date AS DATE) AS d, open, close,
@@ -250,26 +288,79 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
                                                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS adv20,
                    ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY date) AS rn
             FROM sec""")
+        counts["excluded_no_security"] = con.execute(
+            "SELECT COUNT(*) FROM sig s LEFT JOIN security_master m ON m.isin = s.isin"
+            " WHERE m.isin IS NULL").fetchone()[0]
         con.execute(f"""CREATE TEMP TABLE ev AS
-            SELECT s.*, m.security_id, o.symbol, o.d AS entry_date, o.open AS entry_open, o.rn AS entry_rn, o.adv20
+            SELECT s.*, m.security_id, o.symbol, o.d AS entry_date, o.open AS entry_open,
+                   o.rn AS entry_rn, o.adv20, r.open AS entry_open_raw
             FROM sig s
             JOIN security_master m ON m.isin = s.isin
             JOIN ordered o ON o.security_id = m.security_id AND o.d > CAST(s.broadcast_date AS DATE)
+            LEFT JOIN (SELECT UPPER(TRIM(symbol)) AS symbol, CAST(date AS DATE) AS d, open
+                       FROM read_parquet('{raw}')) r ON r.symbol = o.symbol AND r.d = o.d
             QUALIFY ROW_NUMBER() OVER (PARTITION BY s.isin, s.quarter_end ORDER BY o.d) = 1""")
-        con.execute(f"""CREATE TEMP TABLE fwd AS
-            SELECT e.isin, e.quarter_end, x.close / e.entry_open - 1 AS ret, x.d AS exit_date
-            FROM ev e JOIN ordered x ON x.security_id = e.security_id AND x.rn = e.entry_rn + {HORIZON}""")
+        n_ev = con.execute("SELECT COUNT(*) FROM ev").fetchone()[0]
+        counts["excluded_no_eq_session_after_broadcast"] = (
+            len(sig) - counts["excluded_no_security"] - n_ev)
+        evdf = con.execute(f"""
+            WITH last AS (
+                SELECT security_id, MAX(d) AS last_eq_date,
+                       arg_max(close, d) AS last_eq_close FROM ordered GROUP BY 1)
+            SELECT e.isin, e.quarter_end, e.symbol, e.entry_date, e.entry_open,
+                   COALESCE(e.entry_open_raw, e.entry_open) AS entry_open_raw,
+                   x.d AS own_exit_date, x.close AS own_exit_close,
+                   l.last_eq_date, l.last_eq_close
+            FROM ev e
+            LEFT JOIN ordered x ON x.security_id = e.security_id AND x.rn = e.entry_rn + {horizon}
+            JOIN last l ON l.security_id = e.security_id""").df()
+        calendar = [r[0] for r in con.execute("SELECT DISTINCT d FROM ordered ORDER BY d").fetchall()]
+        # Trades after a name left EQ: the same symbol in EQ under a new ISIN
+        # (adjusted spine) and every other series (raw bhavcopy). Read only for
+        # the names that need them.
+        gone = evdf[evdf["own_exit_close"].isna()]
+        later = pd.DataFrame(columns=["symbol", "d", "close", "adjusted"])
+        if len(gone):
+            syms = set(gone["symbol"])
+            con.register("gone_syms", pd.DataFrame({"symbol": sorted(syms)}))
+            eq_later = con.execute(
+                "SELECT symbol, d, close, TRUE AS adjusted FROM ordered"
+                " WHERE symbol IN (SELECT symbol FROM gone_syms)").df()
+            lo = str(gone["last_eq_date"].min())
+            other = pd.DataFrame(allseries_closes(syms, lo, str(calendar[-1]) if calendar else lo),
+                                 columns=["symbol", "series", "isin", "d", "close"])
+            other = other[other["series"] != "EQ"]
+            other = other.assign(d=pd.to_datetime(other["d"]).dt.date, adjusted=False)[
+                ["symbol", "d", "close", "adjusted"]]
+            later = pd.concat([eq_later, other], ignore_index=True)
+            # One price per (symbol, session): the adjusted EQ row when both exist.
+            later = (later.sort_values("adjusted", ascending=False)
+                     .drop_duplicates(["symbol", "d"]).reset_index(drop=True))
+        # One date type throughout: DuckDB hands pandas timestamps and the
+        # calendar plain dates, and a bisect across the two silently misses.
+        for c in ("entry_date", "own_exit_date", "last_eq_date"):
+            evdf[c] = [None if pd.isna(x) else pd.Timestamp(x).date() for x in evdf[c]]
+        later["d"] = [pd.Timestamp(x).date() for x in later["d"]]
+        priced = price_exits(evdf, calendar, later, horizon)
+        by_reason = priced["exit_reason"].value_counts().to_dict() if len(priced) else {}
+        for k in ("HORIZON", "MOVED", "STOPPED", "CENSORED"):
+            counts[f"exit_{k.lower()}"] = int(by_reason.get(k, 0))
+        priced = priced[priced["exit_reason"] != "CENSORED"].copy()
+        # The market leg runs over the WINDOW, whatever the name did inside it.
+        priced["window_end"] = [
+            r.own_exit_date if r.exit_reason == "HORIZON"
+            else calendar[min(calendar.index(r.entry_date) + horizon, len(calendar) - 1)]
+            for r in priced.itertuples()]
+        con.register("px_exit", priced[["isin", "quarter_end", "exit_reason", "exit_date", "window_end",
+                                        "ret", *[c for c in priced.columns if c.startswith("ret_rf")]]])
         # CHAR_MATCHED, on outcomes.py's construction (see the module docstring).
         con.execute("CREATE TEMP TABLE cellmap AS " + charmatch.cellmap_sql(
             "SELECT DISTINCT symbol, d FROM ordered WHERE d IN (SELECT DISTINCT entry_date FROM ev)", charp))
         con.execute(f"""CREATE TEMP TABLE cells AS
-            SELECT o.symbol, o.d, LEAD(o.close, {HORIZON}) OVER w / o.open - 1 AS ret, c.size_q, c.mom_q, c.vol_q
-            FROM ordered o JOIN cellmap c ON c.symbol = o.symbol AND c.d = o.d
-            WINDOW w AS (PARTITION BY o.security_id ORDER BY o.d)""")
-        # NOTE: cells' LEAD sees only entry dates' rows — rebuild over the full spine per entry date
-        con.execute(f"""CREATE OR REPLACE TEMP TABLE cells AS
-            WITH f AS (SELECT symbol, d, LEAD(close, {HORIZON}) OVER (PARTITION BY security_id ORDER BY d) / open - 1 AS ret FROM ordered)
-            SELECT f.symbol, f.d, f.ret, c.size_q, c.mom_q, c.vol_q FROM f JOIN cellmap c ON c.symbol = f.symbol AND c.d = f.d
+            WITH f AS (SELECT symbol, d, LEAD(close, {horizon}) OVER (PARTITION BY security_id ORDER BY d)
+                                         / open - 1 AS ret FROM ordered)
+            SELECT f.symbol, f.d, f.ret, c.size_q, c.mom_q, c.vol_q
+            FROM f JOIN cellmap c ON c.symbol = f.symbol AND c.d = f.d
             WHERE f.ret IS NOT NULL""")
         for level, keys in MATCH_LEVELS:
             con.execute(f"CREATE TEMP TABLE cm_{level} AS " + charmatch.cell_means_sql(level, keys))
@@ -277,25 +368,32 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None) -> pd.DataFra
         # The headline index, total return (0077). `market_series_sql` is the
         # price leg and is kept for anything that needs NIFTY 50 specifically.
         con.execute(f"CREATE TEMP TABLE mkt AS {market_tri_sql()}")
+        rf_cols = ", ".join(f"f.{c} - ({lad.bench}) AS char_rel_{c[4:]}"
+                            for c in priced.columns if c.startswith("ret_rf"))
         df = con.execute(f"""
             SELECT e.isin, e.quarter_end, e.cohort, e.interval_days, e.is_calendar_quarter,
-                   e.d_fpi, e.d_foreign, e.d_mf, e.entry_date, f.exit_date, e.adv20,
+                   {", ".join(f"e.{c}" for c in SIGNAL_COLS)},
+                   e.entry_date, f.exit_date, f.exit_reason, e.adv20,
                    f.ret AS raw_ret,
                    f.ret - (mx.close / me.close - 1) AS mkt_rel,
                    f.ret - ({lad.bench}) AS char_rel,
+                   {rf_cols + "," if rf_cols else ""}
                    {lad.match_level} AS match_level,
                    ec.size_q, ec.mom_q, ec.vol_q
             FROM ev e
-            JOIN fwd f ON f.isin = e.isin AND f.quarter_end = e.quarter_end
+            JOIN px_exit f ON f.isin = e.isin AND f.quarter_end = e.quarter_end
             LEFT JOIN mkt me ON me.d = e.entry_date
-            LEFT JOIN mkt mx ON mx.d = f.exit_date
+            LEFT JOIN mkt mx ON mx.d = f.window_end
             LEFT JOIN cellmap ec ON ec.symbol = e.symbol AND ec.d = e.entry_date
             LEFT JOIN cells own ON own.symbol = e.symbol AND own.d = e.entry_date
             {lad.joins}
         """).df()
     finally:
         con.close()
-    return tradeable(df)
+    counts["excluded_no_char_match"] = int(df["char_rel"].isna().sum())
+    out = tradeable(df)
+    out.attrs["counts"] = counts
+    return out
 
 
 def tradeable(df: pd.DataFrame) -> pd.DataFrame:
@@ -307,6 +405,83 @@ def tradeable(df: pd.DataFrame) -> pd.DataFrame:
     n = out.groupby("cohort")["isin"].transform("count")
     per_name = (NOTIONAL_INR / 2) / (n // DECILE).clip(lower=2)
     out["tradeable"] = (CAP_SESSIONS * CAP_PCT_ADV * out["adv20"]) >= per_name
+    return out
+
+
+# --- exits, pure: what a name returned when it did not reach the horizon -------
+
+
+def price_exits(ev: pd.DataFrame, calendar: list, later: pd.DataFrame, h: int) -> pd.DataFrame:
+    """Every event's exit at `h` sessions, including the names that left.
+
+    THE OWNER'S DECISION 2026-10-02 (0076). The draft's universe required 63
+    sessions after entry, and its exit policy cited 0052; the two contradict,
+    and the first is survivorship: of 26,443 filing pairs, 111 stopped trading
+    in EQ inside the window — 105 MOVED to the BE/BZ surveillance series
+    (0082's LEFT_UNIVERSE), usually after bad news, and kept trading there.
+    Dropping them is the silent drop Plan 2 §3.4 says was worth the whole
+    effect in MICCV2. So:
+
+      HORIZON   the name's own h-th session after entry exists in EQ.
+      MOVED     it left EQ and was still trading at the exit date — under the
+                same symbol in EQ as a new ISIN (adjusted spine, so the entry
+                is the adjusted open) or in another series (raw bhavcopy, so
+                the entry is the RAW open). Exit = its last close on or before
+                the calendar exit date.
+      STOPPED   no trade anywhere on or after the exit date. 0052: last close
+                x recovery factor; rf 0.0 is the headline, 0.25 and 0.50
+                reported. The last close is the latest of EQ and later trades.
+      CENSORED  the window runs past the data — the calendar has no session
+                h after entry, or the name still trades in EQ but has not had
+                h sessions yet. No outcome exists; excluded and counted.
+
+    `ev` columns: entry_date, entry_open, entry_open_raw, own_exit_date,
+    own_exit_close, last_eq_date, last_eq_close, symbol (+ any keys).
+    `calendar`: sorted session dates (the market's). `later`: symbol, d,
+    close, adjusted — trades after the name left EQ.
+    Returns `ev` + exit_reason, exit_date, ret, and ret_rf{25,50} for the
+    reported recovery factors (equal to ret except for STOPPED).
+    """
+    from bisect import bisect_left
+
+    cal = list(calendar)
+    end = cal[-1] if cal else None
+    alive_line = cal[-1 - STILL_TRADING_SESSIONS] if len(cal) > STILL_TRADING_SESSIONS else None
+    by_sym = {s: g.sort_values("d") for s, g in later.groupby("symbol")} if len(later) else {}
+    rows = []
+    for r in ev.itertuples(index=False):
+        rec = r._asdict()
+        rf_ret = {}
+        i = bisect_left(cal, r.entry_date)
+        cal_exit = cal[i + h] if i < len(cal) and cal[i] == r.entry_date and i + h < len(cal) else None
+        if pd.notna(r.own_exit_close):
+            reason, exit_d, ret = "HORIZON", r.own_exit_date, r.own_exit_close / r.entry_open - 1
+        elif cal_exit is None or (alive_line is not None and r.last_eq_date >= alive_line):
+            reason, exit_d, ret = "CENSORED", None, float("nan")
+        else:
+            g = by_sym.get(r.symbol)
+            g = g[g["d"] > r.last_eq_date] if g is not None else None
+            if g is not None and len(g) and (g["d"] >= cal_exit).any():
+                last = g[g["d"] <= cal_exit].iloc[-1] if (g["d"] <= cal_exit).any() else g.iloc[0]
+                base = r.entry_open if bool(last["adjusted"]) else r.entry_open_raw
+                reason, exit_d, ret = "MOVED", last["d"], float(last["close"]) / base - 1
+            else:
+                if g is not None and len(g):
+                    last = g.iloc[-1]
+                    px, base, exit_d = (float(last["close"]),
+                                        r.entry_open if bool(last["adjusted"]) else r.entry_open_raw,
+                                        last["d"])
+                else:
+                    px, base, exit_d = r.last_eq_close, r.entry_open, r.last_eq_date
+                reason = "STOPPED"
+                ret = px * RECOVERY_FACTORS[0] / base - 1
+                rf_ret = {f: px * f / base - 1 for f in RECOVERY_FACTORS[1:]}
+        rec.update(exit_reason=reason, exit_date=exit_d, ret=ret)
+        for f in RECOVERY_FACTORS[1:]:
+            rec[f"ret_rf{int(round(f * 100))}"] = rf_ret.get(f, ret)
+        rows.append(rec)
+    out = pd.DataFrame(rows)
+    out.attrs["data_end"] = end
     return out
 
 
@@ -325,6 +500,8 @@ class TestResult:
     p_perm: float
     q_fdr: float = float("nan")
     mde: float = float("nan")
+    ci_low: float = float("nan")    # 95%, moving-block bootstrap over cohorts
+    ci_high: float = float("nan")
     cohorts: pd.Series = field(default_factory=pd.Series, repr=False)
 
     @property
@@ -343,6 +520,34 @@ def decile_spreads(df: pd.DataFrame, signal_col: str, outcome_col: str) -> pd.Se
         k = max(2, len(g) // DECILE)
         out[cohort] = float(g[outcome_col].iloc[-k:].mean() - g[outcome_col].iloc[:k].mean())
     return pd.Series(out).sort_index()
+
+
+#: The spec's permutation_policy: "Moving-block bootstrap over cohorts (block 2)
+#: for the CI". Block 2 keeps adjacent quarters together, because a 63-session
+#: holding overlaps the next cohort's window and the spreads are serially
+#: correlated (the same reason the SE carries the Bartlett correction).
+BOOT_BLOCK = 2
+BOOT_DRAWS = 1000
+
+
+def block_bootstrap_ci(x: pd.Series, block: int = BOOT_BLOCK, draws: int = BOOT_DRAWS,
+                       seed: int = 20260918, level: float = 0.95) -> tuple[float, float]:
+    """Percentile CI of the mean of `x` (cohort spreads in time order) by
+    moving-block bootstrap: resample overlapping blocks of `block` consecutive
+    cohorts with replacement until the series length is reached."""
+    v = x.to_numpy(dtype=float)
+    n = len(v)
+    if n < block + 1:
+        return float("nan"), float("nan")
+    rng = np.random.default_rng(seed)
+    starts = np.arange(n - block + 1)
+    k = int(np.ceil(n / block))
+    means = np.empty(draws)
+    for i in range(draws):
+        idx = (rng.choice(starts, size=k)[:, None] + np.arange(block)).ravel()[:n]
+        means[i] = v[idx].mean()
+    a = (1 - level) / 2
+    return float(np.quantile(means, a)), float(np.quantile(means, 1 - a))
 
 
 def _test(df, signal_col, outcome_col, permutations=1000, seed=20260918) -> TestResult:
@@ -366,8 +571,10 @@ def _test(df, signal_col, outcome_col, permutations=1000, seed=20260918) -> Test
             hits += 1
     p_perm = (hits + 1) / (permutations + 1)
     n_names = int(work.groupby("cohort").size().loc[cohorts.index].sum())
+    lo, hi = block_bootstrap_ci(cohorts, seed=seed)
     return TestResult(signal_col, outcome_col, len(cohorts), n_names, mean, se,
-                      mean / se if se > 0 else float("nan"), p_perm, mde=mde, cohorts=cohorts)
+                      mean / se if se > 0 else float("nan"), p_perm, mde=mde,
+                      ci_low=lo, ci_high=hi, cohorts=cohorts)
 
 
 def bh(results: list[TestResult]) -> None:
@@ -383,22 +590,56 @@ def bh(results: list[TestResult]) -> None:
 # --- run: guarded -----------------------------------------------------------------
 
 
+#: Robustness section names. verdict() reads the kill criteria by these keys.
+KILL2 = "untradeable names only (kill 2: liquidity)"
+KILL3 = "raw_return (kill 3: momentum)"
+KILL4 = "without share-count changes (kill 4: corporate action)"
+
+
+def winsorise(x: pd.Series, lo: float = 0.01, hi: float = 0.99) -> pd.Series:
+    """Clip at the POOLED 1st/99th percentiles — the tail_rule's robustness."""
+    return x.clip(x.quantile(lo), x.quantile(hi))
+
+
 def run(env: str | None = None, permutations: int = 1000) -> tuple[str, list[TestResult], dict]:
+    """The registered study: three tests on the primary, then EVERY robustness
+    line the spec promises, each reported and never tested (200 permutations,
+    no family charge). Until 2026-10-02 the spec named seven of these and the
+    code computed three; the rehearsal for registration found it (0076)."""
     sh = registered_hash(env)
     sig = signals()
     pnl = panel(env, sig)
-    prim = pnl[pnl["tradeable"] & pnl["char_rel"].notna()]
+    prim = pnl[pnl["tradeable"] & pnl["char_rel"].notna()].copy()
     results = [_test(prim, f"d_{s.lower()}", "char_rel", permutations) for s in SIGNALS]
     bh(results)
+    sigs = [s.lower() for s in SIGNALS]
+
+    def each(df, outcome, cols=None):
+        return [_test(df, c, outcome, 200) for c in (cols or [f"d_{s}" for s in sigs])]
+
+    prim["char_rel_w"] = winsorise(prim["char_rel"])
     robustness = {
-        "raw_return (kill 3: momentum)": [_test(prim, f"d_{s.lower()}", "raw_ret", 200) for s in SIGNALS],
-        "untradeable names only (kill 2: liquidity)": [
-            _test(pnl[(~pnl["tradeable"]) & pnl["char_rel"].notna()], f"d_{s.lower()}", "char_rel", 200) for s in SIGNALS],
-        "calendar filings only": [
-            _test(prim[prim["is_calendar_quarter"]], f"d_{s.lower()}", "char_rel", 200) for s in SIGNALS],
+        KILL3: each(prim, "raw_ret"),
+        KILL2: each(pnl[(~pnl["tradeable"]) & pnl["char_rel"].notna()], "char_rel"),
+        KILL4: each(prim[~prim["share_change"].astype(bool)], "char_rel"),
+        "calendar filings only": each(prim[prim["is_calendar_quarter"]], "char_rel"),
+        "market-relative (NIFTY 500 TR)": each(prim[prim["mkt_rel"].notna()], "mkt_rel"),
+        "winsorised 1st/99th": each(prim, "char_rel_w"),
+        "holder-count signal": each(prim, "char_rel", [f"d_n_{s}" for s in sigs]),
     }
-    counts = {**sig.attrs["counts"], "panel_rows": len(pnl), "tradeable": int(pnl["tradeable"].sum()),
-              "with_char_match": int(pnl["char_rel"].notna().sum())}
+    for c in [c for c in prim.columns if c.startswith("char_rel_rf")]:
+        robustness[f"stopped names at recovery factor 0.{c[-2:]}"] = each(prim, c)
+    for hz in [x for x in HORIZONS_REPORTED if x != HORIZON]:
+        other = panel(env, sig, hz)
+        robustness[f"horizon {hz} sessions"] = each(other[other["tradeable"] & other["char_rel"].notna()],
+                                                     "char_rel")
+    thin = prim.groupby("cohort").size()
+    counts = {**sig.attrs["counts"], **pnl.attrs.get("counts", {}),
+              "panel_rows": len(pnl), "tradeable": int(pnl["tradeable"].sum()),
+              "untradeable": int((~pnl["tradeable"]).sum()),
+              "with_char_match": int(pnl["char_rel"].notna().sum()),
+              "share_change_rows": int(prim["share_change"].astype(bool).sum()),
+              "cohorts_below_min_names": int((thin < MIN_NAMES_PER_COHORT).sum())}
     return sh, results, {"robustness": robustness, "counts": counts, "panel": pnl}
 
 
@@ -425,6 +666,7 @@ def net_of_costs(spread: float, cohorts: int, avg_adv: float, notional: float = 
     default; the registered run reports the realised figure alongside.
     """
     from datetime import date
+
     from src.research import costs
     per_name = (notional / 2) / max(2, cohorts // DECILE if cohorts else 2)
     sc = costs.cost_scenarios(turnover=notional, on=date.today(), quantity=per_name,
@@ -437,8 +679,9 @@ def verdict(results: list[TestResult], robustness: dict, panel: pd.DataFrame) ->
     avg_adv = float(panel.loc[panel["tradeable"], "adv20"].mean()) if "adv20" in panel else 0.0
     names_per_cohort = int(panel[panel["tradeable"]].groupby("cohort").size().median()) if len(panel) else 0
     event, port, kills = {}, {}, {}
-    raw = {r.signal: r for r in robustness.get("raw_return (kill 3: momentum)", [])}
-    untr = {r.signal: r for r in robustness.get("untradeable names only (kill 2: liquidity)", [])}
+    raw = {r.signal: r for r in robustness.get(KILL3, [])}
+    untr = {r.signal: r for r in robustness.get(KILL2, [])}
+    noca = {r.signal: r for r in robustness.get(KILL4, [])}
     for r in results:
         k = []
         if r.mde > BOUND:
@@ -449,6 +692,9 @@ def verdict(results: list[TestResult], robustness: dict, panel: pd.DataFrame) ->
         w = raw.get(r.signal)
         if w is not None and abs(w.spread_mean) > BOUND and abs(r.spread_mean) < BOUND / 2:
             k.append("kill 3: spread present in raw returns, absent under CHAR_MATCHED — momentum")
+        x = noca.get(r.signal)
+        if x is not None and abs(r.spread_mean) > BOUND and abs(x.spread_mean) < BOUND / 2:
+            k.append("kill 4: spread vanishes without the share-count changes — corporate action")
         kills[r.signal] = k
         event[r.signal] = (abs(r.spread_mean) > BOUND and r.mde <= BOUND
                            and not np.isnan(r.q_fdr) and r.q_fdr < FDR_ALPHA)
@@ -474,10 +720,11 @@ def render(sh: str, results: list[TestResult], extra: dict, v: Verdict) -> str:
          f"(`spec_hash {sh[:12]}…`, decision 0076). Three tests, BH-FDR {FDR_ALPHA:.0%}, "
          f"primary CHAR_MATCHED at {HORIZON} sessions, tail rule = participation cap.**", ""]
     L += ["## Landing", ""] + [f"- {r}" for r in v.reasons] + [""]
-    L += ["## Primary", "", "| signal | cohorts | names | spread | SE (serial) | t | p (perm) | q (BH) | MDE | bound | net of cost | event gate |",
-          "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L += ["## Primary", "", "| signal | cohorts | names | spread | 95% CI (block bootstrap) | SE (serial) | t | p (perm) | q (BH) | MDE | bound | net of cost | event gate |",
+          "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
-        L.append(f"| {r.signal} | {r.n_cohorts} | {r.n_names:,} | {r.spread_mean:+.2%} | {r.spread_se:.2%} | {r.t:.2f} | "
+        L.append(f"| {r.signal} | {r.n_cohorts} | {r.n_names:,} | {r.spread_mean:+.2%} | "
+                 f"[{r.ci_low:+.2%}, {r.ci_high:+.2%}] | {r.spread_se:.2%} | {r.t:.2f} | "
                  f"{r.p_perm:.3f} | {r.q_fdr:.3f} | {r.mde:.2%} | {BOUND:.2%} | {v.portfolio_gate[r.signal]:+.2%} | "
                  f"{'PASS' if v.event_gate[r.signal] else 'fail'} |")
     L += ["", "## Kill criteria", ""]
@@ -485,9 +732,10 @@ def render(sh: str, results: list[TestResult], extra: dict, v: Verdict) -> str:
         L += [f"- **{s}**: " + ("; ".join(ks) if ks else "none tripped")]
     L += ["", "## Robustness (reported, never tested)", ""]
     for name, rs in extra.get("robustness", {}).items():
-        L += [f"### {name}", "", "| signal | cohorts | spread | p (perm) | MDE |", "|---|---|---|---|---|"]
-        L += [f"| {r.signal} | {r.n_cohorts} | {r.spread_mean:+.2%} | {r.p_perm:.3f} | {r.mde:.2%} |" for r in rs] + [""]
-    L += ["## Counts", ""] + [f"- {k}: {v_:,}" if isinstance(v_, int) else f"- {k}: {v_}" for k, v_ in extra.get("counts", {}).items()]
+        L += [f"### {name}", "", "| signal | cohorts | spread | 95% CI | p (perm) | MDE |", "|---|---|---|---|---|---|"]
+        L += [f"| {r.signal} | {r.n_cohorts} | {r.spread_mean:+.2%} | [{r.ci_low:+.2%}, {r.ci_high:+.2%}] | "
+              f"{r.p_perm:.3f} | {r.mde:.2%} |" for r in rs] + [""]
+    L += ["## Counts — every row that left, by reason", ""] + [f"- {k}: {v_:,}" if isinstance(v_, int) else f"- {k}: {v_}" for k, v_ in extra.get("counts", {}).items()]
     return "\n".join(L) + "\n"
 
 
