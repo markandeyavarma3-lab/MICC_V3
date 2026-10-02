@@ -66,8 +66,17 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
     import duckdb
 
     spine = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
-    cut = f" AND CAST(date AS DATE) <= DATE '{end}'" if end else ""
+    cut = f" AND CAST(s.date AS DATE) <= DATE '{end}'" if end else ""
     con = duckdb.connect(str(research_db(env)), read_only=True)
+    # THE REBALANCE BEFORE THE WINDOW. Membership on `start` comes from the
+    # last monthly rebalance on or before it, which usually falls BEFORE
+    # `start`. The first version read prices from `start` only, never found
+    # that rebalance, and a window opening mid-month had NO universe for its
+    # first weeks (found by tests/test_scan_panel.py: 0 names on 2015-06-01).
+    # Prices are read from that rebalance and the arrays trimmed back.
+    reb = con.execute(f"SELECT MAX(CAST(rebal_date AS DATE)) FROM read_parquet('{SEED / 'pit_universe.parquet'}')"
+                      f" WHERE CAST(rebal_date AS DATE) <= DATE '{start}'").fetchone()[0]
+    first = min(start, reb) if reb else start
     try:
         con.execute(f"""CREATE TEMP TABLE px AS
             WITH {identified_px_ctes(spine)}
@@ -75,7 +84,7 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
                    p.high, p.low
             FROM sec s JOIN read_parquet('{spine}') p
               ON UPPER(TRIM(p.symbol)) = s.symbol AND p.date = s.date
-            WHERE CAST(s.date AS DATE) >= DATE '{start}'{cut}""")
+            WHERE CAST(s.date AS DATE) >= DATE '{first}'{cut}""")
         dates = [r[0] for r in con.execute("SELECT DISTINCT d FROM px ORDER BY d").fetchall()]
         ids = np.array([r[0] for r in con.execute(
             "SELECT DISTINCT security_id FROM px ORDER BY 1").fetchall()], dtype=np.int64)
@@ -92,7 +101,7 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
         # Point-in-time top 500, carried forward from each monthly rebalance.
         uni = np.zeros((T, N), dtype=bool)
         pit = con.execute(f"""
-            SELECT u.rebal_date, x.security_id
+            SELECT CAST(u.rebal_date AS DATE), x.security_id
             FROM read_parquet('{SEED / "pit_universe.parquet"}') u
             JOIN px x ON x.symbol = UPPER(TRIM(u.symbol)) AND x.d = CAST(u.rebal_date AS DATE)
             WHERE u.top500 = 1""").fetchall()
@@ -122,5 +131,7 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
                 (buy if side == "BUY" else sell)[di[d], ii[int(s)]] += np.float32(v or 0.0)
     finally:
         con.close()
-    return Panel(dates, ids, arrays["open"], arrays["high"], arrays["low"], arrays["close"],
-                 arrays["volume"], uni, buy, sell)
+    keep = np.array([d >= start for d in dates])
+    return Panel([d for d in dates if d >= start], ids,
+                 *(arrays[f][keep] for f in ("open", "high", "low", "close", "volume")),
+                 uni[keep], buy[keep], sell[keep])
