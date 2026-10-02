@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-01; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest 2026-10-02 13:40 UTC, 4 generation(s), 3 commit(s) and 85 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-02 15:39 UTC, 4 generation(s), 0 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -125,7 +125,13 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 6S | The scan track — folds, nulls, procedure test | — |  |
+| 6S.1 | Folds: anchored walk-forward + CPCV, effective count | **VERIFIED** |  |
+| 6S.2 | Measured null (S2: block sign flips) | **VERIFIED** | the S1 drift-curve gate is moot: calendar seasonality is DEAD (engine_2 verdict, registered 2026-10-02) |
+| 6S.3 | The procedure test: hit rate, degradation, PBO, rank decay | **VERIFIED** |  |
+| 6S.4 | S1 calendar cells | — | not built, deliberately: engine_2_seasonality_power_verdict DEAD — 21 yearly observations |
+| 6S.5 | S2 signal combinations (base signals with mechanisms) | **VERIFIED** |  |
+| 6S.6 | Atlas: chunked, resumable, benchmark gate | **VERIFIED** | no full grid run yet; the benchmark projection comes first |
+| 6S.7 | Tables: scan_run, scan_cell, scan_fold_result, procedure_result | **VERIFIED** |  |
 
 ## Phase 7 Seasonality
 
@@ -148,4 +154,4 @@ VERIFIED: 39  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `4d1a5d9`.
+Derived at commit `a8ff029`.
