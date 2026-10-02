@@ -79,7 +79,7 @@ class ProcedureResult:
         return float((np.sum(self.null_hit_rates >= self.hit_rate) + 1) / (len(self.null_hit_rates) + 1))
 
 
-def select_and_test(ic: np.ndarray, fs: FoldSet, top_n: int) -> ProcedureResult:
+def select_and_test(ic: np.ndarray, fs: FoldSet, top_n: int, decay: bool = True) -> ProcedureResult:
     train_sel, test_sel, decays = [], [], []
     for f in fs.folds:
         tr, te = _means(ic, f.train), _means(ic, f.test)
@@ -91,7 +91,8 @@ def select_and_test(ic: np.ndarray, fs: FoldSet, top_n: int) -> ProcedureResult:
         sign = np.sign(tr[order])
         train_sel.append(float(np.mean(np.abs(tr[order]))))
         test_sel.append(float(np.mean(sign * te[order])))
-        decays.append(_spearman(tr[cand] * 1.0, te[cand] * 1.0))
+        if decay:      # skipped by the null, which never reads it (an O(K log K) sort a fold)
+            decays.append(_spearman(tr[cand] * 1.0, te[cand] * 1.0))
     if not test_sel:
         raise ValueError(f"no fold had {top_n} usable candidates")
     tests = np.array(test_sel)
@@ -153,7 +154,7 @@ def null_hit_rates(ic: np.ndarray, fs: FoldSet, top_n: int, reps: int = 200,
     for r in range(reps):
         signs = rng.choice([-1.0, 1.0], size=blocks[-1] + 1)[blocks]
         flipped = ic * signs if hasattr(ic, "mean_over") else ic * signs[:, None]
-        out[r] = select_and_test(flipped, fs, top_n).hit_rate
+        out[r] = select_and_test(flipped, fs, top_n, decay=False).hit_rate
     return out
 
 
@@ -201,8 +202,13 @@ def record(results: list[ProcedureResult], pbo_value: float, manifest: dict, reg
             con.execute("INSERT INTO scan_run VALUES (?, ?, ?, ?)",
                         [run_id, json.dumps(manifest, sort_keys=True), regime, now])
             if keys:
-                con.executemany("INSERT INTO scan_cell VALUES (?, ?, ?, ?)",
-                                [(run_id, i, k, k.count("|") + 1) for i, k in enumerate(keys)])
+                # One bulk insert: 1.9M rows through executemany is row by row.
+                import pandas as pd
+                cells = pd.DataFrame({"run_id": run_id, "cell_idx": np.arange(len(keys), dtype=np.int64),
+                                      "cell_key": keys,
+                                      "depth": [k.count("|") + 1 for k in keys]})
+                con.register("cells_df", cells)
+                con.execute("INSERT INTO scan_cell SELECT run_id, cell_idx, cell_key, depth FROM cells_df")
         for r in results:
             names = fold_names or [f"fold_{i}" for i in range(len(r.per_fold_test_ic))]
             con.executemany(
