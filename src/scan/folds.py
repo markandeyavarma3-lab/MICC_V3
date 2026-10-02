@@ -141,3 +141,15 @@ def from_config(sessions: list[date], end: date | None = None) -> dict[str, Fold
     cp = cpcv(b - a, int(c["n_groups"]), int(c["k_test_groups"]),
               int(c["purge_sessions"]), int(c["embargo_sessions"]), start=a)
     return {"sequential": seq, "cpcv": cp}
+
+
+def confirm(sessions: list[date]) -> FoldSet:
+    """The registered CONFIRM design (scan.yml folds.confirm): disjoint yearly
+    test windows from 2016, anchored training — every fold independent."""
+    import yaml
+
+    from src.common.paths import CONFIGS
+    c = yaml.safe_load((CONFIGS / "scan.yml").read_text())["folds"]["confirm"]
+    return sequential(sessions, date.fromisoformat(c["train_start"]),
+                      date.fromisoformat(c["first_test_start"]), int(c["test_years"]),
+                      int(c["step_years"]), int(c["embargo_sessions"]))
