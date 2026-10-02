@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 37  WIRED: 9  BUILT: 8  SPECIFIED: 17  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 40  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 37  WIRED: 9  BUILT: 8  SPECIFIED: 17  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-01; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-01 15:36 UTC, 4 generation(s), 2 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-01 15:36 UTC, 4 generation(s), 3 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -73,12 +73,12 @@ VERIFIED: 37  WIRED: 9  BUILT: 8  SPECIFIED: 17  IMPOSSIBLE: 2  BLOCKED: 0
 | 3.3 | Delisting detection and classification | **VERIFIED** | six reasons (0082): ISIN_CHANGE and LEFT_UNIVERSE are not exits at all; ~487 stay UNKNOWN, mostly mergers no source names; step 6.4 does not read it yet |
 | 3.4 | Resolve the unmatched deal symbols | WIRED | unresolved 4.14% — under the <5% gate |
 | 3.5 | sector_history — point-in-time sectors | — | blocks the industry dimension of CHAR_MATCHED |
-| 3.6 | Participant normalisation | — | the behavioural classifier exists in src/mart/eligibility.py but does not persist |
+| 3.6 | Participant normalisation | BUILT | one participant per cleaned name (0083); nothing downstream reads participant_id yet — the mart's PROP_HFT rule still keys on the raw spelling |
 | 3.7 | Behavioural PROP_HFT classifier | **VERIFIED** | 310 participants, 97,249 deal rows, 41.2% of the corpus. `ineligibility_reason` shows only 168 because it is a priority-ordered DISPLAY field and 'same-day round trip' outranks it — a membership question must not be answered from it (0056 amendment 3) |
 | 3.8 | Name-pattern classifier for the residual | WIRED | behavioural only; no name-pattern classifier exists |
-| 3.9 | Merge suggestions recorded, never applied | — | participant_aliases exists and holds 0 rows |
-| 3.12 | Manual fund-house mapping file | — |  |
-| 3.10 | Review queue for the 1,515 names | — |  |
+| 3.9 | Merge suggestions recorded, never applied | **VERIFIED** |  |
+| 3.12 | Manual fund-house mapping file | **VERIFIED** | status: proposed — the renames in it await the owner's confirmation |
+| 3.10 | Review queue for the 1,515 names | **VERIFIED** | 681 names queued on cleaned names (the 1,515 was a 2026-08-16 estimate) |
 | 3.11 | SHP collector and promoter_entities | **VERIFIED** | point-in-time on broadcast dates; exact normalised-name match, so it under-flags; the SHP sweep (0074) is still adding companies |
 
 ## Phase 4 Clean mart
@@ -148,4 +148,4 @@ VERIFIED: 37  WIRED: 9  BUILT: 8  SPECIFIED: 17  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `5b7c37b`.
+Derived at commit `b18a847`.

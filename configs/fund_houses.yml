@@ -1,0 +1,139 @@
+# fund_houses.yml — which participant names belong to which fund house (Plan 3
+# step 3.12, owner decision Q21: a MANUAL mapping file, not inference).
+#
+# WHAT IT IS FOR. `participants.yml` counts SBI Mutual Fund's scheme accounts
+# as separate institutions under the primary consensus definition, and runs
+# the parent-grouped variant as robustness: "the gap between the two measures
+# how much 'consensus' is really one house". This file is that grouping.
+#
+# HOW IT IS READ. src/identity/participants.py matches each pattern against a
+# participant's CLEANED name (entity_names.normalize: upper case, punctuation
+# and corporate suffixes stripped). A participant gets the FIRST group whose
+# pattern matches; order matters only where two could. A name no group
+# matches has no parent — never a guessed one.
+#
+# GROUPS ARE FUND HOUSES (the AMC), NOT CONGLOMERATES. SBI Mutual Fund and SBI
+# Life Insurance are different institutions with different mandates, and a
+# conglomerate grouping would be a different robustness question.
+#
+# RENAMES ARE MARKED `renamed:` AND NEED THE OWNER'S CONFIRMATION. The same
+# AMC under an old and a new name is one house (Reliance MF became Nippon
+# India MF in 2019 when Nippon Life took control). A MERGER of two houses is
+# NOT a rename: L&T MF's schemes moved to HSBC MF in 2022, and before that
+# they were a different house's decisions, so they stay separate.
+#
+# Seeded 2026-10-02 from the 30 largest fund-house names in the deal corpus by
+# rupee value. `status: proposed` until the owner confirms.
+
+status: proposed
+
+groups:
+  SBI_FUNDS:
+    name: SBI Funds Management
+    pattern: '^SBI MUTUAL FUND|^SBI MF\b|SBI FUNDS MANAGEMENT'
+  ICICI_PRUDENTIAL_AMC:
+    name: ICICI Prudential Asset Management
+    pattern: 'ICICI PRUDENTIAL (MUTUAL FUND|MF\b|ASSET)|^PRUDENTIAL ICICI'
+    renamed: 'Prudential ICICI Mutual Fund (until 2005) -> ICICI Prudential Mutual Fund'
+  HDFC_AMC:
+    name: HDFC Asset Management
+    pattern: '^HDFC MUTUAL FUND|^HDFC MF\b|HDFC ASSET MANAGEMENT'
+  KOTAK_AMC:
+    name: Kotak Mahindra Asset Management
+    pattern: 'KOTAK MAHINDRA (MUTUAL FUND|ASSET)|^KOTAK MUTUAL FUND|^KOTAK MF\b'
+  NIPPON_INDIA_AMC:
+    name: Nippon Life India Asset Management
+    pattern: '^NIPPON (LIFE )?INDIA (MUTUAL FUND|MF\b|ASSET)|^RELIA?L?NCE (CAPITAL )?(MUTUAL FUND|CAPITAL ASSET|NIPPON LIFE ASSET)'
+    renamed: 'Reliance Mutual Fund -> Reliance Nippon Life -> Nippon India Mutual Fund (2019)'
+  ADITYA_BIRLA_SL_AMC:
+    name: Aditya Birla Sun Life AMC
+    pattern: '(ADITYA )?BIRLA SUN ?LIFE (MUTUAL FUND|ASSET|TRUSTEE)|^ABSL MUTUAL FUND|^BIRLA MUTUAL FUND'
+    renamed: 'Birla Sun Life Mutual Fund -> Aditya Birla Sun Life Mutual Fund (2017)'
+  AXIS_AMC:
+    name: Axis Asset Management
+    pattern: '^AXIS MUTUAL FUND|^AXIS MF\b|AXIS ASSET MANAGEMENT'
+  UTI_AMC:
+    name: UTI Asset Management
+    pattern: '^UTI MUTUAL FUND|^UTI MF\b|UTI ASSET MANAGEMENT'
+  DSP_AMC:
+    name: DSP Investment Managers
+    pattern: '^DSP (BLACKROCK |BLACK ROCK |MERR?ILL LYNCH )?(MUTUAL FUND|MF\b|INVESTMENT MANAGERS)'
+    renamed: 'DSP Merrill Lynch MF -> DSP BlackRock MF (2008) -> DSP Mutual Fund (2018, BlackRock exit)'
+  MOTILAL_OSWAL_AMC:
+    name: Motilal Oswal Asset Management
+    pattern: 'MOTILAL OSWAL (MUTUAL FUND|ASSET MANAGEMENT|MF\b)'
+  MIRAE_AMC:
+    name: Mirae Asset Investment Managers (India)
+    pattern: '^MIRAE ASSET (MUTUAL FUND|MF\b|INVESTMENT MANAGERS|GLOBAL INVESTMENTS INDIA)'
+  FRANKLIN_TEMPLETON_AMC:
+    name: Franklin Templeton Asset Management (India)
+    pattern: '^FRANKLIN TEMPLETON (MUTUAL FUND|ASSET|INDIA)|^TEMPLETON MUTUAL FUND'
+    renamed: 'Templeton Mutual Fund -> Franklin Templeton Mutual Fund'
+  TATA_AMC:
+    name: Tata Asset Management
+    pattern: '^TATA MUTUAL FUND|^TATA MF\b|TATA ASSET MANAGEMENT'
+  HSBC_AMC:
+    name: HSBC Asset Management (India)
+    pattern: '^HSBC (MUTUAL FUND|MF\b|ASSET MANAGEMENT)'
+  LNT_AMC:
+    name: L&T Investment Management (merged into HSBC MF 2022 — kept separate)
+    pattern: '^L ?(&|AND)? ?T MUTUAL FUND|^L AND T MUTUAL FUND|^LT MUTUAL FUND'
+  INVESCO_AMC:
+    name: Invesco Asset Management (India)
+    pattern: '^INVESCO (INDIA )?(MUTUAL FUND|MF\b|ASSET)|^RELIGARE INVESCO'
+    renamed: 'Religare Invesco Mutual Fund -> Invesco Mutual Fund (2016)'
+  EDELWEISS_AMC:
+    name: Edelweiss Asset Management
+    pattern: '^EDELWEISS (MUTUAL FUND|MF\b|ASSET MANAGEMENT)'
+  SUNDARAM_AMC:
+    name: Sundaram Asset Management
+    pattern: '^SUNDARAM (MUTUAL FUND|MF\b|ASSET MANAGEMENT|BNP PARIBAS MUTUAL)'
+    renamed: 'Sundaram BNP Paribas Mutual Fund -> Sundaram Mutual Fund (2010)'
+  BANDHAN_AMC:
+    name: Bandhan Asset Management
+    pattern: '^BANDHAN (MUTUAL FUND|MF\b|ASSET)|^IDFC (MUTUAL FUND|MF\b|ASSET MANAGEMENT)'
+    renamed: 'IDFC Mutual Fund -> Bandhan Mutual Fund (2023)'
+  QUANT_AMC:
+    name: Quant Money Managers
+    pattern: '^QUANT MUTUAL FUND|^QUANT MF\b|QUANT MONEY MANAGERS'
+  PPFAS_AMC:
+    name: PPFAS Asset Management
+    pattern: '^PPFAS (MUTUAL FUND|MF\b|ASSET)|PARAG PARIKH'
+  CANARA_ROBECO_AMC:
+    name: Canara Robeco Asset Management
+    pattern: '^CANARA ROBECO (MUTUAL FUND|MF\b|ASSET)'
+  WHITEOAK_AMC:
+    name: WhiteOak Capital Asset Management
+    pattern: '^WHITE ?OAK CAPITAL (MUTUAL FUND|MF\b|ASSET)'
+  BARODA_BNP_AMC:
+    name: Baroda BNP Paribas Asset Management
+    pattern: '^BARODA BNP PARIBAS (MUTUAL FUND|MF\b)|^BNP PARIBAS MUTUAL FUND|^BARODA (PIONEER )?MUTUAL FUND'
+    renamed: 'Baroda Mutual Fund + BNP Paribas Mutual Fund merged (2022) — owner to rule whether pre-2022 counts as one house'
+  LIC_AMC:
+    name: LIC Mutual Fund Asset Management
+    pattern: '^LIC (MUTUAL FUND|MF\b|NOMURA MUTUAL)'
+    renamed: 'LIC Nomura Mutual Fund -> LIC Mutual Fund'
+  JM_FINANCIAL_AMC:
+    name: JM Financial Asset Management
+    pattern: '^JM (FINANCIAL )?(MUTUAL FUND|MF\b|ASSET MANAGEMENT)'
+  MAHINDRA_MANULIFE_AMC:
+    name: Mahindra Manulife Investment Management
+    pattern: '^MAHINDRA (MANULIFE )?(MUTUAL FUND|MF\b|ASSET)'
+    renamed: 'Mahindra Mutual Fund -> Mahindra Manulife Mutual Fund (2020)'
+  PGIM_INDIA_AMC:
+    name: PGIM India Asset Management
+    pattern: '^PGIM INDIA (MUTUAL FUND|MF\b|ASSET)|^DHFL PRAMERICA (MUTUAL FUND|ASSET)'
+    renamed: 'DHFL Pramerica Mutual Fund -> PGIM India Mutual Fund (2019)'
+  ITI_AMC:
+    name: ITI Asset Management
+    pattern: '^ITI (MUTUAL FUND|MF\b|ASSET MANAGEMENT)'
+  BAJAJ_FINSERV_AMC:
+    name: Bajaj Finserv Asset Management
+    pattern: '^BAJAJ FINSERV (MUTUAL FUND|MF\b|ASSET)'
+  ONE360_AMC:
+    name: 360 ONE Asset Management
+    pattern: '^360 ONE (MUTUAL FUND|ASSET)|^IIFL (MUTUAL FUND|ASSET MANAGEMENT)'
+    renamed: 'IIFL Asset Management -> 360 ONE Asset Management (2023)'
+  BENCHMARK_AMC:
+    name: Benchmark Asset Management (acquired by Goldman Sachs AMC 2011 — kept separate)
+    pattern: '^BENCHMARK (MUTUAL FUND|ASSET MANAGEMENT)'

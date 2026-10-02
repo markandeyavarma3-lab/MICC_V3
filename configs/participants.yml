@@ -82,7 +82,10 @@ review_queue:
   # (unresolved symbol rate < 5%) can pass before the queue is exhausted.
   order_by: deal_value_x_unresolved_contribution
   min_deals_to_enqueue: 6
-  expected_queue_size: 1515
+  expected_queue_size: 1515    # 2026-08-16 estimate; 713 measured 2026-10-02 on cleaned names
+  # Types the owner may assign that no name pattern produces. A ruling must be
+  # one of these, a name_pattern key, PROP_HFT or UNKNOWN (src/identity/review.py).
+  manual_types: [CORPORATE, AIF_PMS, FAMILY_OFFICE, PROMOTER_GROUP, GOVERNMENT, FOREIGN_INSTITUTION]
   gate_unresolved_rate: 0.05
 
 consensus:
