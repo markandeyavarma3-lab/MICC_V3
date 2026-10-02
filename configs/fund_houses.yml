@@ -23,9 +23,15 @@
 # they were a different house's decisions, so they stay separate.
 #
 # Seeded 2026-10-02 from the 30 largest fund-house names in the deal corpus by
-# rupee value. `status: proposed` until the owner confirms.
+# rupee value.
+#
+# CONFIRMED BY THE OWNER 2026-10-02: every `renamed:` group below is one
+# continuous AMC (sponsor change, stake sale, JV exit or rebrand; scheme
+# codes and registration carried over). STILL OPEN: BARODA_BNP_AMC — whether
+# Baroda MF and BNP Paribas MF before their 2022 merger are one house.
 
-status: proposed
+status: confirmed
+open_questions: [BARODA_BNP_AMC]
 
 groups:
   SBI_FUNDS:
