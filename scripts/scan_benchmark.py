@@ -36,7 +36,7 @@ def main() -> int:
     explore_end = date.fromisoformat(yaml.safe_load((CONFIGS / "split.yml").read_text())
                                      ["scan"]["temporal"]["explore_end"])
     p = panel.load(end=explore_end)
-    print(f"  panel: {len(p.dates):,} sessions x {len(p.ids):,} securities "
+    print(flush=True); print(f"  panel: {len(p.dates):,} sessions x {len(p.ids):,} securities "
           f"({p.dates[0]} .. {p.dates[-1]}); universe mean {p.universe.sum(axis=1).mean():.0f} names/session")
     at = atlas.Atlas(p, Path(tempfile.mkdtemp()), horizon=h, depth=a.depth)
     b = at.benchmark(fraction=frac, max_days=budget)

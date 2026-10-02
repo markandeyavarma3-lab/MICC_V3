@@ -34,6 +34,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.scan import fastic
 from src.scan import ic as icmod
 from src.scan import signals as S
 from src.scan.folds import Fold, FoldSet
@@ -89,16 +90,26 @@ def block_folds(fs: FoldSet, block: int = BLOCK) -> FoldSet:
 
 
 class Atlas:
-    """One grid: a panel, a horizon, a depth. Shards under `out_dir`."""
+    """One grid: a panel, a horizon, a depth. Shards under `out_dir`.
+
+    Scoring goes through src/scan/fastic.py (decision 0084): base-signal ranks
+    and their per-date cross-products are built ONCE (`prepare`), and each
+    shard's candidates are scored in vectorised batches from them."""
+
+    BATCH = 5_000
 
     def __init__(self, panel: Panel, out_dir: Path, horizon: int, depth: int,
                  gap: int = 1, shard_size: int = 100_000, min_names: int = 100,
                  only: list[str] | None = None):
         """`only` restricts the base signals — for tests, and for a grid cut
         the benchmark forces, which must then be recorded as a decision."""
-        self.p, self.out, self.h, self.depth = panel, Path(out_dir), horizon, depth
+        keep = panel.universe.any(axis=0)
+        # Only names that are ever in the universe can be scored; signals on
+        # the rest would be computed and thrown away.
+        self.p = Panel(panel.dates, panel.ids[keep], *(getattr(panel, f)[:, keep] for f in
+                       ("open", "high", "low", "close", "volume", "universe", "deal_buy", "deal_sell")))
+        self.out, self.h, self.depth = Path(out_dir), horizon, depth
         self.gap, self.shard_size, self.min_names = gap, shard_size, min_names
-        self.ctx = S.Ctx(panel)
         base = S.base_signals()
         if only is not None:
             unknown = set(only) - {b.id for b in base}
@@ -107,10 +118,9 @@ class Atlas:
             base = [b for b in base if b.id in set(only)]
         self.base = sorted(base, key=lambda s: s.id)
         self.ids = [s.id for s in self.base]
+        self.pos = {i: k for k, i in enumerate(self.ids)}
         self.total = S.combination_count(len(self.ids), depth)
-        self._ranks: dict[str, np.ndarray] = {}
-        fwd = icmod.forward_returns(self.ctx.r, horizon, gap)
-        self.fwd = np.where(panel.universe, fwd, np.nan)
+        self._mo: fastic.Moments | None = None
 
     # --- identity of the grid -------------------------------------------------
     def manifest(self, commit: str = "") -> dict:
@@ -120,7 +130,8 @@ class Atlas:
                 "horizon": self.h, "gap": self.gap, "depth": self.depth, "block": BLOCK,
                 "base_signals": len(self.ids), "candidates": self.total,
                 "base_ids_hash": hashlib.sha256(",".join(self.ids).encode()).hexdigest()[:16],
-                "code_commit": commit}
+                "statistic": "fastic: common cross-section J_t, rank-composite IC (0084)",
+                "min_names": self.min_names, "code_commit": commit}
 
     def _check_manifest(self, commit: str) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
@@ -136,26 +147,42 @@ class Atlas:
             m.write_text(json.dumps(want, indent=1))
 
     # --- computing --------------------------------------------------------------
-    def ranks(self, sid: str) -> np.ndarray:
-        if sid not in self._ranks:
-            sig = next(s for s in self.base if s.id == sid)
-            with np.errstate(all="ignore"):
-                x = sig.fn(self.ctx).astype(np.float64)
-            x[~np.isfinite(x)] = np.nan
-            self._ranks[sid] = S.percentile_ranks(x, self.p.universe).astype(np.float32)
-        return self._ranks[sid]
+    def prepare(self) -> fastic.Moments:
+        """Every base signal, reduced to universe slots, then the moments."""
+        if self._mo is None:
+            ctx = S.Ctx(self.p)
+            slots = fastic._universe_slots(self.p.universe)
+            fwd = fastic.compress(icmod.forward_returns(ctx.r, self.h, self.gap), slots)
+            stack = np.empty((len(self.base), len(self.p.dates), slots.shape[1]), dtype=np.float32)
+            for k, sig in enumerate(self.base):
+                with np.errstate(all="ignore"):
+                    x = sig.fn(ctx).astype(np.float64)
+                x[~np.isfinite(x)] = np.nan
+                stack[k] = fastic.compress(x, slots)
+                ctx._cache.clear()      # ~78 MB a rolling array; holding all of them would not fit
+            self._mo = fastic.moments(stack, fwd, self.min_names)
+        return self._mo
 
-    def candidate(self, i: int) -> tuple[tuple[str, int], ...]:
-        """The i-th candidate in the canonical order (walks the generator;
-        used for sampling, not the hot loop)."""
-        for k, c in enumerate(S.combinations_of(self.ids, self.depth)):
-            if k == i:
-                return c
-        raise IndexError(i)
-
-    def score(self, cand: tuple[tuple[str, int], ...]) -> tuple[np.ndarray, np.ndarray]:
-        x = S.combine({i: self.ranks(i) for i, _ in cand}, cand)
-        return to_blocks(icmod.rank_ic(x, self.fwd, self.min_names))
+    def score_many(self, cands: list[tuple[tuple[str, int], ...]]) -> tuple[np.ndarray, np.ndarray]:
+        """(nblocks, B) block sums and counts for `cands`, in the given order."""
+        mo = self.prepare()
+        sums, counts = [], []
+        by_depth: dict[int, list[int]] = {}
+        for j, c in enumerate(cands):
+            by_depth.setdefault(len(c), []).append(j)
+        out_s = [None] * len(cands)
+        out_c = [None] * len(cands)
+        for d, js in by_depth.items():
+            for lo in range(0, len(js), self.BATCH):
+                part = js[lo:lo + self.BATCH]
+                idx = np.array([[self.pos[i] for i, _ in cands[j]] for j in part], dtype=np.int64).reshape(-1, d)
+                sg = np.array([[s for _, s in cands[j]] for j in part], dtype=np.float64).reshape(-1, d)
+                bs, bc = fastic.block_sums(fastic.batch_ic(mo, idx, sg), BLOCK)
+                for k, j in enumerate(part):
+                    out_s[j], out_c[j] = bs[:, k], bc[:, k]
+        sums = np.stack(out_s, axis=1)
+        counts = np.stack(out_c, axis=1)
+        return sums, counts
 
     def run(self, commit: str = "", limit_shards: int | None = None) -> int:
         """Compute missing shards; returns how many were written this call."""
@@ -166,22 +193,15 @@ class Atlas:
         for s in range(n_shards):
             lo, hi = s * self.shard_size, min((s + 1) * self.shard_size, self.total)
             path = self.out / f"shard_{s:05d}.npz"
+            cands = [next(gen) for _ in range(hi - lo)]
             if path.exists():
-                for _ in range(hi - lo):
-                    next(gen)
                 continue
             if limit_shards is not None and written >= limit_shards:
                 break
-            sums, counts, keys = [], [], []
-            for _ in range(hi - lo):
-                c = next(gen)
-                a, b = self.score(c)
-                sums.append(a)
-                counts.append(b)
-                keys.append("|".join(f"{'+' if sg > 0 else '-'}{i}" for i, sg in c))
+            sums, counts = self.score_many(cands)
+            keys = ["|".join(f"{'+' if sg > 0 else '-'}{i}" for i, sg in c) for c in cands]
             tmp = path.with_suffix(".partial.npz")
-            np.savez_compressed(tmp, sums=np.stack(sums, axis=1), counts=np.stack(counts, axis=1),
-                                keys=np.array(keys), lo=lo, hi=hi)
+            np.savez_compressed(tmp, sums=sums, counts=counts, keys=np.array(keys), lo=lo, hi=hi)
             tmp.replace(path)
             written += 1
         return written
@@ -198,22 +218,19 @@ class Atlas:
 
     # --- the gate -----------------------------------------------------------------
     def benchmark(self, fraction: float = 0.001, seed: int = 20261002, max_days: float = 21.0) -> dict:
-        """Time a seeded random sample of the grid and project the full run.
-        Base-signal ranks are computed first and timed separately: they are a
-        one-off cost, not a per-candidate one."""
+        """Time the one-off preparation and a seeded random sample of the grid
+        (all depths, in proportion), and project the full run."""
         t0 = time.perf_counter()
-        for i in self.ids:
-            self.ranks(i)
-        t_ranks = time.perf_counter() - t0
+        self.prepare()
+        t_prep = time.perf_counter() - t0
         rng = np.random.default_rng(seed)
         k = max(20, int(self.total * fraction))
         want = set(rng.choice(self.total, size=min(k, self.total), replace=False).tolist())
         sample = [c for j, c in enumerate(S.combinations_of(self.ids, self.depth)) if j in want]
         t1 = time.perf_counter()
-        for c in sample:
-            self.score(c)
+        self.score_many(sample)
         per = (time.perf_counter() - t1) / len(sample)
-        days = (t_ranks + per * self.total) / 86400
+        days = (t_prep + per * self.total) / 86400
         return {"candidates": self.total, "sampled": len(sample), "seconds_per_candidate": per,
-                "rank_setup_seconds": t_ranks, "projected_days": days,
+                "rank_setup_seconds": t_prep, "projected_days": days,
                 "within_budget": days <= max_days, "budget_days": max_days}
