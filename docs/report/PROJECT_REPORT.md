@@ -1,7 +1,7 @@
 # Institutional Behaviour Research Platform — Project Report
 
 **Author:** Markandeya Varma
-**Date:** 23 August 2026
+**Date:** 23 August 2026 · **Status updated:** 4 October 2026 (§1.3 — read it first)
 **Repositories:** `MICC` (V1) · `MICCV2` (V2) · `institutional-research` (V3, current)
 
 ---
@@ -26,9 +26,9 @@ I want to say clearly at the start what the honest position is, because the rest
 of the report only makes sense with this in view:
 
 > **The system has not found a way to make money.** Two versions have been built
-> and stopped. The third is about a quarter built. On everything measured so far
-> the likely answer is *"there is no usable edge here"* — and this version is
-> built so that it can say so plainly instead of avoiding it.
+> and stopped. The third is now largely built (46 of 73 planned steps verified,
+> 4 October), and it has said *"no usable edge"* five times, each under a
+> registration frozen before the data was read (§1.3). One study remains open.
 
 That may read like failure. I would argue it is the opposite. The first two
 versions could not have told me they were failing, and that is why they ran for
@@ -49,6 +49,61 @@ The research question is simple to state:
 
 The question is simple. Getting a trustworthy answer is not, and most of this
 report is about why.
+
+### 1.3 Status as of 4 October 2026
+
+Sections 2–11 below are the report as written on 23 August, kept as the
+record of what was planned and why. This section is where things stand now.
+The live, test-checked version is `docs/STATUS.md`.
+
+**Built.** 46 of 73 planned steps are verified against real data (another 10
+wired and 9 built). Two are impossible (NSE no longer serves historical
+bulk-deal backfills), and the remainder are blocked on data that does not
+exist freely (historical sectors, BSE deals) or ruled out by registered
+verdicts (calendar seasonality). 996 tests pass.
+
+**Collected, every evening at 18:30 and 21:00, with the shareholding sweep at
+18:45:**
+- bulk and block deals;
+- prices (EQ series);
+- index closes and the NIFTY 500 total-return index;
+- NSDL foreign-investor flows (back to December 1998);
+- insider trades (SEBI PIT);
+- corporate actions;
+- F&O and participant open interest;
+- index constituents;
+- shareholding-pattern filings (82.8% of companies so far);
+- NSE's delisted list and the full all-series price files.
+
+The identity layer resolves symbols point in time, names each company's
+promoters from its own filings (0080), says why a company left the price
+universe (0082), and holds one record per institution with the owner's
+review rulings (0083).
+
+**Answered, each by a pre-registered test:**
+
+| study | question | verdict |
+|---|---|---|
+| exp_001 | does avoiding stocks after bulk deals help? | REJECTED |
+| exp_002 | do some institutions persistently pick winners? | REJECTED |
+| exp_003 | does F&O positioning by participant category predict returns? | UNDERPOWERED (5–7× short) |
+| Engine 2 | calendar seasonality (registered verdict, not an experiment) | DEAD: 21 yearly observations cannot carry it |
+| exp_005 | does a wide search of 1.93M signal combinations work out of sample, 2016–2026? | **NO_SEARCH_SKILL** (q 0.11). Its factor-neutral residual passed 10/11 years (q 0.009), which is a new hypothesis, not a finding |
+
+**Measured not to be askable yet (power checks, nothing charged):**
+- FII flows as a market-timing signal: 4–5× short.
+- Promoter insider selling: 1.13× short. The closest anything has come; it
+  is re-measured yearly.
+
+**Open:** **exp_004, quarterly change in institutional holdings.** The study
+is built and rehearsed, and its registration is one command. It waits only for
+shareholding coverage to reach 95% (82.8% on 3 October), expected about the
+second week of October.
+
+**The honest position has not changed; it has been tested.** Five times a
+registered question has met a bar fixed before the data was read, and five
+times the answer was no or not yet. The machinery that can say so plainly is
+the deliverable this report promised in its first section.
 
 ### 1.2 Reading this report
 
@@ -1146,9 +1201,10 @@ unwritten.** What did land on 22 August is the layer beneath them: 4.5 GB of
 verified data, two spines, and a provenance trail that was empty for its first
 five days.
 
-**Roughly a quarter of the system is built.** The completed portion is the
-framework and the raw layer — not the research machinery, which is the part that
-would actually answer the question.
+**On 23 August, roughly a quarter of the system was built:** the framework and
+the raw layer, not the research machinery. *(4 October: 46 of 73 steps
+verified, including all of the research machinery for Track D, Track S and
+exp_004. See §1.3.)*
 
 ### 9.2 Three things in the plan that could not be built as written
 
@@ -1387,6 +1443,23 @@ errors were found by measuring rather than reasoning — including one of my own
 made and corrected within hours on 17 August.
 
 ### 11.5 Next steps
+
+**As of 4 October** the 23 August list below is history:
+- the twelve-month margin was tested (it failed, exp_001/002);
+- the backup exists (iCloud nightly, plus the pen drive);
+- identity was re-cut and built;
+- the industry history was measured unsolvable with free data (status 3.5);
+- the Consensus study's data question was answered by the deal verdicts.
+
+What is next now:
+
+1. **Register and run exp_004** when shareholding coverage reaches 95%.
+2. **Re-measure promoter-sell power yearly**, next around September 2027.
+3. **Work the participant review queue** in short sessions, 666 names.
+4. **Any new hypothesis**, including exp_005's factor-neutral residual,
+   needs years not yet seen to confirm it.
+
+The original list, as written on 23 August:
 
 These are the critical path of §9.4, in order. Everything else is an extension
 that gets cut before this list does.
