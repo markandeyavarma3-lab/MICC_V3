@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 45  WIRED: 10  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-01; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-02 15:39 UTC, 4 generation(s), 2 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-03 16:12 UTC, 4 generation(s), 1 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -109,7 +109,7 @@ VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 6.1 | Register all four experiments, trial counter to 72 | BUILT | 3 of 4 registered |
+| 6.1 | Register all four experiments, trial counter to 72 | WIRED | 4 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
 | 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 289,636 benchmark rows against five benchmarks. NIFTY500_TR — the config's declared broad_market_headline, unbuildable for 33 days — joined the panel 2026-09-19 (0077) and enters these rows on the next outcomes run |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
@@ -126,7 +126,7 @@ VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | step | what | status | note |
 |---|---|---|---|
 | 6S.1 | Folds: anchored walk-forward + CPCV, effective count | **VERIFIED** |  |
-| 6S.2 | Measured null (S2: block sign flips) | **VERIFIED** | the S1 drift-curve gate is moot: calendar seasonality is DEAD (engine_2 verdict, registered 2026-10-02) |
+| 6S.2 | Measured null (S2: block sign flips) | BUILT | the S1 drift-curve gate is moot: calendar seasonality is DEAD (engine_2 verdict, registered 2026-10-02) |
 | 6S.3 | The procedure test: hit rate, degradation, PBO, rank decay | **VERIFIED** |  |
 | 6S.4 | S1 calendar cells | — | not built, deliberately: engine_2_seasonality_power_verdict DEAD — 21 yearly observations |
 | 6S.5 | S2 signal combinations (base signals with mechanisms) | **VERIFIED** |  |
@@ -154,4 +154,4 @@ VERIFIED: 46  WIRED: 9  BUILT: 9  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `fb34684`.
+Derived at commit `edf8ac3`.
