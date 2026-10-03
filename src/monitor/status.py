@@ -489,7 +489,7 @@ def steps() -> list[Step]:
         Step("3.5", "3 Identity", "sector_history — point-in-time sectors",
              built=lambda c: c.duck_rows.get("sector_history", 0) > 0,
              note="blocks the industry dimension of CHAR_MATCHED. Measured 2026-10-04: seed "
-                  "index_membership has no sector indices; NSE index lists give 34% of active names, "
+                  "index-membership history has no sector indices; NSE index lists give 34% of active names, "
                   "+ seed dim_sector (another taxonomy, lossy map) 63%; NSE's quote API (all names) "
                   "is bot-protected (403). Not built: a 40%-missing control is worse than none"),
         Step("3.6", "3 Identity", "Participant normalisation",
@@ -683,7 +683,7 @@ def steps() -> list[Step]:
              verified=lambda c: c.tested(r"test_the_configured_designs_have_the_measured_counts")),
         Step("6S.2", "6S Track S", "Measured null (S2: block sign flips)",
              built=lambda c: "null_hit_rates" in c.src_text.get("src/scan/procedure.py", ""),
-             wired=lambda c: "null_hit_rates(ic, sequential" in c.src_text.get("src/scan/procedure.py", ""),
+             wired=lambda c: "null_hit_rates_multi(ic, sequential" in c.src_text.get("src/scan/procedure.py", ""),
              verified=lambda c: c.tested(r"test_the_null_is_centred_on_noise_not_biased_against_it"),
              note="the S1 drift-curve gate is moot: calendar seasonality is DEAD (engine_2 verdict, registered 2026-10-02)"),
         Step("6S.3", "6S Track S", "The procedure test: hit rate, degradation, PBO, rank decay",
