@@ -148,14 +148,20 @@ def batch_partial_ic(mo: Moments, idx: np.ndarray, signs: np.ndarray, factors: n
     num = np.zeros((T, B))
     var = np.zeros((T, B))
     cxf = np.zeros((T, B, len(F)))
+    # Only the factor columns: gathering cii[:, idx] first materialised every
+    # candidate's covariance with all K signals (~8 GB a batch) to keep two.
+    cif = mo.cii[:, :, F]                                               # (T, K, f)
     for a in range(d):
         num += signs[:, a] * mo.ciy[:, idx[:, a]]
-        cxf += signs[:, a][None, :, None] * mo.cii[:, idx[:, a]][:, :, F]
+        cxf += signs[:, a][None, :, None] * cif[:, idx[:, a], :]
         for b in range(d):
             var += (signs[:, a] * signs[:, b]) * mo.cii[:, idx[:, a], idx[:, b]]
-    proj = np.einsum("tbf,tfg->tbg", cxf, inv)                          # cov(x,F) Cff^-1
-    num_r = num - np.einsum("tbg,tg->tb", proj, cfy)
-    var_r = var - np.einsum("tbg,tbg->tb", proj, cxf)
+    # Batched matmul, not einsum: numpy's generic einsum path made the first
+    # rehearsal's attribution step project to ~66 hours (measured 2026-10-03,
+    # 615 s a 5,000-candidate batch); the arithmetic is identical.
+    proj = np.matmul(cxf, inv)                                          # cov(x,F) Cff^-1
+    num_r = num - (proj * cfy[:, None, :]).sum(-1)
+    var_r = var - (proj * cxf).sum(-1)
     yy_r = mo.cyy - np.einsum("tf,tfg,tg->t", cfy, inv, cfy)
     with np.errstate(invalid="ignore", divide="ignore"):
         ic = num_r / np.sqrt(var_r * yy_r[:, None])
