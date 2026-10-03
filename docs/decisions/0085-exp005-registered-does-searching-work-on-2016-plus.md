@@ -49,3 +49,20 @@ step from an estimated 66 h to 7 min.
 Nothing reverses a registration. A defect found in the CONFIRM run is
 reported in its report with its effect, and a corrected analysis would be a
 new experiment that pays its own family.
+
+## Result (2026-10-03, run `9f95f95c68f2a962`, recorded write-once)
+
+**NO_SEARCH_SKILL.**
+
+- **Primary:** hit rates 0.73 / 0.73 / 0.82 for the top 1 / 10 / 100, with
+  q 0.114 / 0.114 / 0.111. No N passes.
+- **Out of sample:** test IC about +0.05 against train +0.09; rank decay
+  0.40; PBO 0.27.
+- **Partial (factor-neutral) procedure:** 10/11, q 0.009. This is
+  significant but cannot override the ladder's order. It is recorded as a
+  candidate hypothesis for a future registration, not a finding.
+- **Costs:** +0.8–0.9% net per monthly rebalance.
+
+The expectation (REDISCOVERS_KNOWN_FACTORS) was wrong in an informative way:
+the plain search weakened after 2016 by more than expected. See
+docs/reports/SCAN_CONFIRM_H21.md.
