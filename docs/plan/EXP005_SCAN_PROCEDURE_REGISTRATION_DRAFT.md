@@ -1,6 +1,6 @@
 # exp_005 — Does a wide signal search work on 2016+? (Track S confirmation)
 
-**Status: DRAFT / PROPOSED — revision 1, 2026-10-03. Nothing registered.**
+**Status: APPROVED by the owner 2026-10-03 ("yeah lets start") — revision 2, with the rehearsal.**
 Machine-readable form: `scripts/register_exp005.py` (rehearsed on a ledger
 copy; the real ledger was unchanged). The analysis: `src/scan/confirm.py`.
 
@@ -61,8 +61,26 @@ weakly than 2010–2015, since factor investing spread in India after about
 
 ## 5. Rehearsal on exploration data
 
-*(Filled from `docs/reports/SCAN_REHEARSAL_EXPLORE_H21.md` when the
-rehearsal finishes.)*
+`docs/reports/SCAN_REHEARSAL_EXPLORE_H21.md` is the whole analysis on
+2005–2015 with six disjoint yearly test windows (2010–2015) and 1,000 null
+reps. It ran in 39 minutes.
+
+| | result |
+|---|---|
+| primary | hit rate 6/6 for every N, p 0.016–0.018, q 0.018; test IC +0.093–0.098; degradation about −0.01; rank decay 0.77; PBO 0.00 |
+| attribution, net of hi_252 and downvol_126 | hit rate 5/6, p 0.10–0.11, q 0.11; test IC +0.024 |
+| costs, pessimistic | +2.34% gross and +1.55% net per monthly rebalance; net positive in 6/6 folds (top 10/100); turnover 29% |
+| **verdict** | **REDISCOVERS_KNOWN_FACTORS** |
+
+Every part of the pipeline runs end to end on real data. On the data it was
+free to read, the search passes and its residual does not. One number to
+watch in the confirm report: a net long-short spread of about 1.5% a month is
+large. 2010–2015 was a strong period for momentum and low volatility in India,
+and 2016+ is what tests whether it held.
+
+Two speed fixes were made before this run, both with identical results
+(tested): partial selection with one shared null pass, and the
+partial-IC gather and matmul (an estimated 66 h fell to 7 min).
 
 ## 6. What the owner decides before registration
 
