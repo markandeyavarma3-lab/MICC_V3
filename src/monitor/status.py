@@ -488,7 +488,10 @@ def steps() -> list[Step]:
              note="unresolved 4.14% — under the <5% gate"),
         Step("3.5", "3 Identity", "sector_history — point-in-time sectors",
              built=lambda c: c.duck_rows.get("sector_history", 0) > 0,
-             note="blocks the industry dimension of CHAR_MATCHED"),
+             note="blocks the industry dimension of CHAR_MATCHED. Measured 2026-10-04: seed "
+                  "index_membership has no sector indices; NSE index lists give 34% of active names, "
+                  "+ seed dim_sector (another taxonomy, lossy map) 63%; NSE's quote API (all names) "
+                  "is bot-protected (403). Not built: a 40%-missing control is worse than none"),
         Step("3.6", "3 Identity", "Participant normalisation",
              built=lambda c: c.duck_rows.get("participant_master", 0) > 0,
              verified=lambda c: c.tested(r"test_rulings_survive_a_rebuild_and_take_effect"),
