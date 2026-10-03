@@ -96,9 +96,11 @@ def sequential(sessions: list[date], train_start: date, first_test_start: date,
     # Independent tests = test sessions covered / one test window's length.
     covered = len(np.unique(np.concatenate([f.test for f in folds])))
     eff = covered / float(np.mean([len(f.test) for f in folds]))
+    shared = (f"consecutive folds share {test_years - step_years}/{test_years} of their test window"
+              if step_years < test_years else "test windows are disjoint")
     return FoldSet("sequential", folds, len(folds), round(eff, 2),
-                   f"{len(folds)} folds, ~{eff:.1f} independent: consecutive folds share "
-                   f"{step_years}/{test_years} of their test window and nearly all their training")
+                   f"{len(folds)} folds, ~{eff:.1f} independent: {shared}; training is anchored, "
+                   "so consecutive folds share nearly all of it")
 
 
 def cpcv(n_sessions: int, n_groups: int, k_test_groups: int,
