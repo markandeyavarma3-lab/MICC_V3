@@ -36,6 +36,11 @@ EXPLORATION = {
                          "p_vs_null": {1: 0.080, 10: 0.100, 100: 0.095}, "test_ic": 0.086,
                          "degradation": 0.0, "rank_decay": 0.80, "pbo": 0.14,
                          "drivers": "hi_252 +0.077, downvol_126 -0.072, ram_252 +0.071; deal signals weakest"},
+    "SCAN_REHEARSAL_EXPLORE_H21": {"folds": 6, "effective": 6.0, "design": "disjoint yearly 2010-2015, 1000 reps",
+                                   "primary_hit_rate": 1.0, "primary_q": 0.018, "test_ic": 0.095,
+                                   "partial_hit_rate": 0.83, "partial_q": 0.110, "partial_test_ic": 0.024,
+                                   "net_per_rebalance": 0.0155, "turnover": 0.29,
+                                   "verdict": "REDISCOVERS_KNOWN_FACTORS"},
 }
 
 
