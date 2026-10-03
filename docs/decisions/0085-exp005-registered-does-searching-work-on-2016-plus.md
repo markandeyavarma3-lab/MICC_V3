@@ -44,6 +44,17 @@ registering. Partial selection with a shared null pass made the null about
 10× faster. A factor-column gather with batched matmul cut the attribution
 step from an estimated 66 h to 7 min.
 
+## Cost accepted
+
+- **The confirmation data is spent.** 2016 onward has now been tested once.
+  Any later hypothesis about searching on this data, the factor-neutral
+  residual included, can only be confirmed on years not yet seen.
+- **The attribution factors came from exploration.** They are the right two
+  for the question asked, but a different pair would give a different
+  partial row.
+- **The cost check is an average across selected books**, not one tradable
+  strategy. With no selection skill it describes the years, not a rule.
+
 ## What would reverse this
 
 Nothing reverses a registration. A defect found in the CONFIRM run is
