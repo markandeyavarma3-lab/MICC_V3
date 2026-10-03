@@ -1,6 +1,6 @@
 # exp_005 — Does a wide signal search work on 2016+? (Track S confirmation)
 
-**Status: APPROVED by the owner 2026-10-03 ("yeah lets start") — revision 2, with the rehearsal.**
+**Status: REGISTERED 2026-10-03 (0085) and RUN — verdict NO_SEARCH_SKILL (docs/reports/SCAN_CONFIRM_H21.md).**
 Machine-readable form: `scripts/register_exp005.py` (rehearsed on a ledger
 copy; the real ledger was unchanged). The analysis: `src/scan/confirm.py`.
 
