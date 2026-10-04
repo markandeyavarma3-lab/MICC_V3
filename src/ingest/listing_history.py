@@ -208,11 +208,15 @@ def closes(symbols: set[str], start: str, end: str) -> list[tuple[str, str, str,
     chosen, _ = files()
     for d in sorted(x for x in chosen if start <= x <= end):
         path, src = chosen[d]
+        # A corrupt session file is skipped, exactly as build() skips it. The
+        # first version caught errors only on OPENING the file; csv.Error is
+        # raised while ITERATING (sec_bhavdata_full_08082022.csv carries a bare
+        # newline), so exp_004's first real-data plumbing run crashed here.
         try:
-            reader = csv.DictReader(io.StringIO(_text(path)))
-        except (zipfile.BadZipFile, OSError, EOFError):
+            rows = list(csv.DictReader(io.StringIO(_text(path))))
+        except (zipfile.BadZipFile, OSError, EOFError, csv.Error):
             continue
-        for r in reader:
+        for r in rows:
             r = {(k or "").strip(): (v or "").strip() for k, v in r.items()}
             sym = (r.get("TckrSymb") or r.get("SYMBOL") or "").upper()
             if sym not in want:

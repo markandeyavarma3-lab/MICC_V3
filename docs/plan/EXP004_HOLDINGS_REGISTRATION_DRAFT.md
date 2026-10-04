@@ -232,3 +232,24 @@ real registry was checked byte-identical before and after. It found:
 Spec hash at rehearsal: `bc4b2d8d8baf…`. It will differ on registration day,
 because `data_version` carries the coverage then.
 
+
+### 9a. Plumbing run on real data (2026-10-04)
+
+`scripts/exp004_plumbing.py` runs the whole registered analysis
+(`holdings.run`) on the real warehouse, with every tested signal replaced by
+seeded random noise. Nothing about the real signal-return link is read, and
+it prints counts and timings only.
+
+**First run: a defect.** `listing_history.closes()` crashed on the one corrupt
+2022 price file. It caught errors on opening a file, not while reading it.
+exp_004 would have failed on registration day at the first stock that left
+EQ. The fix and a test that bites when it is removed are in.
+
+**Second run: every stage ran, in 112 s.**
+
+- **Filings:** 31,008 filing pairs.
+- **Exits:** 26,965 HORIZON, 280 MOVED, 7 STOPPED, 2,012 CENSORED.
+- **Exclusions counted:** 927 no security; 817 no EQ session after
+  broadcast; 3,159 no CHAR_MATCHED cell; 11 cohorts under 100 names.
+- **Panel:** 27,252 rows; 16,765 tradeable.
+- **Outputs:** 3 primary tests, 12 robustness lines.
