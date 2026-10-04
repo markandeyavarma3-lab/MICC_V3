@@ -157,3 +157,10 @@ def test_baroda_and_bnp_are_two_houses_before_their_merger():
     assert P.fund_house("BARODA PIONEER MUTUAL FUND", groups) == "BARODA_AMC"
     assert P.fund_house("BNP PARIBAS MUTUAL FUND", groups) == "BNP_PARIBAS_AMC"
     assert P.fund_house("BARODA BNP PARIBAS MUTUAL FUND", groups) == "BARODA_BNP_AMC"
+
+
+def test_the_mf_abbreviation_is_a_mutual_fund_not_a_person():
+    """'SBI MF' was typed INDIVIDUAL by the 2-3 word pattern until 2026-10-04."""
+    pats = P.config()["name_pattern"]
+    for name in ("SBI MF", "RELIANCE MF", "HDFC MF A C HDFC GROWTH FUND", "AXIS MF LONG TERM EQUITY FUND"):
+        assert P.classify_name(name, pats) == "MUTUAL_FUND", name

@@ -60,7 +60,7 @@ The live, test-checked version is `docs/STATUS.md`.
 wired and 9 built). Two are impossible (NSE no longer serves historical
 bulk-deal backfills), and the remainder are blocked on data that does not
 exist freely (historical sectors, BSE deals) or ruled out by registered
-verdicts (calendar seasonality). 997 tests pass.
+verdicts (calendar seasonality). 998 tests pass.
 
 **Collected, every evening at 18:30 and 21:00, with the shareholding sweep at
 18:45:**
@@ -305,7 +305,7 @@ and why V3 is designed the way it is.
 | Commits | 31 |
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
-| Tests | 997, all passing |
+| Tests | 998, all passing |
 | Decision records | 84 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
@@ -318,7 +318,7 @@ the rest of this report.
 | Duration | 11 days | 34 days | ongoing |
 | Commits | 67 | 107 | 30 |
 | Lines of Python | 23,172 | 35,762 | 6,243 |
-| Tests | — | 375 | 997 |
+| Tests | — | 375 | 998 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -876,7 +876,7 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 997 automated tests, all passing.
+This is the substantial achievement so far. 998 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
@@ -1393,7 +1393,7 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 997 tests that enforces honest research
+- A discipline framework with 998 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
 - Eighty-four decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
