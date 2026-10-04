@@ -79,3 +79,29 @@ plan's, and changing it moves names out of the queue's sight.
 - A reviewed audit of the INDIVIDUAL pattern that finds companies in it at a
   material rate. The pattern would then be tightened by a decision, with the
   queue size before and after.
+
+## Measured 2026-10-04: what moving the mart to participant_id would change
+
+| | raw spelling (today) | participant identity |
+|---|---:|---:|
+| participants | 29,645 | 27,772 |
+| PROP_HFT | 332 | 306 |
+| same-day round-trip stock-days | 81,390 | 81,402 |
+
+Merging spellings makes 26 names look less like pure round-trippers and
+moves round trips by 12. **The mart stays on raw spellings**: no live study
+reads these flags, and a switch is its own decision when one does.
+
+**What it showed instead.** Of the 5,980 deals the mart marks eligible as
+institutional events:
+
+- **1,581 are participants typed INDIVIDUAL and 1,567 are UNKNOWN**, more
+  than half between them;
+- 1,275 are FPI_OFFSHORE, 532 MUTUAL_FUND, 248 BANK, 226
+  FOREIGN_INSTITUTION, 179 PENSION_SOVEREIGN, 175 INSURANCE and 173
+  BROKER_SEC.
+
+Track D's verdicts are closed and this does not reopen them, since a sample
+polluted by non-institutions dilutes toward the null they returned. **Any
+future deal study must declare which participant types count as
+institutional**, now that the types exist.
