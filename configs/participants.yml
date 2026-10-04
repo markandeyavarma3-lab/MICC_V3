@@ -38,7 +38,10 @@ behavioural:
 # "... SECURITIES PRIVATE LIMITED" that round-trips 100% of the time is PROP_HFT,
 # not a broker — which is why the order in classification_order matters.
 name_pattern:
-  MUTUAL_FUND:       'MUTUAL FUND|ASSET MANAGE|\bAMC\b|INVESTMENT TRUST'
+  # \bMF\b added 2026-10-04: "SBI MF", "RELIANCE MF", "BIRLA MF" fell through to
+  # the INDIVIDUAL pattern (any 2-3 word name) and "HDFC MF A C ..." scheme
+  # accounts to UNKNOWN — 85 participants carry the abbreviation (0083).
+  MUTUAL_FUND:       'MUTUAL FUND|\bMF\b|ASSET MANAGE|\bAMC\b|INVESTMENT TRUST'
   INSURANCE:         'INSURANCE|ASSURANCE|LIFE INSURA'
   PENSION_SOVEREIGN: 'PENSION|SOVEREIGN|GOVERNMENT OF|MONETARY AUTH|ABU DHABI'
   BANK:              '\bBANK\b|BANKING'
