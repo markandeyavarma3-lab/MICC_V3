@@ -62,3 +62,17 @@ def test_one_file_per_session_by_precedence(monkeypatch):
     assert chosen["2024-05-14"][1] == "udiff"
     assert chosen["2024-05-15"][1] == "secfull"
     assert skipped == 2
+
+
+def test_a_corrupt_session_file_is_skipped_when_reading_closes(tmp_path, monkeypatch):
+    """sec_bhavdata_full_08082022.csv raises csv.Error mid-iteration; the first
+    closes() caught errors only on opening and crashed exp_004's plumbing run."""
+    good = tmp_path / "sec_bhavdata_full_02012024.csv"
+    good.write_text("SYMBOL, SERIES, DATE1, CLOSE_PRICE\nPPAP, BE, 02-Jan-2024, 290.5\n")
+    bad = tmp_path / "sec_bhavdata_full_03012024.csv"
+    # An unquoted bare carriage return: the exact csv.Error the real file raises.
+    bad.write_bytes(b'SYMBOL, SERIES, DATE1, CLOSE_PRICE\nPPAP, B\rE, 03-Jan-2024, 1\n')
+    monkeypatch.setattr(lh, "files", lambda: ({"2024-01-02": (str(good), "secfull"),
+                                              "2024-01-03": (str(bad), "secfull")}, 0))
+    got = lh.closes({"PPAP"}, "2024-01-01", "2024-01-31")
+    assert got == [("PPAP", "BE", "", "2024-01-02", 290.5)]
