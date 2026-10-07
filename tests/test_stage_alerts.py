@@ -214,3 +214,38 @@ def test_feeds_ignore_sources_whose_session_date_is_not_a_session(tmp_path, monk
     monkeypatch.setattr(digest, "ARCHIVE", tmp_path)
     held = digest._sessions_held()
     assert "nse_bulk_deals" in held and "nse_shp_xbrl" not in held
+
+
+def _run_deals_retry(tmp_path, retry_exit: int, other_failed: str = "") -> dict[str, str]:
+    """Execute collect_daily.sh's own retry block in zsh, with stopgap stubbed."""
+    import subprocess
+    s = SH.read_text()
+    block = s[s.index('  if [ "$DEALS_RC" -ne 0 ]; then'):]
+    block = block[:block.index("\n  fi\n", block.index("DEALS_RETRY_RC")) + 6]
+    note = s[s.index("note() {"):s.index("\n}\n", s.index("note() {")) + 3]
+    py = tmp_path / ".venv" / "bin" / "python"
+    py.parent.mkdir(parents=True)
+    py.write_text(f"#!/bin/sh\nexit {retry_exit}\n")
+    py.chmod(0o755)
+    script = (f'REPO="{tmp_path}"\nRUN_TSV="{tmp_path}/run.tsv"\nSTAGE_T0=0\n{note}\n'
+              f'RC=1\nFAILED_STAGES=" deals{other_failed}"\nDEALS_RC=1\n{block}\n'
+              'echo "RC=$RC"; echo "FAILED=$FAILED_STAGES"\n')
+    out = subprocess.run(["zsh", "-c", script], capture_output=True, text=True, check=True).stdout
+    return dict(l.split("=", 1) for l in out.splitlines() if l.startswith(("RC=", "FAILED=")))
+
+
+def test_a_failed_deal_fetch_recovered_by_the_retry_does_not_fail_the_run(tmp_path):
+    """2026-10-07: the run fired in a network-less maintenance wake at 21:04:39;
+    the owner woke the Mac 36 s later. The day's bulk file was recovered by hand."""
+    got = _run_deals_retry(tmp_path, retry_exit=0)
+    assert got == {"RC": "0", "FAILED": ""}
+    assert "deals\t1" not in (tmp_path / "run.tsv").read_text()  # only the retry is noted here
+    assert "deals_retry\t0" in (tmp_path / "run.tsv").read_text()
+
+
+def test_a_retry_that_also_fails_pages_and_other_failures_still_count(tmp_path):
+    assert _run_deals_retry(tmp_path, retry_exit=1) == {"RC": "1", "FAILED": " deals deals_retry"}
+    assert _run_deals_retry(tmp_path / "b", retry_exit=0, other_failed=" mart") == {"RC": "1",
+                                                                                     "FAILED": " mart"}
+    from src.monitor.stage_alert import COLLECTION_STAGES
+    assert "deals_retry" in COLLECTION_STAGES
