@@ -380,3 +380,20 @@ def test_indexed_symbols_are_skipped_once_the_budget_is_spent_so_unindexed_ones_
     rows = [json.loads(l) for l in (tmp_path / "m.jsonl").read_text().splitlines()]
     done, cached = shp._fresh_masters(rows)
     assert "CACHED" in cached and "CACHED" not in done
+
+
+def test_the_progress_line_counts_only_symbols_in_this_universe(tmp_path, monkeypatch, capsys):
+    """2026-10-07 the line read "2729 done, 191 indexed-but-incomplete, -2
+    unindexed": done and cached also held symbols that had left the universe."""
+    monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "MANIFEST", tmp_path / "m.jsonl")
+    monkeypatch.setattr(shp, "RATE_LIMIT", 0)
+    monkeypatch.setattr(shp, "_opener", lambda: None)
+    monkeypatch.setattr(shp, "_get", _fake_get({
+        "share-holdings-master": _master(3),
+        "SHP_0_WEB": b"<x>0</x>", "SHP_1_WEB": b"<x>1</x>", "SHP_2_WEB": b"<x>2</x>"}))
+    shp.collect(["GONE"], max_detail=1)                 # GONE: indexed, XBRL owed
+    capsys.readouterr()
+    shp.collect(["NEW"], max_detail=0)                  # GONE has left the universe
+    line = next(l for l in capsys.readouterr().out.splitlines() if "universe" in l)
+    assert "0 done, 0 indexed-but-incomplete (XBRL owed), 1 unindexed" in line, line
