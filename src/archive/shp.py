@@ -479,8 +479,13 @@ def collect(symbols: list[str] | None = None, max_detail: int = MAX_DETAIL_PER_R
     # goes to XBRL; unindexed symbols follow. This is what lets the detail
     # catch up with the index instead of trailing it by 80 days.
     todo = [s for s in symbols if s in cached] + [s for s in symbols if s not in done and s not in cached]
-    print(f"  universe {len(symbols)} symbols; {len(done)} done, {len(cached)} indexed-but-incomplete (XBRL owed), "
-          f"{len(todo) - len(cached)} unindexed; XBRL budget {max_detail}", flush=True)
+    # COUNTED WITHIN THE UNIVERSE (2026-10-07). `done` and `cached` hold every
+    # symbol the manifest ever saw, delisted ones included, so this line read
+    # "2729 done, 191 indexed-but-incomplete, -2 unindexed" of a 2913 universe.
+    owed = sum(1 for s in symbols if s in cached)
+    print(f"  universe {len(symbols)} symbols; {sum(1 for s in symbols if s in done)} done, "
+          f"{owed} indexed-but-incomplete (XBRL owed), "
+          f"{len(todo) - owed} unindexed; XBRL budget {max_detail}", flush=True)
 
     op = _opener()
     try:
