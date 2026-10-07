@@ -87,7 +87,8 @@ mkdir -p "$REPO/logs"
   # `deals`, not `exit` (2026-09-17). The stage was named for the exit code it
   # recorded back when that was all this script recorded; on a phone, "FAIL
   # exit" reads as the script dying. It is the bulk/block/FII-DII fetch.
-  note "deals" $?
+  DEALS_RC=$?
+  note "deals" $DEALS_RC
   # ALWAYS run the health check, including after a failed fetch — especially
   # then. On 2026-08-28 all three slots failed on DNS, the collector said "may
   # be permanently lost", exited 1, and nobody saw it for two days. Detection
@@ -260,6 +261,24 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # no-op-ish 11 MB write and prunes itself to three generations.
   "$REPO/scripts/backup.sh"
   note "backup" $?
+  # A FAILED DEAL FETCH IS TRIED ONCE MORE, AT THE END OF THE SAME RUN
+  # (2026-10-07). That evening the Mac was asleep at 18:30; launchd replayed the
+  # run at 21:04:39 inside a maintenance wake with no network, every fetch
+  # failed on DNS, and the owner woke the machine 36 seconds later. The bulk
+  # file was recovered by hand at 21:16. By the end of the run the machine has
+  # been awake for minutes, and the endpoint still serves the day's file. A
+  # retry that succeeds takes `deals` out of the failed stages — the record
+  # keeps both lines, so the first failure is not hidden; a retry that fails
+  # pages as a collection failure.
+  if [ "$DEALS_RC" -ne 0 ]; then
+    "$REPO/.venv/bin/python" -m src.archive.stopgap
+    DEALS_RETRY_RC=$?
+    note "deals_retry" $DEALS_RETRY_RC
+    if [ "$DEALS_RETRY_RC" -eq 0 ]; then
+      FAILED_STAGES="${FAILED_STAGES// deals/}"
+      [ -z "$FAILED_STAGES" ] && RC=0
+    fi
+  fi
   # HEALTH AFTER THE BACKUP, NOT BEFORE (2026-10-07). It ran before it, so it
   # read the backup as it stood before tonight's — every session this run had
   # just archived counted as "not in a backup" — and paged BACKUP AT RISK on 8
