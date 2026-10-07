@@ -254,14 +254,21 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "charpanel" $?
   "$REPO/.venv/bin/python" -m src.research.outcomes
   note "outcomes" $?
-  "$REPO/.venv/bin/python" -m src.monitor.health
-  note "health" $?
   # Back up AFTER collecting, every day. 0037 left this manual and it went eight
   # days without running once; a session archived but not backed up sits on one
   # disk, and the endpoint that could re-serve it answers 503. The script is a
   # no-op-ish 11 MB write and prunes itself to three generations.
   "$REPO/scripts/backup.sh"
   note "backup" $?
+  # HEALTH AFTER THE BACKUP, NOT BEFORE (2026-10-07). It ran before it, so it
+  # read the backup as it stood before tonight's — every session this run had
+  # just archived counted as "not in a backup" — and paged BACKUP AT RISK on 8
+  # of the 9 October runs, and wrote HEALTH.md as "1 SOURCE(S) STALE" with every
+  # source ok. The digest had the same bug, fixed 2026-09-25; this is the same
+  # rule: a report on the run goes after the run. A failed backup now alerts
+  # truthfully instead of being drowned in a nightly false one.
+  "$REPO/.venv/bin/python" -m src.monitor.health
+  note "health" $?
   # THE DAILY DIGEST. One screen answering "did last night work, and is anything
   # rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md each
   # answer a piece of and none answers whole.

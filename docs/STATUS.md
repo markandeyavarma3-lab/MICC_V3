@@ -37,13 +37,13 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.1 | Freeze MICCV2 — agents unloaded, plists moved, tag | WIRED | verified manually 2026-08-22: no micc agents loaded, tag frozen-2026-08-16 exists |
 | 1.2 | Repo scaffold, pyproject, CI | WIRED | unit tier only — a runner has no data/ or db/, so the data and research tiers stay a local gate |
 | 1.3 | src/common — paths, hashing, migrations, config, logging | **VERIFIED** | no structured logging and no central config loader; six modules load their own YAML |
-| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5372 observed sessions; 3 of them are Saturdays a generated calendar would drop |
+| 1.4 | Trading calendar from observed sessions | **VERIFIED** | 5374 observed sessions; 3 of them are Saturdays a generated calendar would drop |
 | 1.5 | Migration runner, forward-only and checksummed | **VERIFIED** |  |
 | 1.6 | Schema — every table in Plan 1 §5-§7 | **VERIFIED** |  |
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
-| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-01; PIT universe still missing |
+| 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-06; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-03 16:12 UTC, 4 generation(s), 3 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-06 15:36 UTC, 4 generation(s), 1 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -56,10 +56,10 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 2.5 | Backfill the full NSE history | **IMPOSSIBLE** | Same 503. Twenty years cannot be re-fetched; the V1 export is the only copy and is why decision 0027 carries it. |
 | 2.6 | BSE bulk and block | BUILT | sources.yml marks both BSE routes UNPROVEN — 301 to an error page |
 | 2.7 | FII/DII cash collector | **VERIFIED** |  |
-| 2.8 | participant_oi ported as the FII/DII proxy | **VERIFIED** | 15,699 rows, 2014-01-01 .. 2026-06-25; positioning, not cash flow (sources.yml) |
+| 2.8 | participant_oi ported as the FII/DII proxy | **VERIFIED** | 15,709 rows, 2014-01-01 .. 2026-06-25; positioning, not cash flow (sources.yml) |
 | 2.9 | Scheduled collection running | **VERIFIED** | launchd added 2026-08-22 after cron silently lost the 19 Aug session |
-| 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-10-01; MICCV2 stopped at 2026-08-14 |
-| 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 1647 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
+| 2.12 | Daily PRICE feed, so collected deals are usable | **VERIFIED** | price_spine reaches 2026-10-06; MICCV2 stopped at 2026-08-14 |
+| 2.14 | Corporate actions, so the adjusted spine can extend | **VERIFIED** | 1649 price-affecting action(s) collected; the seed's table ends 2026-06-29 (decision 0041) |
 | 2.10 | Measure available_from empirically | **VERIFIED** | brackets are 10.7h at best; nothing consumes the measurement yet |
 | 2.11 | Revision detection | **VERIFIED** |  |
 | 2.13 | Alert when collection goes stale | **VERIFIED** | 19 Aug lost, 28 Aug recovered two days late by hand — detection always worked, nothing carried it anywhere |
@@ -154,4 +154,4 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `b42dc1b`.
+Derived at commit `62e5cf2`.
