@@ -12,6 +12,8 @@ are written before the alert exists.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from src.common.paths import ROOT
@@ -175,6 +177,26 @@ def test_the_digest_is_sent_after_the_backup_not_before():
     assert s.index('"$REPO/scripts/backup.sh"') < s.index("-m src.monitor.digest"), (
         "the digest reports on the backup, so it must run after it"
     )
+
+
+def test_the_health_check_runs_after_the_backup_not_before():
+    """The digest's bug, still live in health until 2026-10-07: run before the
+    backup, it counted the sessions this run had just archived as outside a
+    backup and paged BACKUP AT RISK on 8 of the 9 October runs."""
+    s = (ROOT / "scripts" / "collect_daily.sh").read_text()
+    assert s.count("-m src.monitor.health") == 1
+    assert s.index('"$REPO/scripts/backup.sh"') < s.index("-m src.monitor.health"), (
+        "health reports on the backup, so it must run after it"
+    )
+
+
+def test_a_backup_at_risk_is_not_counted_as_a_stale_source():
+    """HEALTH.md read "1 SOURCE(S) STALE" above a table of five ok sources."""
+    from src.monitor import backup_state, health
+    b = backup_state.BackupState(destination=Path("/x"), bundle=None, taken_at=None,
+                                 commits_behind=0, sessions_at_risk=3, generations=0)
+    head = health.render([], b).split("\n")[4]
+    assert "SOURCE(S) STALE" not in head and "BACKUP AT RISK" in head
 
 
 def test_feeds_ignore_sources_whose_session_date_is_not_a_session(tmp_path, monkeypatch):
