@@ -120,3 +120,29 @@ def test_an_unreadable_input_refuses_the_registration(reg, gov, monkeypatch):
     con = sqlite3.connect(gov)
     assert con.execute("SELECT COUNT(*) FROM experiment_registry").fetchone()[0] == 0
     con.close()
+
+
+def test_coverage_reads_each_companys_latest_master_and_cannot_pass_one(reg, tmp_path, monkeypatch):
+    """The final sweep read "2300/2290 companies hold XBRL (100.4%)": ten new
+    listings, EMPTY when first asked and filing since, left the denominator on
+    their old EMPTY row while their XBRL stayed in the numerator."""
+    import json
+    from src.archive import shp
+    rows = [
+        {"source_id": "nse_shp_master", "symbol": "NEWCO", "status": "EMPTY"},       # empty, then filed
+        {"source_id": "nse_shp_master", "symbol": "NEWCO", "status": "DUPLICATE"},
+        {"source_id": "nse_shp_xbrl", "symbol": "NEWCO", "status": "STORED"},
+        {"source_id": "nse_shp_master", "symbol": "OLDCO", "status": "STORED"},
+        {"source_id": "nse_shp_xbrl", "symbol": "OLDCO", "status": "STORED"},
+        {"source_id": "nse_shp_master", "symbol": "GONE", "status": "STORED"},         # filed, now empty
+        {"source_id": "nse_shp_xbrl", "symbol": "GONE", "status": "STORED"},
+        {"source_id": "nse_shp_master", "symbol": "GONE", "status": "EMPTY"},
+        {"source_id": "nse_shp_master", "symbol": "ETF", "status": "EMPTY"},
+        {"source_id": "nse_shp_master", "symbol": "OWED", "status": "STORED"},          # indexed, no XBRL yet
+    ]
+    (tmp_path / "manifest.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    monkeypatch.setattr(reg, "ARCHIVE", tmp_path)
+    monkeypatch.setattr(shp, "universe", lambda: ["NEWCO", "OLDCO", "GONE", "ETF", "OWED"])
+    held, indexed, n = reg.sweep_coverage()
+    assert (held, indexed, n) == (2, 3, 3)       # NEWCO, OLDCO held; OWED owed; ETF and GONE empty
+    assert held <= n

@@ -49,19 +49,29 @@ COVERAGE_REQUIRED = 0.95
 def sweep_coverage() -> tuple[int, int, int]:
     """(companies with XBRL held, companies with a non-empty master, universe)."""
     from src.archive.shp import universe
+    # A COMPANY'S LATEST MASTER DECIDES WHETHER IT IS EMPTY (2026-10-08). This
+    # took any EMPTY ever seen, so ten new listings — empty when first asked,
+    # filing since — left the denominator but stayed in the numerator, and the
+    # final sweep read "2300/2290 companies hold XBRL (100.4%)". The manifest
+    # is append-only in fetch order, so the last master row is the latest.
     man = ARCHIVE / "manifest.jsonl"
-    masters, empties, xbrl = set(), set(), set()
+    latest: dict[str, str] = {}
+    xbrl: set[str] = set()
     for line in man.read_text(errors="ignore").splitlines():
         if '"nse_shp' not in line:
             continue
         r = json.loads(line)
         s = r.get("symbol")
-        if r.get("source_id") == "nse_shp_master" and s:
-            (empties if r.get("status") == "EMPTY" else masters if r.get("status") in ("STORED", "DUPLICATE") else set()).add(s)
+        if r.get("source_id") == "nse_shp_master" and s and r.get("status") in ("STORED", "DUPLICATE", "EMPTY"):
+            latest[s] = r["status"]
         elif r.get("source_id") == "nse_shp_xbrl" and r.get("status") == "STORED" and s:
             xbrl.add(s)
+    empties = {s for s, st in latest.items() if st == "EMPTY"}
+    masters = set(latest) - empties
     u = set(universe())
-    return len(xbrl & u), len((masters - empties) & u), len(u - empties)
+    # Both sides over the same set, so the fraction cannot pass 1.
+    base = u - empties
+    return len(xbrl & base), len(masters & base), len(base)
 
 
 def build_spec(coverage: tuple[int, int, int]) -> dict:
