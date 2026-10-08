@@ -323,6 +323,13 @@ def main() -> int:
     ap.add_argument("--rehearse", action="store_true",
                     help="register into a throwaway COPY of the governance db, verify, and delete it; "
                          "the real registry is never opened for writing")
+    # REGISTERING IS TYPED, NEVER DEFAULTED (2026-10-08). With neither flag this
+    # script registered whenever the gate passed. It was being run as a
+    # coverage probe (`--coverage 0.999`, expected to refuse); the night the
+    # coverage bug read 100.4%, the probe registered exp_004 without the
+    # owner's confirmation. Now the bare command only reports.
+    ap.add_argument("--register", action="store_true",
+                    help="write the REAL registry. Without it (and without --rehearse) nothing is written")
     args = ap.parse_args()
     need = COVERAGE_REQUIRED if args.coverage is None else args.coverage
 
@@ -334,6 +341,9 @@ def main() -> int:
         print(f"  REFUSED: coverage {frac:.1%} < {need:.0%}. A spec frozen on a partial panel is a spec "
               f"rewritten later. Wait for the sweep, or pass --coverage {frac:.2f} to register on purpose.")
         return 1
+    if not (args.register or args.rehearse):
+        print("  CHECK ONLY: nothing written. --rehearse to rehearse on a copy, --register to register.")
+        return 0
     dirty = code_is_committed()
     if dirty and not args.rehearse:
         print("  REFUSED: uncommitted code or config — code_commit_hash would name other code:")

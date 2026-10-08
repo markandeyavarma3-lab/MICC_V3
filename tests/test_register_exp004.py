@@ -93,7 +93,7 @@ def test_the_real_run_refuses_uncommitted_code(reg, gov, monkeypatch):
     monkeypatch.setattr(reg, "governance_db", lambda env=None: gov)
     monkeypatch.setattr(reg, "sweep_coverage", lambda: (1990, 2200, 2000))
     monkeypatch.setattr(reg, "code_is_committed", lambda: [" M src/research/holdings.py"])
-    monkeypatch.setattr(sys, "argv", ["register_exp004.py"])
+    monkeypatch.setattr(sys, "argv", ["register_exp004.py", "--register"])
     assert reg.main() == 1
     con = sqlite3.connect(gov)
     assert con.execute("SELECT COUNT(*) FROM experiment_registry").fetchone()[0] == 0
@@ -115,7 +115,7 @@ def test_an_unreadable_input_refuses_the_registration(reg, gov, monkeypatch):
     monkeypatch.setattr(reg, "sweep_coverage", lambda: (1990, 2200, 2000))
     monkeypatch.setattr(reg, "code_is_committed", lambda: [])
     monkeypatch.setattr(reg, "input_problems", lambda: ["char_panel: IOException"])
-    monkeypatch.setattr(sys, "argv", ["register_exp004.py"])
+    monkeypatch.setattr(sys, "argv", ["register_exp004.py", "--register"])
     assert reg.main() == 1
     con = sqlite3.connect(gov)
     assert con.execute("SELECT COUNT(*) FROM experiment_registry").fetchone()[0] == 0
@@ -146,3 +146,18 @@ def test_coverage_reads_each_companys_latest_master_and_cannot_pass_one(reg, tmp
     held, indexed, n = reg.sweep_coverage()
     assert (held, indexed, n) == (2, 3, 3)       # NEWCO, OLDCO held; OWED owed; ETF and GONE empty
     assert held <= n
+
+
+def test_the_bare_command_never_registers_even_when_every_gate_passes(reg, gov, monkeypatch):
+    """2026-10-08: `register_exp004.py --coverage 0.999` was run as a coverage
+    probe and registered exp_004 without the owner's confirmation the night the
+    coverage bug read 100.4%. Registering now needs --register, typed."""
+    before = gov.read_bytes()
+    monkeypatch.setattr(reg, "governance_db", lambda env=None: gov)
+    monkeypatch.setattr(reg, "sweep_coverage", lambda: (2000, 2000, 2000))
+    monkeypatch.setattr(reg, "code_is_committed", lambda: [])
+    monkeypatch.setattr(reg, "input_problems", lambda: [])
+    for argv in (["register_exp004.py"], ["register_exp004.py", "--coverage", "0.999"]):
+        monkeypatch.setattr(sys, "argv", argv)
+        assert reg.main() == 0
+    assert gov.read_bytes() == before
