@@ -239,7 +239,7 @@ bar fixed before the data was read, or is a power check that charges nothing.
 
 | question | how | answer |
 |---|---|---|
-| Does F&O positioning by participant category (FII/DII/Pro/Client) predict returns? | exp_003, registered | **UNDERPOWERED**, 5–7× short in every category (docs/reports/OI_POWER.md) |
+| Does F&O positioning by participant category (FII/DII/Pro/Client) predict returns? | exp_003, closed 2026-10-08 | **UNDERPOWERED**, 4× short at the 21-session primary, 3–7× across horizons, in every category; closed unfitted (docs/reports/OI_POWER.md, 0067) |
 | Calendar seasonality | registered verdict `engine_2_seasonality_power_verdict` | **DEAD**: a calendar cell has 21 yearly observations; nothing buys more |
 | Foreign-investor cash flows (NSDL, back to 1998) as a market-timing signal | power check | **4–5× short** at every horizon (docs/reports/FPI_POWER_PRELIMINARY.md) |
 | Promoter insider selling (SEBI PIT) | power check | **1.13× short at 12 months**, the closest anything has come; re-measured yearly (docs/reports/INSIDER_POWER.md) |

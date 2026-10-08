@@ -103,3 +103,16 @@ The study does not touch the cash-deals verdict and cannot revive it.
 
 `trials_before = 0`. No effect is estimated by this record or by
 `oi_power.py`.
+
+## Closed 2026-10-08
+
+The second reversal clause above has fired. Every category is UNDERPOWERED
+at 21 sessions (4.05× short; 3.2–6.8× across horizons, `OI_POWER.md`), and
+n is at its maximum: the series grows one session a day, and pre-2014
+history, if NSE serves it, would add about a quarter where sixteen times is
+needed. The owner asked for it to be closed once nothing more could be
+done ("if it is done maximum then lets close it"). The registry row moved
+`REGISTERED → REJECTED` with the reason recorded and the spec untouched
+(`spec_hash 9390d07e…`). No fit was run, no return was read, and
+`TRACK_O_POSITIONING` stays at zero trials charged. The registry has no
+UNDERPOWERED status; `decision_reason` carries it.
