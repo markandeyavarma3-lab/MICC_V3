@@ -257,8 +257,8 @@ bar fixed before the data was read, or is a power check that charges nothing.
 **What is still open.** exp_004 asks whether the quarter-over-quarter change
 in FPI, foreign-institution or mutual-fund holdings (from shareholding
 filings) predicts the next 63 sessions, against characteristic-matched
-peers. It is built and rehearsed, and its registration waits on filing
-coverage reaching 95% (82.8% on 3 October). Its own power preview puts it
+peers. It is built and rehearsed on complete filing coverage (2,300 of 2,300
+companies, 8 October), and its registration waits on the owner's word. Its own power preview puts it
 about 2.6× short of the bound, or 1.3× winsorised. Underpowered is the
 likeliest landing, and that has been written down in advance.
 

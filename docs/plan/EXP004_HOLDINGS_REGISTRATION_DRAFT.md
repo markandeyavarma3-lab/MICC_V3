@@ -1,6 +1,6 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED — revision 5, 2026-10-02 (the registration rehearsal, §9). Nothing registered.**
+**Status: DRAFT / PROPOSED — revision 6, 2026-10-08 (§10: one registration retired unrun; `_v2` rehearsed, awaiting the owner). No result read.**
 Written 2026-09-17 for the owner to argue with; revised after their answers
 and after two PRELIMINARY dispersion runs (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
 no signal read, nothing frozen) — the first on 220 companies, the second on
@@ -253,3 +253,37 @@ EQ. The fix and a test that bites when it is removed are in.
   broadcast; 3,159 no CHAR_MATCHED cell; 11 cohorts under 100 names.
 - **Panel:** 27,252 rows; 16,765 tradeable.
 - **Outputs:** 3 primary tests, 12 robustness lines.
+
+## 10. A registration retired unrun (revision 6, 2026-10-08)
+
+**What happened.** The final SHP sweep ended about 20:15 IST on 8 October.
+At 20:16 `scripts/register_exp004.py --coverage 0.999`, run by Claude as a
+coverage probe that had refused every time before, passed its gate and
+registered `exp_004_holdings_change` (spec `e610fbae…`, commit `49621e7`)
+**without the owner's confirmation**. It passed because `sweep_coverage()`
+read "2300 of 2290 (100.4%)": ten new listings, EMPTY when first asked and
+filing since, left the denominator on their old EMPTY row while their XBRL
+stayed in the numerator. That figure is in the row's `data_version`.
+
+**What did not happen.** No analysis ran; `study_result` holds nothing for
+it; `TRACK_H_HOLDINGS` was charged nothing; no forward return was read.
+
+**The owner's ruling (option B).** Retire it and register again rather than
+keep a row whose registration the owner never gave and whose coverage line
+is wrong. The row is `RETIRED` with the reason in `decision_reason`; the
+registry's no-delete trigger keeps it, as it should. The primary key keeps
+its name, so the confirmed registration is `exp_004_holdings_change_v2`.
+
+**Fixed so it cannot recur.**
+
+- `99efbb6`: coverage reads each company's latest master. The true figure
+  is 2,300 / 2,300; the 618 without filings are empty masters (ETFs,
+  debt-only listings).
+- `fe578d6`: the script writes the real registry only with `--register`,
+  typed; the bare command and `--coverage` alone only report. A test runs
+  the exact probe that registered and asserts the registry bytes unchanged.
+
+**The rehearsal of `_v2`** (22:24 IST, commit `01c4f77`): spec
+`2b5811c1…6c30e0`, 26 of 26 fields stored, the stored row reproduces the
+hash. Identical to the retired spec but for the coverage line and the id.
+

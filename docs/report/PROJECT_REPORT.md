@@ -95,10 +95,13 @@ review rulings (0083).
 - Promoter insider selling: 1.13× short. The closest anything has come; it
   is re-measured yearly.
 
-**Open:** **exp_004, quarterly change in institutional holdings.** The study
-is built and rehearsed, and its registration is one command. It waits only for
-shareholding coverage to reach 95% (82.8% on 3 October), expected about the
-second week of October.
+**Open:** **exp_004, quarterly change in institutional holdings.** The final
+shareholding sweep finished on 8 October: every company that files holds its
+filings (2,300 of 2,300). The study is rehearsed on that data as
+`exp_004_holdings_change_v2` and waits on one thing, the owner's word to
+register. An earlier row, `exp_004_holdings_change`, was registered the same
+evening by a coverage check run without that word; it was retired unrun, with
+no result read (`docs/plan/EXP004_HOLDINGS_REGISTRATION_DRAFT.md` §10).
 
 **The honest position has not changed; it has been tested.** Five times a
 registered question has met a bar fixed before the data was read, and five
@@ -1453,9 +1456,9 @@ made and corrected within hours on 17 August.
 
 What is next now:
 
-1. **Register and run exp_004** when shareholding coverage reaches 95%.
+1. **Register and run exp_004** (`_v2`) on the owner's confirmation; coverage is complete.
 2. **Re-measure promoter-sell power yearly**, next around September 2027.
-3. **Work the participant review queue** in short sessions, 666 names.
+3. **Work the participant review queue** in short sessions, 608 names (73 ruled by 8 October).
 4. **Any new hypothesis**, including exp_005's factor-neutral residual,
    needs years not yet seen to confirm it.
 
