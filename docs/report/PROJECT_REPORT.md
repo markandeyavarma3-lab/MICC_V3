@@ -88,6 +88,7 @@ review rulings (0083).
 | exp_002 | do some institutions persistently pick winners? | REJECTED |
 | exp_003 | does F&O positioning by participant category predict returns? | UNDERPOWERED (4× short at the primary, 3–7× across horizons); closed 2026-10-08 |
 | Engine 2 | calendar seasonality (registered verdict, not an experiment) | DEAD: 21 yearly observations cannot carry it |
+| exp_004 | does the quarterly change in institutional holdings predict returns? | UNDERPOWERED (2.4×, 2.0×, 1.12× short); closed 2026-10-09 |
 | exp_005 | does a wide search of 1.93M signal combinations work out of sample, 2016–2026? | **NO_SEARCH_SKILL** (q 0.11). Its factor-neutral residual passed 10/11 years (q 0.009), which is a new hypothesis, not a finding |
 
 **Measured not to be askable yet (power checks, nothing charged):**
@@ -95,13 +96,13 @@ review rulings (0083).
 - Promoter insider selling: 1.13× short. The closest anything has come; it
   is re-measured yearly.
 
-**Open:** **exp_004, quarterly change in institutional holdings.** The final
-shareholding sweep finished on 8 October: every company that files holds its
-filings (2,300 of 2,300). The study is rehearsed on that data as
-`exp_004_holdings_change_v2` and waits on one thing, the owner's word to
-register. An earlier row, `exp_004_holdings_change`, was registered the same
-evening by a coverage check run without that word; it was retired unrun, with
-no result read (`docs/plan/EXP004_HOLDINGS_REGISTRATION_DRAFT.md` §10).
+**Closed 9 October:** **exp_004, quarterly change in institutional holdings.**
+Registered on the owner's confirmation as `exp_004_holdings_change_v2` on
+complete coverage (2,300 of 2,300 companies) and **UNDERPOWERED** in all three
+tests: MDE 2.4× (FPI), 2.0× (all foreign) and 1.12× (mutual funds) the 1.50%
+bound, q 0.61 / 0.92 / 0.61, every spread negative net of cost (decision 0076).
+An earlier row, registered the evening before by a coverage check run without
+the owner's word, was retired unrun (`docs/plan/EXP004_HOLDINGS_REGISTRATION_DRAFT.md` §10).
 
 **The honest position has not changed; it has been tested.** Five times a
 registered question has met a bar fixed before the data was read, and five
@@ -309,7 +310,7 @@ and why V3 is designed the way it is.
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
 | Tests | 1005, all passing |
-| Decision records | 84 |
+| Decision records | 85 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -937,7 +938,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Eighty-four decision records, each recording what was decided, by whom, why, **what
+Eighty-five decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1398,7 +1399,7 @@ audited two of them to destruction, and produced:
 - A working data warehouse and collection system (V2), now frozen
 - A discipline framework with 1005 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Eighty-four decision records with reversal conditions
+- Eighty-five decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history
@@ -1456,7 +1457,7 @@ made and corrected within hours on 17 August.
 
 What is next now:
 
-1. **Register and run exp_004** (`_v2`) on the owner's confirmation; coverage is complete.
+1. **Choose the next question.** Every registered question now has a verdict. Mutual-fund holding change (exp_004's closest test, 1.12× short) reaches its bound at ~23 cohorts, around 2028, as a new registration.
 2. **Re-measure promoter-sell power yearly**, next around September 2027.
 3. **Work the participant review queue** in short sessions, 608 names (73 ruled by 8 October).
 4. **Any new hypothesis**, including exp_005's factor-neutral residual,
