@@ -60,7 +60,11 @@ from src.research import charmatch, power
 from src.research.delisting import RECOVERY_FACTORS, STILL_TRADING_SESSIONS
 from src.research.measure import identified_px_ctes
 
-EXPERIMENT_ID = "exp_004_holdings_change"
+# _v2 (owner, 2026-10-08, option B): `exp_004_holdings_change` was registered
+# at 20:16 IST that day by a coverage probe, without the owner's confirmation,
+# with a coverage line read through a bug (2300/2290). It is RETIRED unrun; the
+# primary key keeps the name, so the confirmed registration takes this one.
+EXPERIMENT_ID = "exp_004_holdings_change_v2"
 FAMILY = "TRACK_H_HOLDINGS"
 HOLDINGS = COLLECTED / "shp" / "shp_holdings.parquet"
 REPORT = DOCS / "reports" / "HOLDINGS_VERDICT.md"

@@ -131,7 +131,7 @@ and counted; the original broadcast is the point-in-time fact.
 
 | field | value |
 |---|---|
-| experiment_id | `exp_004_holdings_change` |
+| experiment_id | `exp_004_holdings_change_v2` (`exp_004_holdings_change` RETIRED unrun, 2026-10-08) |
 | engine_id | `ENGINE_H_HOLDINGS` |
 | trial_family | `TRACK_H_HOLDINGS` — new, counter 0, `selection_happens_within: true` |
 | hypothesis | The top decile of filing-over-filing change in a stock's institutional holding — FPI (Cat I + II), all foreign institutions, and mutual funds, each a separate test — ranked within quarter, earns a higher CHAR_MATCHED abnormal return over the next 63 sessions than the bottom decile, after multiplicity. |
