@@ -86,7 +86,7 @@ review rulings (0083).
 |---|---|---|
 | exp_001 | does avoiding stocks after bulk deals help? | REJECTED |
 | exp_002 | do some institutions persistently pick winners? | REJECTED |
-| exp_003 | does F&O positioning by participant category predict returns? | UNDERPOWERED (5–7× short) |
+| exp_003 | does F&O positioning by participant category predict returns? | UNDERPOWERED (4× short at the primary, 3–7× across horizons); closed 2026-10-08 |
 | Engine 2 | calendar seasonality (registered verdict, not an experiment) | DEAD: 21 yearly observations cannot carry it |
 | exp_005 | does a wide search of 1.93M signal combinations work out of sample, 2016–2026? | **NO_SEARCH_SKILL** (q 0.11). Its factor-neutral residual passed 10/11 years (q 0.009), which is a new hypothesis, not a finding |
 
