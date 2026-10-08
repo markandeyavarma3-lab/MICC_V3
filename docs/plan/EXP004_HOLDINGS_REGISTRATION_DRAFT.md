@@ -1,6 +1,6 @@
 # exp_004 — Quarterly institutional holding change as a cross-sectional signal
 
-**Status: DRAFT / PROPOSED — revision 6, 2026-10-08 (§10: one registration retired unrun; `_v2` rehearsed, awaiting the owner). No result read.**
+**Status: REGISTERED AND CLOSED — `exp_004_holdings_change_v2`, 2026-10-09, UNDERPOWERED (decision 0076). §10: the first row, retired unrun.**
 Written 2026-09-17 for the owner to argue with; revised after their answers
 and after two PRELIMINARY dispersion runs (`docs/reports/HOLDINGS_POWER_PRELIMINARY.md`,
 no signal read, nothing frozen) — the first on 220 companies, the second on

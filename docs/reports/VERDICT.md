@@ -5,7 +5,7 @@
 **Author:** Markandeya Varma · **Date:** 2026-09-10 · **Repository:** `MICC_V3`
 **Status:** closed for deal disclosures (bulk and block). What follows is the
 evidence for closing it. **One further disclosure, quarterly institutional
-holdings (exp_004), is open**; §9 adds what has been tested since this was
+holdings (exp_004), was open; it closed UNDERPOWERED on 9 October (0076)**; §9 adds what has been tested since this was
 written.
 
 ---
@@ -243,6 +243,7 @@ bar fixed before the data was read, or is a power check that charges nothing.
 | Calendar seasonality | registered verdict `engine_2_seasonality_power_verdict` | **DEAD**: a calendar cell has 21 yearly observations; nothing buys more |
 | Foreign-investor cash flows (NSDL, back to 1998) as a market-timing signal | power check | **4–5× short** at every horizon (docs/reports/FPI_POWER_PRELIMINARY.md) |
 | Promoter insider selling (SEBI PIT) | power check | **1.13× short at 12 months**, the closest anything has come; re-measured yearly (docs/reports/INSIDER_POWER.md) |
+| Does the quarterly change in FPI, foreign-institution or mutual-fund holdings predict 63-session returns? | exp_004_v2, registered 2026-10-09 | **UNDERPOWERED** in all three (2.4×, 2.0×, 1.12× short); no spread survives costs (docs/reports/HOLDINGS_VERDICT.md, 0076) |
 | Does a wide search of 1.93M signal combinations, with deal signals among the inputs, work out of sample, 2016–2026? | exp_005, registered | **NO_SEARCH_SKILL**, q 0.11; deal signals were the weakest of 143 inputs (docs/reports/SCAN_CONFIRM_H21.md) |
 
 **Two observations worth keeping, neither a finding:**
@@ -254,16 +255,17 @@ bar fixed before the data was read, or is a power check that charges nothing.
    in 2010–2015 and about half that after 2016. These are known factors,
    weakening as they are traded. They are not institutional information.
 
-**What is still open.** exp_004 asks whether the quarter-over-quarter change
-in FPI, foreign-institution or mutual-fund holdings (from shareholding
-filings) predicts the next 63 sessions, against characteristic-matched
-peers. It is built and rehearsed on complete filing coverage (2,300 of 2,300
-companies, 8 October), and its registration waits on the owner's word. Its own power preview puts it
-about 2.6× short of the bound, or 1.3× winsorised. Underpowered is the
-likeliest landing, and that has been written down in advance.
+**What was open, now answered (9 October).** exp_004 asked whether the
+quarter-over-quarter change in FPI, foreign-institution or mutual-fund
+holdings (from shareholding filings) predicts the next 63 sessions, against
+characteristic-matched peers. It was registered on complete filing coverage
+(2,300 of 2,300 companies) as `exp_004_holdings_change_v2` and landed where
+its own power preview said it would: **UNDERPOWERED** in all three tests
+(MDE 2.4×, 2.0× and 1.12× the bound; q 0.61, 0.92, 0.61; every spread
+negative net of cost). Decision 0076; `docs/reports/HOLDINGS_VERDICT.md`.
 
-**So the answer to the title question, as of 4 October 2026:** for deal
+**So the answer to the title question, as of 9 October 2026:** for deal
 disclosures, no answer is available from this data, and that is still the
 finding. For positioning, flows, seasonality and searching: no, or not yet
-askable. For quarterly holdings: pending, with the expectation stated.
+askable. For quarterly holdings: not askable at this bound with 18 quarters; mutual funds come closest (1.12× short).
 
