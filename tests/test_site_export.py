@@ -107,3 +107,9 @@ def test_stock_and_participant_files_are_written_and_indexed(wh):
     assert fast["stats"]["roundtrip_share"] == 1.0 and fast["label"] == "HFT / round-trip"
     idx = json.loads((out / "participants.json").read_text())
     assert {r[0] for r in idx} == {"SBI MUTUAL FUND", "FAST MAKER"}
+
+
+def test_a_fund_house_key_is_shown_as_a_name():
+    assert X.house_name("FUND HOUSE SBI_FUNDS") == "SBI Funds"
+    assert X.house_name("FUND HOUSE NIPPON_INDIA_AMC") == "Nippon India AMC"
+    assert X.house_name(None) is None

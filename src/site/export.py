@@ -58,6 +58,17 @@ def slug(name: str) -> str:
     return f"{stem}-{hashlib.sha1((name or '').encode()).hexdigest()[:6]}"
 
 
+def house_name(raw: str | None) -> str | None:
+    """'FUND HOUSE SBI_FUNDS' -> 'SBI Funds': the group row's canonical name is
+    an internal key (configs/fund_houses.yml), not a label for readers."""
+    if not raw:
+        return None
+    key = re.sub(r"^FUND HOUSE\s+", "", raw).replace("_", " ")
+    return " ".join(w if w in ("SBI", "HDFC", "ICICI", "UTI", "DSP", "IDFC", "LIC", "HSBC", "PPFAS", "JM",
+                                "LNT", "AMC", "IIFL", "PGIM", "ITI", "NJ", "WOC", "BNP") else w.title()
+                    for w in key.split())
+
+
 def sym_file(sym: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "_", sym or "x")
 
@@ -97,7 +108,7 @@ def _deal(row) -> dict:
     t = ptype or "UNKNOWN"
     return {"sym": sym, "sid": sym_file(sym), "isin": isin, "co": company, "client": client,
             "who": pname or client, "pid": slug(pname or client),
-            "type": t, "label": TYPE_LABEL.get(t, t), "how": method, "house": house,
+            "type": t, "label": TYPE_LABEL.get(t, t), "how": method, "house": house_name(house),
             "side": side, "qty": qty, "px": None if px is None else round(px, 2),
             "cr": None if val is None else round(val / CR, 2),
             "ex": exch, "kind": kind, "rt": bool(rt), "elig": bool(elig)}
@@ -220,7 +231,12 @@ def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
             f"round(SUM(CASE WHEN category IN ({', '.join(repr(c) for c in cats)}) THEN pct_shares END), 3) AS {k}"
             for k, cats in OWNERSHIP.items())
         own: dict[str, list] = defaultdict(list)
+        shp_co: dict[str, str] = {}
         if Path(shp).exists():
+            # Some security_master rows carry the SYMBOL as company_name (TCS ->
+            # "TCS"); the shareholding filing names the company properly.
+            shp_co = dict(q.execute(f"SELECT isin, arg_max(company, broadcast_date) FROM read_parquet('{shp}')"
+                                    " WHERE company IS NOT NULL GROUP BY 1").fetchall())
             for isin, qe, *vals in q.execute(f"""
                     WITH latest AS (SELECT isin, quarter_end, max(broadcast_date) b FROM read_parquet('{shp}')
                                     GROUP BY 1, 2)
@@ -251,7 +267,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
     for sym in syms:
         i = ident.get(sym, {})
         isin = isin_of.get(sym)
-        doc = {"sym": sym, "co": co.get(sym) or i.get("co"), "isin": isin,
+        name = co.get(sym) or i.get("co")
+        if (not name or name.upper() == sym) and isin in shp_co:
+            name = shp_co[isin]
+        doc = {"sym": sym, "co": name, "isin": isin,
                "listed": i.get("listed"), "delisted": i.get("delisted"), "reason": i.get("reason"),
                "status": i.get("status"), "history": history.get(sym, []),
                "deals": _cols(["d", "who", "pid", "type", "side", "qty", "px", "cr", "rt", "kind"], deals.get(sym, [])),
@@ -303,7 +322,7 @@ def export_participants(out: Path, rows: list, env: str | None = None) -> int:
         rt_days = {(x[0], x[1]) for x in ds if x[7]}
         doc = {"name": who, "slug": slug(who), "type": t, "label": TYPE_LABEL.get(t, t),
                "how": m.get("how"), "confidence": m.get("conf"), "review": m.get("status"),
-               "notes": m.get("notes"), "house": m.get("house"), "spellings": spellings.get(who, []),
+               "notes": m.get("notes"), "house": house_name(m.get("house")), "spellings": spellings.get(who, []),
                "stats": {"deals": len(ds), "buys": sum(x[3] == "BUY" for x in ds),
                          "sells": sum(x[3] != "BUY" for x in ds),
                          "stock_days": len(stock_days),
