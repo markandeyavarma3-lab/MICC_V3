@@ -269,3 +269,4 @@ disclosures, no answer is available from this data, and that is still the
 finding. For positioning, flows, seasonality and searching: no, or not yet
 askable. For quarterly holdings: not askable at this bound with 18 quarters; mutual funds come closest (1.12× short).
 
+**Re-measured on corrected prices, 10 October 2026.** The Kite audit (0087) found splits and bonuses missing from the inherited price history; they were corrected where a second source confirmed them (0088). Every verdict above was re-measured on the corrected prices and none changes (0089, `docs/reports/REMEASURE_0088.md`).

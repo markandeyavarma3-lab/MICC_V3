@@ -97,3 +97,11 @@ from the dispersion table, not from any mean.
 After that date, sessions inside the proposed forward window exist before
 the spec does, and the window would have to move later. The 100 keys depend
 only on the atlas to 2026-10-01, so they can be frozen now.
+
+## 7. Re-measured on the corrected prices (2026-10-10, decision 0089)
+
+exp_005's factor-neutral procedure, re-run on the corrected spine, still
+passes: top 100 hit 10 of 11 years, q 0.012 (registered 0.009). Its test IC
+is +0.028, down from +0.030. At that effect the power table's top-100 row
+needs about **62 forward blocks** (57 × (0.0296 / 0.0283)²), roughly 5.2
+years, so the read would fall in early 2032.
