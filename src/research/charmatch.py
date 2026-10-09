@@ -45,6 +45,7 @@ from pathlib import Path
 import duckdb
 import yaml
 
+from src.common.partitioned import replace_partitioned
 from src.common.paths import CONFIGS, warehouse_dir
 
 PRODUCED_BY = "src.research.charmatch:build_panel"
@@ -289,10 +290,9 @@ def build_panel(env: str | None = None, buckets: int = 5) -> PanelResult:
     out.mkdir(parents=True, exist_ok=True)
 
     con.execute(f"CREATE OR REPLACE VIEW panel AS {_panel_sql(spine, buckets)}")
-    con.execute(
-        f"COPY (SELECT * FROM panel) TO '{out}' "
-        f"(FORMAT PARQUET, PARTITION_BY (rebalance_date), OVERWRITE_OR_IGNORE 1)"
-    )
+    # Replaced whole, never in place (src/common/partitioned.py): stale
+    # data_1.parquet files from August duplicated 29,833 keys here.
+    replace_partitioned(con, "SELECT * FROM panel", out, "rebalance_date")
 
     glob = f"{out}/**/*.parquet"
 
