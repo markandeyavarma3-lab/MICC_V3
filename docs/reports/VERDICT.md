@@ -83,11 +83,11 @@ effect bound was fixed in advance at 0.5%/month
 
 | horizon | events | cohorts | MDE | bound | verdict |
 |---|---|---|---|---|---|
-| 1 month | 5,618 | 241 | 2.12% | 0.50% | **4.24× short** |
-| 3 months | 5,395 | 239 | 4.40% | 1.50% | **2.93× short** |
+| 1 month | 5,618 | 241 | 2.07% | 0.50% | **4.13× short** |
+| 3 months | 5,395 | 239 | 4.41% | 1.50% | **2.94× short** |
 | 12 months | 4,630 | 230 | 10.85% | 6.00% | **1.81× short** |
 
-Twelve months is the closest and is still 1.8× its own detection floor. (Restated 2026-09-16 under `security_id` partitioning, decision 0068.)
+Twelve months is the closest and is still 1.8× its own detection floor. (Restated 2026-09-16 under `security_id` partitioning, decision 0068; re-measured 2026-10-09 on the corrected spine, decision 0088 — 1 month 2.12% → 2.07%, 3 months 4.40% → 4.41%, 12 months unchanged.)
 The same arithmetic on every other population — consensus buys, sells, promoter
 transactions, pledge events — returns the same verdict: **0 of 15 (population,
 horizon) pairs reach their bound.**

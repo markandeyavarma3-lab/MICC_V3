@@ -83,7 +83,9 @@ def test_the_grid_reproduces_0046_exactly():
     assert buy.n_events == 16_327
     assert buy.mde == pytest.approx(0.075223, abs=1e-4)
     assert sell.n_events == 9_284
-    assert sell.mde == pytest.approx(0.068027, abs=1e-4)
+    # 0.068027 -> 0.068288 on 2026-10-09 (decision 0088: 226 seed-missing splits and
+    # bonuses corrected in the adjusted spine). Same 9,284 events; still ~1.13x short.
+    assert sell.mde == pytest.approx(0.068288, abs=1e-4)
 
 
 def test_pledge_invoke_does_not_open_a_new_path():

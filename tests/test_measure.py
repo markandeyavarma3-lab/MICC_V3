@@ -87,9 +87,12 @@ def test_the_twelve_month_figure_is_reproducible():
     # 2.21x, still nowhere near its bound.
     # RE-MEASURED 2026-09-16, decision 0068: PARTITION BY security_id (0061).
     # 11.5374% on 4,673 -> 10.8496% on 4,630. Still 1.81x short of the bound.
-    assert row.mde == pytest.approx(0.108496, abs=5e-6), (
-        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0068 is "
-        f"10.8496%. If this changed legitimately, say so in a decision record."
+    # RE-MEASURED 2026-10-09, decision 0088: 226 seed-missing splits and
+    # bonuses corrected in the adjusted spine. 10.8496% -> 10.8462%, same
+    # 4,630 events. Still 1.81x short of the bound; the verdict is unchanged.
+    assert row.mde == pytest.approx(0.108462, abs=5e-6), (
+        f"the 12-month MDE is {row.mde:.6%}; the figure recorded in 0088 is "
+        f"10.8462%. If this changed legitimately, say so in a decision record."
     )
     assert row.n_events == 4_630
     assert not row.powered, (

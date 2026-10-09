@@ -94,6 +94,8 @@ Kite is also known to adjust things this series deliberately does not
 (demergers; gold ETF unit splits). Those are conventions, listed in the
 audit, not errors.
 
+**Superseded in part by 0088:** the 1,481 "clean fraction" count used a set of fractions dense enough to match almost anything; the strict split/bonus set gives 895, and the outcome shares above rest on the overstated set. 0088 applies the confirmed corrections.
+
 **Not done here.** No price was changed and no verdict reopened. A
 correction of the spine and a re-check of each registered verdict on
 corrected prices is a decision of its own, for the owner.

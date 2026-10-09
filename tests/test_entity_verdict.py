@@ -97,13 +97,20 @@ def test_significance_on_a_handful_of_deals_is_reported_not_hidden(v):
     formation, which was true of the two the substituted test produced. Under
     the registered bootstrap three of four are positive — and none of it
     predicts evaluation (rank IC -0.049).
+
+    RE-MEASURED 2026-10-09 on the corrected spine (decision 0088): still four
+    passers, all at the floor; SBI MUTUAL FUND now carries 8 formation deals
+    (was <= 5), and the formation->evaluation rank IC is about -0.22 over 12
+    entities (SE ~0.3): noise, and in the direction AGAINST persistence. The
+    verdict is unchanged: the TOP tier loses out-of-sample net of costs.
     """
     passers = [s for s in v.entities
                if s.q_form is not None and s.q_form < E.FDR_ALPHA]
     assert len(passers) == 4
-    assert max(s.n_form for s in passers) <= 5
+    assert max(s.n_form for s in passers) <= 8
     floor = 1 / (10_000 + 1)
     assert all(abs(s.p_form - floor) < 1e-6 for s in passers), (
         "a passer no longer sits at the bootstrap floor; the sample has grown"
     )
-    assert abs(v.rank_ic) < 0.15, "formation ranking has started to predict evaluation"
+    assert v.rank_ic < 0.15, "formation ranking has started to predict evaluation"
+    assert not v.alive

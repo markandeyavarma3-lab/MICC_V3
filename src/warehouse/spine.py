@@ -35,7 +35,7 @@ from pathlib import Path
 
 import duckdb
 
-from src.common.paths import COLLECTED, SEED, SEED_INCREMENTS, warehouse_dir
+from src.common.paths import COLLECTED, CONFIGS, SEED, SEED_INCREMENTS, warehouse_dir
 from src.governance import provenance as prov
 
 PRODUCED_BY = "src.warehouse.spine:build"
@@ -447,15 +447,30 @@ def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection 
 
     union = "\nUNION ALL\n".join(parts)
 
-    if applied:
+    # THE SEED'S MISSING ACTIONS, CONFIRMED AND FROZEN (decision 0088). The
+    # Kite audit (0087) found splits and bonuses the seed's table never
+    # recorded — TCS 2018, INFY 2015 — each a fake -50% day in every study.
+    # configs/price_corrections.csv holds only those a second source confirms
+    # (NSE's record or a flat Kite series) and that persist as a level; they
+    # apply over the WHOLE series, seed included, like any back-adjustment.
+    corr = CONFIGS / "price_corrections.csv"
+    n_corr = 0
+    corr_sql = "SELECT NULL::VARCHAR symbol, NULL::VARCHAR ex, NULL::DOUBLE factor WHERE false"
+    if corr.exists():
+        corr_sql = (f"SELECT symbol, ex_date AS ex, CAST(factor AS DOUBLE) AS factor"
+                    f" FROM read_csv('{corr}', header=true, all_varchar=true)")
+        n_corr = c.execute(f"SELECT COUNT(*) FROM ({corr_sql})").fetchone()[0]
+    ca_sql = (f"SELECT symbol, date AS ex, factor FROM read_parquet('{ca_glob}')"
+              f" WHERE factor IS NOT NULL AND date > '{boundary}'") if applied else \
+        "SELECT NULL::VARCHAR symbol, NULL::VARCHAR ex, NULL::DOUBLE factor WHERE false"
+
+    if applied or n_corr:
         # The inner JOIN restricts the expensive part to the handful of
         # (symbol, date) pairs an action actually touches — 21 symbols, not
         # 7.7M rows. EXP(SUM(LN)) is the product; every factor is > 0.
         union = (
             f"WITH u AS ({union}),"
-            f" acts AS (SELECT symbol, date AS ex, factor"
-            f"          FROM read_parquet('{ca_glob}')"
-            f"          WHERE factor IS NOT NULL AND date > '{boundary}'),"
+            f" acts AS ({ca_sql} UNION ALL {corr_sql}),"
             f" k AS (SELECT u.symbol, u.date, EXP(SUM(LN(a.factor))) AS f"
             f"       FROM u JOIN acts a ON a.symbol = u.symbol AND a.ex > u.date"
             f"       GROUP BY 1, 2)"
@@ -486,13 +501,21 @@ def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection 
         actions_end = max(actions_end, c.execute(
             f"SELECT MAX(date) FROM read_parquet('{ca_glob}')").fetchone()[0])
 
+    # THE WHOLE HISTORY, NOT THE TAIL (decision 0088). This counted only
+    # moves after `boundary`, so twenty-one years of seed were never checked
+    # and 226 unadjusted actions sat in them. Every move > 35% now either
+    # sits in configs/price_suspect_days.csv (reviewed: real, a reverted
+    # print, or unexplained and quarantined) or counts against the budget.
+    sus = CONFIGS / "price_suspect_days.csv"
+    known = (f"SELECT symbol, date FROM read_csv('{sus}', header=true, all_varchar=true)"
+             if sus.exists() else "SELECT NULL::VARCHAR symbol, NULL::VARCHAR date WHERE false")
     survivors = c.execute(
-        f"WITH t AS (SELECT symbol, date, close FROM ({union})"
-        f"           WHERE date > '{boundary}'),"
+        f"WITH t AS (SELECT symbol, date, close FROM ({union})),"
         f" r AS (SELECT symbol, date, close,"
         f"        LAG(close) OVER (PARTITION BY symbol ORDER BY date) prev FROM t)"
         f" SELECT COUNT(*) FROM r"
         f" WHERE prev > 0 AND close > 0 AND abs(close/prev - 1) > 0.35"
+        f"   AND (symbol, date) NOT IN ({known})"
     ).fetchone()[0]
     if survivors > MAX_UNEXPLAINED_JUMPS:
         raise SpineError(
