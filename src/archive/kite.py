@@ -58,6 +58,11 @@ IST = timezone(timedelta(hours=5, minutes=30))
 MIN_GAP_S = 0.4
 DAY_SPAN = 1900
 START = date(2005, 1, 1)
+#: Equity series only. Kite lists ~10,200 NSE "EQ"-type instruments and more
+#: than half are government securities (SG state loans, GS, TB T-bills, GB)
+#: and bond series — measured 2026-10-09, after the first 459 pulls were
+#: mostly state loans.
+SERIES = frozenset({"EQ", "BE", "BZ", "SM", "ST"})
 TIMEOUT = 30
 
 
@@ -145,7 +150,8 @@ def instruments(c: Client) -> tuple[bytes, list[dict]]:
     """NSE cash instruments (EQ type, every series suffix: -BE, -BZ ...)."""
     body = c.get("/instruments/NSE")
     rows = [r for r in csv.DictReader(io.StringIO(body.decode("utf-8", "replace")))
-            if r.get("segment") == "NSE" and r.get("instrument_type") == "EQ"]
+            if r.get("segment") == "NSE" and r.get("instrument_type") == "EQ"
+            and series_of(r.get("tradingsymbol", ""))[1] in SERIES]
     return body, rows
 
 

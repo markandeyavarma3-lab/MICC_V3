@@ -96,7 +96,8 @@ def test_a_pull_resumes_and_records_in_its_own_manifest(tmp_path, monkeypatch):
     inst = ("instrument_token,exchange_token,tradingsymbol,name,last_price,expiry,strike,tick_size,"
             "lot_size,instrument_type,segment,exchange\n"
             "11,1,AAA,A,0,,0,0.05,1,EQ,NSE,NSE\n22,2,BBB-BE,B,0,,0,0.05,1,EQ,NSE,NSE\n"
-            "33,3,NIFTY 50,N,0,,0,0,0,EQ,INDICES,NSE\n")
+            "33,3,NIFTY 50,N,0,,0,0,0,EQ,INDICES,NSE\n"
+            "44,4,775MH35-SG,S,0,,0,0.01,1,EQ,NSE,NSE\n")                # a state loan: not a stock
     calls = []
 
     class C:
