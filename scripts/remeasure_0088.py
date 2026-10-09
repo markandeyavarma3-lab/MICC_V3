@@ -111,10 +111,74 @@ def grid() -> dict:
     return out
 
 
+#: exp_004_holdings_change_v2's registered spec (0076). The analysis refuses
+#: unless the row is REGISTERED; it is REJECTED, so the re-measure supplies the
+#: recorded hash — read, never written — and charges nothing.
+EXP004_SPEC = "2b5811c1b3549ba11ee60628bfc14e47f8d0c6c7aea425c2ad0b3c169f6c30e0"
+
+
+def exp004(permutations: int = 1000) -> dict:
+    from src.research import holdings as h
+    h.registered_hash = lambda env=None: EXP004_SPEC
+    t0 = time.time()
+    _sh, results, extra = h.run(permutations=permutations)
+    v = h.verdict(results, extra["robustness"], extra["panel"])
+    out = {"primary": [{"signal": r.signal, "cohorts": r.n_cohorts, "names": r.n_names,
+                        "spread": round(r.spread_mean, 5), "ci": [round(r.ci_low, 5), round(r.ci_high, 5)],
+                        "t": round(r.t, 3), "p_perm": round(r.p_perm, 4), "q": round(r.q_fdr, 4),
+                        "mde": round(r.mde, 5), "clears_bound": r.clears_bound} for r in results],
+           "verdict": str(getattr(v, "landing", v)), "counts": extra["counts"],
+           "seconds": round(time.time() - t0)}
+    for r in out["primary"]:
+        print(f"  exp_004 {r['signal']}: spread {r['spread']:+.4f} q {r['q']} MDE {r['mde']:.4f}")
+    return out
+
+
+def exp005(reps: int = 1000) -> dict:
+    """exp_005's whole CONFIRM analysis (src/scan/confirm.evaluate, pure) on the
+    corrected spine, over the SAME window the registered run read (to
+    2026-10-01), in a FRESH atlas directory: the shard-reuse guard checks
+    dates, ids and settings but not prices, and would otherwise reuse shards
+    scored on the uncorrected spine. Writes a report; records nothing."""
+    import subprocess
+    from datetime import date
+
+    import yaml
+
+    from src.common.paths import DOCS, warehouse_dir
+    from src.scan import atlas, confirm, folds, panel
+    cfg = yaml.safe_load((CONFIGS / "scan.yml").read_text())
+    h, depth = int(cfg["signals"]["primary_horizon_sessions"]), int(cfg["signals"]["max_depth"])
+    top_n = [int(x) for x in cfg["procedure_test"]["top_n"]]
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    t0 = time.time()
+    at = atlas.Atlas(panel.load(end=date(2026, 10, 1)),
+                     warehouse_dir() / "scan" / f"confirm_h{h}_d{depth}_0088", horizon=h, depth=depth)
+    print(f"  panel {len(at.p.dates):,} x {len(at.p.ids):,}; grid {at.total:,}", flush=True)
+    at.run(commit)
+    bic, keys = at.load()
+    print(f"  atlas ready ({time.time() - t0:.0f} s)", flush=True)
+    fs = folds.confirm(at.p.dates)
+    o = confirm.evaluate(at, bic, keys, fs, top_n, reps=reps)
+    note = ("**RE-MEASURE under decision 0088 (corrected price spine), same CONFIRM window "
+            "as the registered run. Not the registered result; nothing recorded in the ledger.**")
+    text = confirm.render(o, "SCAN_CONFIRM_H21_REMEASURE_0088.md — exp_005 on the corrected spine", note, fs)
+    (DOCS / "reports" / "SCAN_CONFIRM_H21_REMEASURE_0088.md").write_text(text)
+    out = {"verdict": o.verdict, "seconds": round(time.time() - t0),
+           "primary": [{"top_n": r.top_n, "hit": round(r.hit_rate, 3), "p": round(r.p_vs_null, 4),
+                        "test_ic": round(r.mean_test_ic, 4)} for r in o.primary],
+           "primary_q": [round(x, 4) for x in o.primary_q],
+           "partial": [{"top_n": r.top_n, "hit": round(r.hit_rate, 3), "p": round(r.p_vs_null, 4),
+                        "test_ic": round(r.mean_test_ic, 4)} for r in o.partial],
+           "partial_q": [round(x, 4) for x in o.partial_q]}
+    print(f"  exp_005 verdict {o.verdict}", flush=True)
+    return out
+
+
 def main() -> int:
     what = sys.argv[1] if len(sys.argv) > 1 else "exp002"
     OUT.mkdir(parents=True, exist_ok=True)
-    res = {"exp002": exp002, "grid": grid}[what]()
+    res = {"exp002": exp002, "grid": grid, "exp004": exp004, "exp005": exp005}[what]()
     (OUT / f"{what}.json").write_text(json.dumps(res, indent=1, default=str))
     print(f"  wrote {OUT / f'{what}.json'}")
     return 0
