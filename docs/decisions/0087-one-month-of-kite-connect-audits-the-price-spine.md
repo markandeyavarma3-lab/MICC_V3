@@ -56,3 +56,44 @@ price source with a standing check, which would be its own decision.
   automate it is refused.
 - **A blind spot the audit cannot close:** delisted companies, and renamed
   symbols before their rename. Both are counted in the report, not hidden.
+
+## Run 2026-10-09: what the audit found
+
+All 5,225 NSE equity instruments were pulled (0 failed, 124 MB, git-ignored).
+`docs/reports/PRICE_AUDIT.md` matched 2,651 companies over 5,274,122
+company-days.
+
+**The adjusted spine carries unadjusted corporate actions.** It holds 3,107
+one-day moves larger than 35% across 1,430 symbols, 2005–2026.
+
+- **Where Kite can confirm** (215 of them): 168, or 78%, are moves only our
+  series shows. Kite is flat, and ours drops to ½, ⅕ or 1/10, the
+  signature of a split or bonus left unadjusted. Examples: TCS 2018-05-31
+  and INFY 2015-06-15, both 1:1 bonuses. Thirty-nine are real moves that
+  Kite shows too.
+- **Where Kite cannot confirm** (2,892): delisted or renamed symbols, or
+  dates before Kite's history begins. Of all 3,107 moves, **1,481 land
+  within 1.5% of a clean fraction a/b** (a < b ≤ 20) across 902 symbols. A
+  genuine crash does not land on ½; an unadjusted action does.
+- **Cause.** The seed's action table holds 681 BONUS and 655 SPLIT rows,
+  and only 26 of the jumps fall on one of those dates. Recorded actions were
+  adjusted; **the misses are actions the table never recorded.**
+- **Why no check caught it.** The build's >35% discontinuity guard
+  (`spine.py`) runs only on the tail after the seed boundary (2026-06-25).
+  The 21 years before it were never checked.
+- **Reach into the deal studies.** Of the eligible deal outcomes, the share
+  whose window [entry, exit] contains one of the 1,481 suspect days is:
+  - 0.2% at 1 session;
+  - 2.3% at 21;
+  - 3.4% at 63;
+  - 4.1% at 252.
+
+  Each such outcome carries a fake drop of 50–90%.
+
+Kite is also known to adjust things this series deliberately does not
+(demergers; gold ETF unit splits). Those are conventions, listed in the
+audit, not errors.
+
+**Not done here.** No price was changed and no verdict reopened. A
+correction of the spine and a re-check of each registered verdict on
+corrected prices is a decision of its own, for the owner.
