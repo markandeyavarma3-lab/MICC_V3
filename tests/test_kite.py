@@ -164,3 +164,17 @@ def test_candle_files_are_gzipped_json_with_their_instrument(tmp_path, monkeypat
     p.parent.mkdir(parents=True)
     p.write_bytes(gzip.compress(b"{}"))
     assert json.loads(gzip.decompress(p.read_bytes())) == {}
+
+
+def test_run_end_to_end_on_a_tmp_warehouse(tmp_path, monkeypatch):
+    """run() was untested and died on its first real call: `first` and `last`
+    are reserved words in DuckDB."""
+    days = [f"2024-01-{d:02d}" for d in range(1, 31)]
+    _parquet(tmp_path / "k.parquet", [("GOOD", d, 100.0) for d in days])
+    for name in ("price_spine", "price_spine_adj"):
+        (tmp_path / name / "_y=2024").mkdir(parents=True)
+        _parquet(tmp_path / name / "_y=2024" / "p.parquet", [("GOOD", d, 100.0) for d in days])
+    monkeypatch.setattr(pa, "warehouse_dir", lambda env=None: tmp_path)
+    res = pa.run(tmp_path / "k.parquet")
+    assert res["per"] == [("GOOD", 30, 1.0, 1.0, 0, "2024-01-01", "2024-01-30")]
+    assert res["steps"] == [] and res["kite_symbols"] == 1
