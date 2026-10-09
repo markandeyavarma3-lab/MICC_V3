@@ -164,3 +164,15 @@ def test_the_mf_abbreviation_is_a_mutual_fund_not_a_person():
     pats = P.config()["name_pattern"]
     for name in ("SBI MF", "RELIANCE MF", "HDFC MF A C HDFC GROWTH FUND", "AXIS MF LONG TERM EQUITY FUND"):
         assert P.classify_name(name, pats) == "MUTUAL_FUND", name
+
+
+def test_an_entity_word_is_corporate_not_a_person():
+    """2026-10-10: 3,511 of 19,019 'individuals' carried an entity word."""
+    pats = P.config()["name_pattern"]
+    for name in ("BHOLA MOTOR FINANCE", "TANTI HOLDINGS", "ACME CAPITAL MARKET", "KRITAGYATA TRUST",
+                 "FROXY INTERNATIONAL", "TEEJ IMPEX"):
+        assert P.classify_name(name, pats) == "CORPORATE", name
+    for name in ("RAKESH JHUNJHUNWALA", "NITN KAPOOR", "PARTHIV ASHISH MEHTA"):
+        assert P.classify_name(name, pats) == "INDIVIDUAL", name
+    assert P.classify_name("SBI MUTUAL FUND", pats) == "MUTUAL_FUND"      # earlier lines still win
+    assert P.classify_name("ANAND RATHI SHARE AND STOCK BROKERS", pats) == "BROKER_SEC"

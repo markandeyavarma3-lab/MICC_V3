@@ -161,7 +161,10 @@ def test_the_seed_is_registered_in_the_provenance_graph():
 @needs_spine
 @pytest.mark.parametrize(
     "name,expected",
-    [("price_spine", 7_749_148), ("price_spine_adj", 7_748_799), ("fno_spine", 174_272_768)],
+    # price_spine_adj 7,748,799 -> 7,748,596 on 2026-10-10: decision 0088 drops
+    # the 203 single-day prints in configs/price_bad_prints.csv — exactly 203,
+    # all inside the frozen range. The raw spine is untouched.
+    [("price_spine", 7_749_148), ("price_spine_adj", 7_748_596), ("fno_spine", 174_272_768)],
 )
 def test_spine_row_counts(name, expected):
     """Counted only up to the last session MICCV2 supplied.

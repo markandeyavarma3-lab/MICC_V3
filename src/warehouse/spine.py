@@ -445,6 +445,15 @@ def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection 
 
     union = "\nUNION ALL\n".join(parts)
 
+    # SINGLE-DAY PRINTS ARE DROPPED, NEVER REPRICED (decision 0088). A > 35%
+    # jump that is back within 15% the next session cannot be a trade under
+    # NSE's circuit filters; configs/price_bad_prints.csv lists each one with
+    # its evidence. The day becomes missing: no price is invented.
+    prints = CONFIGS / "price_bad_prints.csv"
+    if prints.exists():
+        union = (f"SELECT * FROM ({union}) WHERE (symbol, date) NOT IN "
+                 f"(SELECT symbol, date FROM read_csv('{prints}', header=true, all_varchar=true))")
+
     # THE SEED'S MISSING ACTIONS, CONFIRMED AND FROZEN (decision 0088). The
     # Kite audit (0087) found splits and bonuses the seed's table never
     # recorded — TCS 2018, INFY 2015 — each a fake -50% day in every study.
