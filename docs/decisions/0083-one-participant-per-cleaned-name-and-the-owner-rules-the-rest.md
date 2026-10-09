@@ -105,3 +105,28 @@ Track D's verdicts are closed and this does not reopen them, since a sample
 polluted by non-institutions dilutes toward the null they returned. **Any
 future deal study must declare which participant types count as
 institutional**, now that the types exist.
+
+## Addendum 2026-10-10: the INDIVIDUAL pattern, tightened
+
+The "Found on the way" finding above said the INDIVIDUAL pattern matches any
+name of two or three words. Its second reversal clause has now fired: an
+audit found companies in it at a material rate. 3,511 of 19,019 INDIVIDUAL
+participants carry an entity word: BHOLA MOTOR FINANCE, TANTI HOLDINGS, TATA
+INVESTMENT. The public site's Today page put them in front of every reader.
+
+A **CORPORATE** name pattern now sits before INDIVIDUAL. It covers entity
+words such as FINANCE, CAPITAL, HOLDINGS, ENTERPRISES, LLP, TRUST, FUND,
+LIMITED, PVT and SERVICES, and it applies **only to names of one to three
+words**, the ones INDIVIDUAL would otherwise claim. Longer names with these
+words are often institutions ("... GROWTH FUND PINEWOOD STRATEGY"); they
+stay UNKNOWN in the owner's review queue. Owner rulings still come first.
+
+| | before | after |
+|---|---:|---:|
+| INDIVIDUAL | 19,019 | 15,028 |
+| CORPORATE (all methods) | — | 4,015 |
+| review queue | 595 | 589 |
+
+The queue lost 6 short names containing digits or "&". INDIVIDUAL's
+`[A-Z]+` never matched them; CORPORATE's `[A-Z0-9&.]+` does. INDIVIDUAL
+remains the weakest label, and the site's Method page says so.

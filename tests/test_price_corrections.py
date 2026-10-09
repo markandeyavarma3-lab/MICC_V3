@@ -98,3 +98,30 @@ def test_the_confirmed_missing_actions_are_gone_from_the_rebuilt_spine():
             f" FROM read_parquet('{adj}/**/*.parquet') WHERE symbol = ?)"
             f" SELECT close / prev FROM s WHERE date = ?", [symbol, ex]).fetchone()
         assert r and 0.8 < r[0] < 1.25, f"{symbol} {ex} still moves {r}"
+
+
+@pytest.mark.unit
+def test_every_bad_print_is_a_registered_reverted_suspect_and_drops_a_row_not_a_price():
+    if not (CONFIGS / "price_bad_prints.csv").exists():
+        pytest.skip("bad prints not frozen in this checkout")
+    with (CONFIGS / "price_bad_prints.csv").open() as fh:
+        prints = list(csv.DictReader(fh))
+    with (CONFIGS / "price_suspect_days.csv").open() as fh:
+        sus = {(r["symbol"], r["date"]): r["class"] for r in csv.DictReader(fh)}
+    assert prints and all(sus.get((r["symbol"], r["date"])) == "REVERTED" for r in prints)
+    assert all(abs(float(r["next_vs_before"]) - 1) < 0.17 for r in prints)
+    from src.warehouse import spine
+    src = inspect.getsource(spine._build_adjusted_impl)
+    assert "price_bad_prints.csv" in src and "NOT IN" in src
+
+
+@pytest.mark.unit
+def test_a_move_across_a_suspension_is_classed_as_a_gap_not_unexplained():
+    if not (CONFIGS / "price_suspect_days.csv").exists():
+        pytest.skip("suspects not frozen in this checkout")
+    with (CONFIGS / "price_suspect_days.csv").open() as fh:
+        rows = list(csv.DictReader(fh))
+    gaps = [r for r in rows if r["class"] == "GAP"]
+    assert gaps and all(int(r["gap_days"]) > bpc.GAP_DAYS for r in gaps)
+    assert not any(r["class"].startswith("UNEXPLAINED") and r["gap_days"] and int(r["gap_days"]) > bpc.GAP_DAYS
+                   for r in rows)

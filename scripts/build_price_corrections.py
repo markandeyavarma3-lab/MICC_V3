@@ -122,7 +122,86 @@ def jumps(env: str | None = None) -> list[tuple]:
         c.close()
 
 
+GAP_DAYS = 30
+
+
+def reclassify_gaps(env: str | None = None) -> dict:
+    """Mark suspect days whose previous trading day is more than GAP_DAYS
+    earlier as GAP (2026-10-10). 1,527 of the 1,832 'unexplained' were the first
+    session after a suspension or a spell outside the EQ series (median gap
+    98 days): a price change across months, not a one-day move. Reads gaps from
+    the current spine, which corrections do not change; touches no correction
+    and no (symbol, date) key, so the guard's register is unchanged."""
+    adj = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+    with SUSPECTS.open() as fh:
+        rows = list(csv.DictReader(fh))
+    c = duckdb.connect()
+    try:
+        gaps = dict(((s, d), g) for s, d, g in c.execute(f"""
+            SELECT symbol, date, date_diff('day', CAST(LAG(date) OVER w AS DATE), CAST(date AS DATE))
+            FROM read_parquet('{adj}', hive_partitioning=true)
+            WINDOW w AS (PARTITION BY symbol ORDER BY date)""").fetchall())
+    finally:
+        c.close()
+    moved = 0
+    for r in rows:
+        g = gaps.get((r["symbol"], r["date"]))
+        r["gap_days"] = "" if g is None else str(g)
+        if g is not None and g > GAP_DAYS and r["class"] not in ("GAP", "REAL"):
+            r["was"] = r["class"]
+            r["class"] = "GAP"
+            moved += 1
+        r.setdefault("was", "")
+    with SUSPECTS.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["symbol", "date", "move", "class", "gap_days", "was"])
+        w.writeheader()
+        w.writerows(rows)
+    from collections import Counter
+    return {"moved_to_gap": moved, "classes": dict(Counter(r["class"] for r in rows))}
+
+
+PRINTS = CONFIGS / "price_bad_prints.csv"
+PRINT_BACK = 0.15        # the next session is back within 15% (log) of the day before
+
+
+def single_day_prints(env: str | None = None) -> int:
+    """Freeze configs/price_bad_prints.csv: REVERTED suspects where the price
+    jumps > 35% and the very next session (within 7 days) is back within 15%
+    of the session before. NSE's circuit filters (2-20%) make that impossible
+    as a genuine move for nearly every equity; NV20 13.99 -> 11,985 -> 13.98 is
+    the type. spine.py drops these rows — the day becomes missing, never an
+    invented price."""
+    adj = str(warehouse_dir(env) / "price_spine_adj" / "**" / "*.parquet")
+    c = duckdb.connect()
+    try:
+        rows = c.execute(f"""
+            WITH o AS (SELECT symbol, date, close, LAG(close) OVER w prev, LEAD(close) OVER w nxt,
+                              date_diff('day', CAST(date AS DATE), CAST(LEAD(date) OVER w AS DATE)) gap_next
+                       FROM read_parquet('{adj}', hive_partitioning=true)
+                       WINDOW w AS (PARTITION BY symbol ORDER BY date))
+            SELECT o.symbol, o.date, round(o.close / o.prev, 4), round(o.nxt / o.prev, 4)
+            FROM read_csv('{SUSPECTS}', header=true, all_varchar=true) s JOIN o USING (symbol, date)
+            WHERE s.class = 'REVERTED' AND abs(ln(o.nxt / o.prev)) < {PRINT_BACK} AND o.gap_next <= 7
+            ORDER BY 1, 2""").fetchall()
+    finally:
+        c.close()
+    with PRINTS.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["symbol", "date", "move", "next_vs_before"])
+        w.writerows(rows)
+    return len(rows)
+
+
 def main() -> int:
+    if "--bad-prints" in sys.argv:
+        if PRINTS.exists() and "--force" not in sys.argv:
+            print(f"  REFUSED: {PRINTS.name} exists and is frozen; --force rebuilds")
+            return 1
+        print(f"  {single_day_prints():,} single-day prints -> {PRINTS.name}")
+        return 0
+    if "--reclassify-gaps" in sys.argv:
+        print(f"  {reclassify_gaps()}")
+        return 0
     if (CORRECTIONS.exists() or SUSPECTS.exists()) and "--force" not in sys.argv:
         print(f"  REFUSED: {CORRECTIONS.name} / {SUSPECTS.name} exist and are frozen; --force rebuilds")
         return 1

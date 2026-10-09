@@ -99,3 +99,32 @@ step 2.
 - **0046's promoter-sell twelve-month MDE (insider power):** 6.8027% →
   6.8288%, on the same 9,284 events. That is slightly worse, and still
   about 1.13× short. The 2027-09-15 re-measure reads the corrected spine.
+
+## Addendum 2026-10-10: the quarantine, understood
+
+- **GAP (1,850 days).** For 1,850 of the quarantined days, the previous
+  trading day was more than 30 days earlier (median 98). These are the first
+  sessions after a suspension or a spell outside the EQ series. They are
+  real price changes across months, not one-day moves, and the deal and
+  insider studies already drop windows across such gaps (0052's span rule).
+  `scripts/build_price_corrections.py --reclassify-gaps` adds `gap_days` and
+  the prior class (`was`); no (symbol, date) key changed.
+- **Single-day prints dropped (203 rows).** These are REVERTED days that
+  jump more than 35% and are back within 15% of the prior close the next
+  session. NSE's circuit filters (2–20%) rule that out as a trade for nearly
+  every equity. They are listed in `configs/price_bad_prints.csv`, and
+  `spine.py` drops those rows: the day becomes missing and no price is
+  invented. Kite holds none of these 203; all are in names it does not
+  carry.
+- **After both changes,** the adjusted spine holds 2,566 one-day moves over
+  35% (from 3,107), every one registered. The quarantine now reads:
+
+  | class | days |
+  |---|---:|
+  | GAP | 1,850 |
+  | REVERTED, not single-day | 355 (152 after the drops) |
+  | UNCONFIRMED_RATIO | 333 |
+  | UNEXPLAINED | 312 |
+  | REAL | 31 |
+
+  Of the original 1,847 "unexplained", 312 remain unexplained.
