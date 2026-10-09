@@ -40,6 +40,15 @@ fix all those").
    about 62 forward blocks. Registering it remains the owner's decision,
    before ~2026-11-03.
 
+## What would reverse this
+
+- **A re-measure that changes a verdict.** For example, a third source
+  resolving quarantined days in a way that moves exp_004's d_mf across its
+  bound. It would be recorded as a new result beside the registered one,
+  with this table updated. A registered verdict is never edited.
+- **A defect found in a re-measure's own code.** The affected line is
+  re-run and the report says what moved.
+
 ## Cost accepted
 
 - **exp_001 can only be reconstructed.** Its recorded +0.237%/yr cannot be
