@@ -56,6 +56,7 @@ from dataclasses import dataclass
 import duckdb
 import yaml
 
+from src.common.partitioned import replace_partitioned
 from src.common.paths import COLLECTED, CONFIGS, SEED, warehouse_dir
 
 BENCHMARKS_YML = CONFIGS / "benchmarks.yml"
@@ -214,9 +215,7 @@ def build(env: str | None = None) -> list[Series]:
     union = "\nUNION ALL\n".join(f"SELECT * FROM ({q})" for q in parts.values())
     out = warehouse_dir(env) / PANEL
     out.mkdir(parents=True, exist_ok=True)
-    con.execute(
-        f"COPY ({union}) TO '{out}' "
-        f"(FORMAT PARQUET, PARTITION_BY (benchmark_id), OVERWRITE_OR_IGNORE 1)")
+    replace_partitioned(con, union, out, "benchmark_id")
 
     glob = f"{out}/**/*.parquet"
     rows = con.execute(f"""

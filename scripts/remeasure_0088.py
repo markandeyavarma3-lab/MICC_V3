@@ -121,7 +121,9 @@ def exp004(permutations: int = 1000) -> dict:
     from src.research import holdings as h
     h.registered_hash = lambda env=None: EXP004_SPEC
     t0 = time.time()
-    _sh, results, extra = h.run(permutations=permutations)
+    # The data as the registered run read it (holdings.REGISTERED_AS_OF), so the
+    # only difference from the recorded result is the price correction.
+    _sh, results, extra = h.run(permutations=permutations, as_of=h.REGISTERED_AS_OF)
     v = h.verdict(results, extra["robustness"], extra["panel"])
     out = {"primary": [{"signal": r.signal, "cohorts": r.n_cohorts, "names": r.n_names,
                         "spread": round(r.spread_mean, 5), "ci": [round(r.ci_low, 5), round(r.ci_high, 5)],

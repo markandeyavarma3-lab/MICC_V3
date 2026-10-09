@@ -155,8 +155,16 @@ class Atlas:
     # --- identity of the grid -------------------------------------------------
     def manifest(self, commit: str = "") -> dict:
         ids_hash = hashlib.sha256(self.p.ids.tobytes()).hexdigest()[:16]
+        # THE PRICES THEMSELVES (2026-10-09). The guard compared dates, ids and
+        # settings, so after decision 0088 corrected 226 splits and bonuses the
+        # CONFIRM directory would have reused shards scored on the uncorrected
+        # spine without complaint. Every array a signal or a return reads.
+        px = hashlib.sha256()
+        for f in ("open", "high", "low", "close", "volume", "universe", "deal_buy", "deal_sell"):
+            px.update(np.ascontiguousarray(getattr(self.p, f)).tobytes())
         return {"first": str(self.p.dates[0]), "last": str(self.p.dates[-1]),
                 "sessions": len(self.p.dates), "securities": int(len(self.p.ids)), "ids_hash": ids_hash,
+                "prices_hash": px.hexdigest()[:16],
                 "horizon": self.h, "gap": self.gap, "depth": self.depth, "block": BLOCK,
                 "base_signals": len(self.ids), "candidates": self.total,
                 "base_ids_hash": hashlib.sha256(",".join(self.ids).encode()).hexdigest()[:16],

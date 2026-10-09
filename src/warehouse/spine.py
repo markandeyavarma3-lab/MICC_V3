@@ -35,6 +35,7 @@ from pathlib import Path
 
 import duckdb
 
+from src.common.partitioned import replace_partitioned
 from src.common.paths import COLLECTED, CONFIGS, SEED, SEED_INCREMENTS, warehouse_dir
 from src.governance import provenance as prov
 
@@ -290,10 +291,7 @@ def _build_impl(spec: SpineSpec, env: str | None = None, con: duckdb.DuckDBPyCon
 
     out = warehouse_dir(env) / spec.name
     out.mkdir(parents=True, exist_ok=True)
-    c.execute(
-        f"COPY ({union}) TO '{out}' "
-        f"(FORMAT PARQUET, PARTITION_BY ({spec.partition_by}), OVERWRITE_OR_IGNORE 1)"
-    )
+    replace_partitioned(c, union, out, spec.partition_by)
     total = c.execute(f"SELECT COUNT(*) FROM read_parquet('{out}/**/*.parquet')").fetchone()[0]
     if total != seed_rows + inc_rows:
         raise SpineError(
@@ -535,9 +533,7 @@ def _build_adjusted_impl(env: str | None = None, con: duckdb.DuckDBPyConnection 
 
     out = warehouse_dir(env) / ADJUSTED.name
     out.mkdir(parents=True, exist_ok=True)
-    c.execute(
-        f"COPY ({union}) TO '{out}' (FORMAT PARQUET, PARTITION_BY (_y), OVERWRITE_OR_IGNORE 1)"
-    )
+    replace_partitioned(c, union, out, "_y")
     total_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{out}/**/*.parquet')").fetchone()[0]
     adj_rows = c.execute(f"SELECT COUNT(*) FROM read_parquet('{seed_adj}')").fetchone()[0]
     return BuildResult(ADJUSTED.name, total_rows, adj_rows, total_rows - adj_rows, 0, out)

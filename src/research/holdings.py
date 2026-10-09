@@ -67,6 +67,14 @@ from src.research.measure import identified_px_ctes
 EXPERIMENT_ID = "exp_004_holdings_change_v2"
 FAMILY = "TRACK_H_HOLDINGS"
 HOLDINGS = COLLECTED / "shp" / "shp_holdings.parquet"
+#: THE DATA AS OF A DATE, SO A RUN CAN BE REPRODUCED (2026-10-09). The study
+#: read every filing and price on disk, so re-running it a day later read one
+#: more cohort (19 vs the registered run's 18) and could not reproduce its own
+#: registered result. None = everything on disk (the registered run's mode);
+#: a date limits filings by broadcast_date and prices by session. The
+#: registered run (2026-10-09 00:58 IST) read data through REGISTERED_AS_OF.
+AS_OF: str | None = None
+REGISTERED_AS_OF = "2026-10-08"
 REPORT = DOCS / "reports" / "HOLDINGS_VERDICT.md"
 
 HORIZON = 63
@@ -160,7 +168,7 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
                SUM(CASE WHEN lower(category_raw) IN ('shareholdingofpromoterandpromotergroupmember',
                        'publicshareholdingmember', 'nonpromoternonpublicmember') THEN num_shares END) AS shares
         FROM read_parquet('{path}')
-        WHERE broadcast_date <> ''
+        WHERE broadcast_date <> ''{f" AND broadcast_date <= '{AS_OF}'" if AS_OF else ""}
         GROUP BY 1,2,3,4,5,6
     """).df()
     con.close()
@@ -286,7 +294,7 @@ def panel(env: str | None = None, sig: pd.DataFrame | None = None,
         con.register("sig", sig[["isin", "quarter_end", "broadcast_date", "cohort", "interval_days",
                                  "is_calendar_quarter", *SIGNAL_COLS]])
         con.execute(f"""CREATE TEMP TABLE ordered AS
-            WITH {identified_px_ctes(spine)}
+            WITH {identified_px_ctes(spine, AS_OF)}
             SELECT security_id, symbol, CAST(date AS DATE) AS d, open, close,
                    median(close * volume) OVER (PARTITION BY security_id ORDER BY date
                                                 ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS adv20,
@@ -605,11 +613,15 @@ def winsorise(x: pd.Series, lo: float = 0.01, hi: float = 0.99) -> pd.Series:
     return x.clip(x.quantile(lo), x.quantile(hi))
 
 
-def run(env: str | None = None, permutations: int = 1000) -> tuple[str, list[TestResult], dict]:
+def run(env: str | None = None, permutations: int = 1000,
+        as_of: str | None = None) -> tuple[str, list[TestResult], dict]:
     """The registered study: three tests on the primary, then EVERY robustness
     line the spec promises, each reported and never tested (200 permutations,
     no family charge). Until 2026-10-02 the spec named seven of these and the
-    code computed three; the rehearsal for registration found it (0076)."""
+    code computed three; the rehearsal for registration found it (0076).
+    `as_of` freezes the data (see AS_OF)."""
+    global AS_OF
+    AS_OF = as_of
     sh = registered_hash(env)
     sig = signals()
     pnl = panel(env, sig)

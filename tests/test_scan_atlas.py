@@ -94,3 +94,14 @@ def test_the_benchmark_projects_the_full_run(tmp_path):
     b = at.benchmark(fraction=0.5)
     assert b["candidates"] == 25 and b["sampled"] >= 12
     assert b["projected_days"] > 0 and b["within_budget"] is True
+
+
+def test_a_resume_against_different_prices_is_refused(tmp_path):
+    """Same dates, ids and settings, one price changed: the shards were scored
+    on other data. Until 2026-10-09 this resumed silently — after 0088's
+    corrections the CONFIRM directory would have reused stale shards."""
+    A.Atlas(_panel(), tmp_path, horizon=5, depth=1, shard_size=10, only=ONLY).run()
+    p = _panel()
+    p.close[100, 3] *= 0.5                                  # one unadjusted split
+    with pytest.raises(RuntimeError, match="prices_hash"):
+        A.Atlas(p, tmp_path, horizon=5, depth=1, shard_size=10, only=ONLY).run()
