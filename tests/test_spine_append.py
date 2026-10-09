@@ -123,3 +123,14 @@ def test_collect_daily_lands_fno_by_append_after_derivatives():
     assert "src.ingest.fno --append" in sh
     assert sh.index("src.archive.derivatives") < sh.index("src.ingest.fno --append") < sh.index("src.warehouse import spine")
     assert "fno --build-spine" not in sh, "a nightly full rebuild is the thing --append exists to avoid"
+
+
+def test_the_fno_land_registers_its_inputs_even_when_it_landed_nothing():
+    """2026-10-09: a run that wrote a session then died before registering left
+    the next run (0 new sessions) failing append_sessions on a foreign key."""
+    import inspect
+
+    from src.ingest import fno
+    body = inspect.getsource(fno.main)
+    reg = body.index("register_fo()")
+    assert "if fo_rows:" not in body[max(0, reg - 200):reg], "registration gated on landing rows again"

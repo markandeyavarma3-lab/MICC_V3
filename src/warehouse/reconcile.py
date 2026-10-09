@@ -217,10 +217,11 @@ def quality(env: str | None = None) -> list[Check]:
         Check("adj_negative_volume", 0, negvol),
         Check("adj_duplicate_symbol_date", 0, dupes),
         Check(
-            "adj_extreme_drops", 73, crashes,
+            "adj_extreme_drops", 55, crashes,
             "single-session falls below 0.1x. The RAW spine has 149; adjustment "
             "halves them because most are unadjusted splits. A rise here means "
-            "corporate actions stopped being applied",
+            "corporate actions stopped being applied. 73 -> 55 on 2026-10-09: "
+            "0088's confirmed corrections removed 18 seed-missing 1:10 actions",
         ),
         Check(
             "raw_nonpositive_price", 1, raw_bad,

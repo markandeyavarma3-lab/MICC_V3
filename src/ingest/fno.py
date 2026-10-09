@@ -192,10 +192,14 @@ def main(argv: list[str] | None = None) -> int:
           f"  (cutover {POI_CUTOVER})")
     if a.dry_run:
         return 0
-    if fo_rows:
-        print(f"  registered collected:fno as {register_fo()[:16]}")
-    if poi_rows:
-        print(f"  registered collected:participant_oi as {register_participant_oi()[:16]}")
+    # REGISTERED EVERY RUN, NOT ONLY WHEN THIS RUN LANDED ROWS (2026-10-09).
+    # The 21:00 run wrote that day's session into collected/fno, then died on
+    # a database lock before registering it; the rerun landed "0 sessions",
+    # skipped the registration, and append_sessions failed on a foreign key —
+    # the folder's current contents had no artefact. Registration is
+    # idempotent (ON CONFLICT DO NOTHING), so a run now heals the one before.
+    print(f"  registered collected:fno as {register_fo()[:16]}")
+    print(f"  registered collected:participant_oi as {register_participant_oi()[:16]}")
     if a.build_spine:
         from src.warehouse import spine
         print("  rebuilding fno_spine ...")

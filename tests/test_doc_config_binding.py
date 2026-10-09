@@ -656,7 +656,7 @@ class TestVerdictMatchesTheEvidence:
 
         t = self._text()
         by_sessions = {r.sessions: r for r in measure.grid("prod")}
-        for sessions, quoted in ((21, "2.12%"), (63, "4.40%"), (252, "10.85%")):
+        for sessions, quoted in ((21, "2.07%"), (63, "4.41%"), (252, "10.85%")):  # 0088 re-measure
             assert quoted in t, f"{quoted} is no longer quoted in VERDICT.md"
             actual = f"{by_sessions[sessions].mde:.2%}"
             assert actual == quoted, (
