@@ -60,7 +60,7 @@ The live, test-checked version is `docs/STATUS.md`.
 wired and 9 built). Two are impossible (NSE no longer serves historical
 bulk-deal backfills), and the remainder are blocked on data that does not
 exist freely (historical sectors, BSE deals) or ruled out by registered
-verdicts (calendar seasonality). 1005 tests pass.
+verdicts (calendar seasonality). 1009 tests pass.
 
 **Collected, every evening at 18:30 and 21:00, with the shareholding sweep at
 18:45:**
@@ -309,8 +309,8 @@ and why V3 is designed the way it is.
 | Commits | 31 |
 | Period | 16 August 2026 → present |
 | Python code | 6,243 lines |
-| Tests | 1005, all passing |
-| Decision records | 85 |
+| Tests | 1009, all passing |
+| Decision records | 86 |
 
 V3 is deliberately much smaller than V2 and does much less. It is described in
 the rest of this report.
@@ -322,7 +322,7 @@ the rest of this report.
 | Duration | 11 days | 34 days | ongoing |
 | Commits | 67 | 107 | 30 |
 | Lines of Python | 23,172 | 35,762 | 6,243 |
-| Tests | — | 375 | 1005 |
+| Tests | — | 375 | 1009 |
 | Main output | 11.3M rows of data | 136 reports, 0 promotions | discipline framework |
 | Status | superseded | frozen | active |
 | Honest verdict | **succeeded at its job** | **engineering good, research empty** | **too early to say** |
@@ -880,7 +880,7 @@ Each part exists because of a specific V2 failure.
 
 ### 7.1 The discipline framework — complete and working
 
-This is the substantial achievement so far. 1005 automated tests, all passing.
+This is the substantial achievement so far. 1009 automated tests, all passing.
 
 **Power analysis (`power.py`, 311 lines).** Answers "could this study have seen
 the effect even if it were there?" before running. If the answer is no, the
@@ -938,7 +938,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Eighty-five decision records, each recording what was decided, by whom, why, **what
+Eighty-six decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -1397,9 +1397,9 @@ audited two of them to destruction, and produced:
 
 - A dataset of 11.3 million rows spanning 2005–2026, still in use
 - A working data warehouse and collection system (V2), now frozen
-- A discipline framework with 1005 tests that enforces honest research
+- A discipline framework with 1009 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Eighty-five decision records with reversal conditions
+- Eighty-six decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history
@@ -1457,9 +1457,9 @@ made and corrected within hours on 17 August.
 
 What is next now:
 
-1. **Choose the next question.** Every registered question now has a verdict. Mutual-fund holding change (exp_004's closest test, 1.12× short) reaches its bound at ~23 cohorts, around 2028, as a new registration.
-2. **Re-measure promoter-sell power yearly**, next around September 2027.
-3. **Work the participant review queue** in short sessions, 608 names (73 ruled by 8 October).
+1. **exp_006, the forward test of exp_005's factor-neutral residual** (draft `docs/plan/EXP006_FORWARD_RESIDUAL_DRAFT.md`): frozen before ~2026-11-03, read once after ~60 forward blocks (about end-2031). Owner to decide whether five years is worth one registration (0086).
+2. **Scheduled re-measurements** (`configs/remeasure.yml`, in the daily digest): insider sells due 2027-09-15; mutual-fund holding change due 2027-10-15.
+3. **Work the participant review queue** in short sessions, 595 names (87 ruled by 9 October).
 4. **Any new hypothesis**, including exp_005's factor-neutral residual,
    needs years not yet seen to confirm it.
 

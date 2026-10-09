@@ -180,6 +180,16 @@ def render() -> str:
         out.append(f"  backup unavailable: {type(exc).__name__}")
     out.append("")
 
+    # SCHEDULED RE-MEASUREMENTS (2026-10-09): the studies that wait on their
+    # own series length, from configs/remeasure.yml.
+    out.append("SCHEDULED")
+    try:
+        from src.monitor import remeasure
+        out.extend(remeasure.lines(today))
+    except Exception as exc:  # noqa: BLE001 - a digest must not die on one section
+        out.append(f"  unavailable: {type(exc).__name__}")
+    out.append("")
+
     out.append("WHERE TO LOOK")
     out.append(f"  health     {DOCS / 'HEALTH.md'}")
     out.append(f"  status     {DOCS / 'STATUS.md'}")

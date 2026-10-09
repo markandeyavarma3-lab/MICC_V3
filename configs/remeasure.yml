@@ -1,0 +1,27 @@
+# remeasure.yml — studies that cannot be asked yet, and when to measure again.
+#
+# Every registered question now has a verdict (0076). What remains open is not a
+# question awaiting a run but a SERIES awaiting its own length: the collector
+# keeps these current, and each one's power is re-measured on a fixed date
+# rather than whenever someone remembers. A dispersion-only power run is free
+# under 0035; a registration is not, and happens only when one of these says
+# the design has reached its bound.
+#
+# The daily digest lists each item from `warn_days` before `due` and every day
+# after it until `last_done` is moved past the due date.
+warn_days: 30
+items:
+  - id: insider_promoter_sell
+    what: promoter insider sells, 12 months, market benchmark (best case 1.13x short)
+    due: 2027-09-15
+    last_done: 2026-09-29
+    command: RESEARCH_ENV=prod .venv/bin/python -m src.research.insider_power
+    report: docs/reports/INSIDER_POWER.md
+    reaches_bound: ~148 twelve-month cohorts, about 2029 (INSIDER_POWER.md)
+  - id: mf_holding_change
+    what: mutual-fund holding change, 63 sessions, CHAR_MATCHED (exp_004 d_mf, 1.12x short)
+    due: 2027-10-15
+    last_done: 2026-10-09
+    command: RESEARCH_ENV=prod .venv/bin/python -m src.research.holdings_power
+    report: docs/reports/HOLDINGS_POWER_PRELIMINARY.md
+    reaches_bound: ~23 quarterly cohorts, about 2028; then a new registration (0076)
