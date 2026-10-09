@@ -108,7 +108,7 @@ def run(kite_parquet: Path = OUT, env: str | None = None) -> dict:
         con.execute(f"CREATE TEMP TABLE t AS {audit_sql(str(kite_parquet), raw, adj)}")
         per = con.execute("""
             SELECT symbol, count(*) n, avg(raw_ok::INT) raw_share, avg(adj_ok::INT) adj_share,
-                   sum(step::INT) steps, min(date) first, max(date) last
+                   sum(step::INT) steps, min(date) first_day, max(date) last_day
             FROM t GROUP BY symbol ORDER BY symbol""").fetchall()
         steps = con.execute("""
             SELECT symbol, date, round(100 * (exp(jump) - 1), 1) pct
