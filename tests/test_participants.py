@@ -176,3 +176,10 @@ def test_an_entity_word_is_corporate_not_a_person():
         assert P.classify_name(name, pats) == "INDIVIDUAL", name
     assert P.classify_name("SBI MUTUAL FUND", pats) == "MUTUAL_FUND"      # earlier lines still win
     assert P.classify_name("ANAND RATHI SHARE AND STOCK BROKERS", pats) == "BROKER_SEC"
+
+
+def test_foreign_legal_suffixes_are_corporate():
+    """UBS AG and KAPITALFORENINGEN PENSAM INVEST were typed INDIVIDUAL (2026-10-10)."""
+    pats = P.config()["name_pattern"]
+    for name in ("UBS AG", "BNP PARIBAS SA", "KAPITALFORENINGEN PENSAM INVEST", "ACME PLC"):
+        assert P.classify_name(name, pats) == "CORPORATE", name
