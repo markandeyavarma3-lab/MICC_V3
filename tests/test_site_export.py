@@ -61,6 +61,8 @@ def wh(tmp_path, monkeypatch):
     monkeypatch.setattr(X, "_health", lambda: [])
     monkeypatch.setattr(X, "warehouse_dir", lambda env=None: tmp_path / "warehouse")
     monkeypatch.setattr(X, "COLLECTED", tmp_path / "collected")
+    from src.ingest import shp_holders
+    monkeypatch.setattr(shp_holders, "OUT", tmp_path / "collected" / "shp" / "none.parquet")
     return tmp_path
 
 
@@ -80,12 +82,31 @@ def test_a_session_file_carries_labelled_deals_flows_and_counts(wh):
     assert idx[0]["date"] == "2026-10-09" and idx[0]["deals"] == 3
 
 
+def _fields(o, acc: set) -> set:
+    """Every key and every column name in a document — the FIELDS it publishes."""
+    if isinstance(o, dict):
+        acc.update(k.lower() for k in o)
+        if isinstance(o.get("cols"), list):
+            acc.update(str(c).lower() for c in o["cols"])
+        for v in o.values():
+            _fields(v, acc)
+    elif isinstance(o, list):
+        for v in o:
+            _fields(v, acc)
+    return acc
+
+
 def test_nothing_published_carries_a_return_or_a_kite_field(wh):
+    """On FIELD names, not values: a fund may be called '... Total Return Fund'."""
     out = wh / "site"
     X.export(out)
-    text = "".join(p.read_text() for p in out.rglob("*.json")).lower()
-    for banned in ('"ret"', "return", "excess", "alpha", "kite", "signal"):
-        assert banned not in text, banned
+    fields = set()
+    for p in out.rglob("*.json"):
+        _fields(json.loads(p.read_text()), fields)
+    for f in fields:
+        for banned in ("ret", "return", "excess", "alpha", "kite", "signal", "perf", "pnl", "gain"):
+            assert banned not in f.split("_") and not f.startswith(banned), f'field "{f}" looks like {banned}'
+    assert {"sym", "cr", "rt"} <= fields                     # the check is reading real fields
 
 
 def test_the_exporter_reads_no_kite_table_and_no_outcome_table():
