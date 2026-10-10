@@ -1,0 +1,75 @@
+# Fund houses whose monthly portfolio files src/archive/mf_portfolios.py fetches.
+#
+# Each source names the page that lists the files and how to pick them out.
+# Measured 2026-10-10 by rendering every page AMFI links to
+# (amfiindia.com/online-center/portfolio-disclosure).
+#
+#   page     the listing page, rendered in Chrome
+#   match    regex a file URL (or its link text) must match
+#   exclude  regex that drops a file (default: fortnightly, half-yearly, debt-only,
+#            AAUM, factsheet, riskometer files)
+#   mode     links (default) | api — api reads file paths out of the JSON the page
+#            fetched, from responses whose URL matches `api`; relative paths are
+#            joined to `base`
+#   clicks   text of tabs to click, in order, before the links are read
+#   next, max_pages   a paginated list: the Next control's text, and how many pages to walk
+#   timeout_s  a hard limit for the source (default 600 s); each source runs in its own process
+#   undated  the URLs carry no month; each is fetched once and the file's own
+#            title dates it
+#
+# NOT COVERED, and why (2026-10-10) — see also the disabled entries below:
+#   KOTAK, BANDHAN  their sites refuse automated browsers (a Radware bot-check
+#                   page; HTTP 403). A refusal, respected — not worked around.
+#   AXIS (encrypted API traffic), UTI (the page hangs headless), EDELWEISS,
+#   CANARA, QUANT, LIC and the smaller houses: lists behind interactions not
+#   yet mapped (docs/plan/WEBSITE_PLAN.md §10). Each is added here when it is.
+
+sources:
+  - {amc: SBI, name: SBI Mutual Fund, page: "https://www.sbimf.com/portfolios",
+     match: "all-schemes-monthly-portfolio"}
+  - {amc: ICICI, name: ICICI Prudential Mutual Fund, mode: api, api: "downloads/files", wait_ms: 8000,
+     page: "https://www.icicipruamc.com/news-and-media/downloads?currentTabFilter=Disclosures&&subCatTabFilter=MonthlyPortfolioDisclosures",
+     base: "https://www.icicipruamc.com/blob", match: "Monthly-Portfolio-Disclosure"}
+  - {amc: HDFC, name: HDFC Mutual Fund, page: "https://www.hdfcfund.com/statutory-disclosure/portfolio/monthly-portfolio",
+     match: "/Monthly(%20|\\s|_)"}
+  - {amc: NIPPON, name: Nippon India Mutual Fund, page: "https://mf.nipponindiaim.com/investor-service/downloads/factsheet-portfolio-and-other-disclosures",
+     match: "NIMF-MONTHLY-PORTFOLIO", exclude: "fortnight|half|aaum|risk"}
+  - {amc: ABSL, name: Aditya Birla Sun Life Mutual Fund, page: "https://mutualfund.adityabirlacapital.com/forms-and-downloads/portfolio",
+     match: "/monthly-portfolio/"}
+  - {amc: TATA, name: Tata Mutual Fund, page: "https://www.tatamutualfund.com/schemes-related/portfolio",
+     match: "Monthly(%20|\\s)Portfolio"}
+  - {amc: MIRAE, name: Mirae Asset Mutual Fund, page: "https://www.miraeassetmf.co.in/downloads/portfolio",
+     match: "/portfolios/", next: "^\\s*(next|›|»|>)\\s*$", max_pages: 15}
+  - {amc: DSP, name: DSP Mutual Fund, page: "https://www.dspim.com/mandatory-disclosures/portfolio-disclosures",
+     match: "monthend-portfolio"}
+  - {amc: PPFAS, name: PPFAS Mutual Fund, page: "https://amc.ppfas.com/downloads/portfolio-disclosure/",
+     match: "monthly[-_]portfolio"}
+  - {amc: MOTILAL, name: Motilal Oswal Mutual Fund, page: "https://www.motilaloswalmf.com/downloads/scheme-portfolio-details",
+     match: "month-end-portfolio"}
+  - {amc: INVESCO, name: Invesco Mutual Fund, page: "https://invescomutualfund.com/literature-and-form?tab=Complete",
+     match: "completes-monthly-holding", undated: true}
+  # Disabled 2026-10-10: the library page lists only 2018-2020 portfolios.
+  - {amc: HSBC, name: HSBC Mutual Fund, disabled: true, page: "https://www.assetmanagement.hsbc.co.in/en/mutual-funds/investor-resources/information-library#&accordion1446811090=1",
+     timeout_s: 240, match: "monthly", exclude: "closed-matured|fortnight|half|aaum|factsheet|risk"}
+  # Disabled 2026-10-10: the JSON names each file by a relative path that the
+  # site serves only as its app shell; the real download route is not mapped.
+  - {amc: FRANKLIN, name: Franklin Templeton Mutual Fund, disabled: true, mode: api, api: "literature",
+     page: "https://www.franklintempletonindia.com/investor/reports?firstFilter-5",
+     base: "https://www.franklintempletonindia.com", match: "monthly-portfolio"}
+  - {amc: BARODA, name: Baroda BNP Paribas Mutual Fund, page: "https://www.barodabnpparibasmf.in/downloads/monthly-portfolio-scheme",
+     match: "Monthly_Portfolio"}
+  # Disabled 2026-10-10: the page lists only 2022 portfolios.
+  - {amc: UNION, name: Union Mutual Fund, disabled: true, page: "https://www.unionmf.com/about-us/downloads/monthly-portfolio",
+     match: "month-portfolios"}
+  - {amc: JM, name: JM Financial Mutual Fund, page: "https://www.jmfinancialmf.com/downloads/Portfolio-Disclosure",
+     match: "Monthly(%20|\\s)Portfolio"}
+  - {amc: GROWW, name: Groww Mutual Fund, page: "https://growwmf.in/statutory-disclosure/portfolio",
+     match: "Monthly(%20|\\s)Portfolio"}
+  - {amc: HELIOS, name: Helios Mutual Fund, page: "https://www.heliosmf.in/portfolio-disclosure/",
+     match: "Monthly-Portfolio"}
+  - {amc: SAMCO, name: Samco Mutual Fund, page: "https://www.samcomf.com/StatutoryDisclosure",
+     match: "MONTHLY_PORTFOLIO"}
+  - {amc: OLDBRIDGE, name: Old Bridge Mutual Fund, page: "https://oldbridgemf.com/statutory-disclosures.html",
+     match: "Monthly_Portfolio"}
+  - {amc: SHRIRAM, name: Shriram Mutual Fund, page: "https://www.shriramamc.in/investor-statutory-disclosures",
+     match: "Monthly-Portfolio-Shriram", exclude: "half|aaum|risk|complaint"}

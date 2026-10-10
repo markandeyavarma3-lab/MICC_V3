@@ -1,6 +1,7 @@
 #!/bin/zsh
 # results_nightly.sh — the quarterly-results sweep (src/archive/results.py),
-# its parse, and a site rebuild so the night's results reach the pages.
+# the mutual-fund monthly portfolios (src/archive/mf_portfolios.py), their
+# parses, and a site rebuild so the night's filings reach the pages.
 # 21:20 daily (com.institutional-research.results.plist): after the 21:00
 # collector has released the research database (2026-10-09: a reader during
 # the collector failed seven stages). Resumable: each night continues where
@@ -21,6 +22,12 @@ mkdir -p "$REPO/logs"
   echo "results=$RC"
   "$REPO/.venv/bin/python" -m src.ingest.results
   echo "results_parse=$?"
+  # Fund houses publish by the 10th; a nightly look costs a few page renders
+  # and fetches only files not already held.
+  "$REPO/.venv/bin/python" -m src.archive.mf_portfolios --months 2 --max-minutes 30
+  echo "mf=$?"
+  "$REPO/.venv/bin/python" -m src.ingest.mf_portfolios
+  echo "mf_parse=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
 } >> "$LOG" 2>&1

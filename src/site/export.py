@@ -188,10 +188,15 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
     export_filings(out, ms)
     meta["pledge_rows"], meta["pledge_unmatched"] = ms["pledge_rows"], ms["pledge_unmatched"]
     meta["industry_coverage"] = len(ms["industry"])
-    meta["stocks"] = export_stocks(out, rows, env, held, ms)
+    mf = mf_holdings()
+    sym_of: dict[str, tuple] = {}
+    meta["stocks"] = export_stocks(out, rows, env, held, ms, mf, sym_of)
+    meta["funds"] = export_funds(out, mf, sym_of)
+    meta["funds_as_of"] = mf["latest"] if mf else None
     meta["participants"] = export_participants(out, rows, env, held)
     meta["named_holders"] = len(held[0])
     _add_widest_holders(out, held)
+    _add_fund_counts(out, mf, sym_of)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     return meta
 
@@ -317,9 +322,12 @@ def _cols(cols: list[str], rows: list[list]) -> dict:
 
 
 def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple | None = None,
-                  structure: dict | None = None) -> int:
+                  structure: dict | None = None, mf: dict | None = None,
+                  sym_of: dict[str, tuple] | None = None) -> int:
     """data/stocks/<SYM>.json: identity, deals, quarterly ownership, insider
-    trades and a WEEKLY close line (daily for ~2,300 names is ~150 MB)."""
+    trades and a WEEKLY close line (daily for ~2,300 names is ~150 MB).
+    `sym_of`, when given, is filled with ISIN -> (symbol, file id, name) for
+    the fund pages, which name holdings by ISIN."""
     (out / "stocks").mkdir(parents=True, exist_ok=True)
     deals: dict[str, list] = defaultdict(list)
     co: dict[str, str] = {}
@@ -419,7 +427,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "valuation": valuation(fund.get(sym, []), weekly[sym][-1][1] if weekly.get(sym) else None),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
-                         if sym in ms_["pledge"] else None}
+                         if sym in ms_["pledge"] else None,
+               "mf": mf_stock_doc(mf, isin, fund[sym][0][10] if fund.get(sym) else None)}
+        if sym_of is not None and isin:
+            sym_of[isin] = (sym, sym_file(sym), name)
         (out / "stocks" / f"{sym_file(sym)}.json").write_text(json.dumps(doc, separators=(",", ":")))
         screen.append(_screen_row(sym, doc, deals.get(sym, []), cut12))
     (out / "screener.json").write_text(json.dumps(_cols(SCREEN_COLS, screen), separators=(",", ":")))
@@ -435,7 +446,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
 
 
 SCREEN_COLS = ["sym", "sid", "co", "industry", "indices", "close", "mcap_cr", "pe", "rev_yoy", "pat_yoy",
-               "net_margin", "promoter", "fpi", "mf", "fpi_chg", "mf_chg", "pledged", "deals_12m", "holders"]
+               "net_margin", "promoter", "fpi", "mf", "fpi_chg", "mf_chg", "pledged", "deals_12m", "holders",
+               "mf_schemes"]
 
 
 def _screen_row(sym: str, doc: dict, deals: list, cut12: str) -> list:
@@ -464,7 +476,8 @@ def _screen_row(sym: str, doc: dict, deals: list, cut12: str) -> list:
             last[1] if last else None, last[2] if last else None, last[4] if last else None, chg(2), chg(4),
             (doc.get("pledge") or {}).get("pledged_pct_of_promoter"),
             sum(1 for d in deals if d[0] > cut12 and not d[8]),
-            len(h["now"]["rows"]) if h else 0]
+            len(h["now"]["rows"]) if h else 0,
+            (doc.get("mf") or {}).get("schemes", 0)]
 
 
 #: A filing's holder group -> this site's participant type, used only when the
@@ -551,6 +564,30 @@ def _add_widest_holders(out: Path, held: tuple) -> None:
     path = out / "insights.json"
     doc = json.loads(path.read_text()) if path.exists() else {}
     doc["widest_holders"] = _cols(["who", "pid", "type", "companies", "new", "exited"], rows[:40])
+    path.write_text(json.dumps(doc, separators=(",", ":")))
+
+
+def _add_fund_counts(out: Path, mf: dict | None, sym_of: dict[str, tuple]) -> None:
+    """insights.json gains, for the latest month of scheme portfolios, the
+    companies held by the most schemes, and those the most schemes newly
+    bought or fully sold — counts of schemes, not a view on the stock."""
+    if not mf:
+        return
+    rows = []
+    for isin, h in mf["by_isin"].items():
+        if isin not in sym_of:
+            continue
+        sym, sid, co = sym_of[isin]
+        rows.append([sym, sid, co, len(h["rows"]), len({r[0] for r in h["rows"]}),
+                     round(sum(r[4] or 0 for r in h["rows"]), 1), sum(1 for r in h["rows"] if r[7] == "NEW"),
+                     len(h["exits"])])
+    cols = ["sym", "sid", "co", "schemes", "houses", "cr", "new", "exited"]
+    path = out / "insights.json"
+    doc = json.loads(path.read_text()) if path.exists() else {}
+    doc["funds"] = {"as_of": mf["latest"],
+                    "most_held": _cols(cols, sorted(rows, key=lambda r: -r[3])[:30]),
+                    "most_new": _cols(cols, sorted((r for r in rows if r[6]), key=lambda r: -r[6])[:30]),
+                    "most_exited": _cols(cols, sorted((r for r in rows if r[7]), key=lambda r: -r[7])[:30])}
     path.write_text(json.dumps(doc, separators=(",", ":")))
 
 
@@ -728,6 +765,139 @@ def _holders_doc(h: dict | None) -> dict | None:
     return {"quarter": h.get("quarter"), "now": _cols(cols, h["now"]), "exited": _cols(cols, h["exited"])}
 
 
+def is_equity_isin(isin: str) -> bool:
+    """An Indian company's equity share: INE + issuer + security type 01.
+    Debentures (07/08), CPs (14), CDs (16), fund units (INF) and government
+    paper (IN0..) are not equity."""
+    return len(isin) == 12 and isin.startswith("INE") and isin[7:9] == "01"
+
+
+def mf_holdings() -> dict | None:
+    """The monthly scheme portfolios (src/ingest/mf_portfolios.py), shaped for
+    the site: per scheme its latest month and the one before; per ISIN the
+    schemes holding it in the latest month. Levels and changes as filed."""
+    from src.ingest import mf_portfolios as mfi
+    if not mfi.OUT.exists():
+        return None
+    q = duckdb.connect()
+    try:
+        # One file per (house, scheme, month): a house that serves the same
+        # month twice (a corrected file) must not count it twice.
+        rows = q.execute(f"""
+            WITH t AS (SELECT * FROM read_parquet('{mfi.OUT}') WHERE as_of IS NOT NULL),
+            n AS (SELECT amc, scheme, as_of, source_file, count(*) k FROM t GROUP BY ALL),
+            pick AS (SELECT amc, scheme, as_of, arg_max(source_file, k) f FROM n GROUP BY ALL)
+            SELECT t.amc, t.scheme, t.as_of, t.isin, any_value(t.name), any_value(t.industry),
+                   sum(t.qty), sum(t.value_cr), sum(t.pct)
+            FROM t JOIN pick p ON p.amc = t.amc AND p.scheme = t.scheme AND p.as_of = t.as_of AND p.f = t.source_file
+            GROUP BY ALL ORDER BY 1, 2, 3""").fetchall()
+    finally:
+        q.close()
+    if not rows:
+        return None
+    try:
+        import yaml
+        names = {s["amc"]: s.get("name", s["amc"]) for s in yaml.safe_load(
+            (ROOT / "configs" / "mf_sources.yml").read_text())["sources"]}
+    except (OSError, KeyError, TypeError):
+        names = {}
+    month: dict[tuple, dict[str, dict[str, list]]] = defaultdict(lambda: defaultdict(dict))
+    for amc, scheme, as_of, isin, name, ind, qty, cr, pct in rows:
+        month[(amc, scheme)][as_of][isin] = [name, ind, qty, cr, pct]
+    schemes = {}
+    for (amc, scheme), by in month.items():
+        ms = sorted(by)
+        last = ms[-1]
+        prev = ms[-2] if len(ms) > 1 and (date.fromisoformat(last) - date.fromisoformat(ms[-2])).days <= 45 else None
+        schemes[(amc, scheme)] = {"amc": amc, "house": names.get(amc, amc), "scheme": scheme,
+                                  "sid": slug(f"{amc} {scheme}"), "as_of": last, "prev_as_of": prev,
+                                  "now": by[last], "prev": by[prev] if prev else {}}
+    latest = max(s["as_of"] for s in schemes.values())
+    by_isin: dict[str, dict] = defaultdict(lambda: {"rows": [], "exits": []})
+    for s in schemes.values():
+        if s["as_of"] != latest:
+            continue
+        for isin, (_n, _i, qty, cr, pct) in s["now"].items():
+            if not is_equity_isin(isin):
+                continue
+            p = s["prev"].get(isin) if s["prev_as_of"] else None
+            status = None if not s["prev_as_of"] else "NEW" if p is None else None
+            chg = None if not s["prev_as_of"] or qty is None else qty - ((p[2] or 0) if p else 0)
+            by_isin[isin]["rows"].append([s["house"], s["scheme"], s["sid"], qty, _r(cr, 2), _r(pct, 2),
+                                          chg, status])
+        for isin, (_n, _i, qty, cr, _p) in s["prev"].items():
+            if is_equity_isin(isin) and isin not in s["now"]:
+                by_isin[isin]["exits"].append([s["house"], s["scheme"], s["sid"], qty])
+    houses = sorted({(s["amc"], s["house"]) for s in schemes.values()})
+    cover = [[a, h, max(s["as_of"] for s in schemes.values() if s["amc"] == a),
+              sum(1 for s in schemes.values() if s["amc"] == a and s["as_of"] == latest)] for a, h in houses]
+    return {"latest": latest, "schemes": schemes, "by_isin": dict(by_isin), "coverage": cover}
+
+
+def _r(v, n):
+    return None if v is None else round(v, n)
+
+
+MF_COLS = ["house", "scheme", "fid", "qty", "cr", "pct_of_scheme", "qty_chg", "status"]
+
+
+def mf_stock_doc(mf: dict | None, isin: str | None, shares_cr: float | None) -> dict | None:
+    """The schemes holding one company in the latest month, largest first."""
+    if not mf or not isin or isin not in mf["by_isin"]:
+        return None
+    h = mf["by_isin"][isin]
+    rows = sorted(h["rows"], key=lambda r: -(r[4] or 0))
+    qty = sum(r[3] or 0 for r in rows)
+    return {"as_of": mf["latest"], "schemes": len(rows), "houses": len({r[0] for r in rows}),
+            "qty": qty, "cr": _r(sum(r[4] or 0 for r in rows), 1),
+            "pct_of_company": round(100 * qty / (shares_cr * 1e7), 2) if shares_cr and qty else None,
+            "new": sum(1 for r in rows if r[7] == "NEW"), "held": _cols(MF_COLS, rows),
+            "exited": _cols(["house", "scheme", "fid", "prev_qty"], h["exits"])}
+
+
+def export_funds(out: Path, mf: dict | None, sym_of: dict[str, tuple]) -> int:
+    """funds.json (every scheme, every house's latest month) and
+    funds/<sid>.json (a scheme's holdings with last month's change)."""
+    if not mf:
+        return 0
+    (out / "funds").mkdir(parents=True, exist_ok=True)
+    index = []
+    for s in mf["schemes"].values():
+        eq, other = [], []
+        for isin, (name, ind, qty, cr, pct) in s["now"].items():
+            sym, sid, co = sym_of.get(isin, (None, None, None))
+            if is_equity_isin(isin):
+                p = s["prev"].get(isin) if s["prev_as_of"] else None
+                eq.append([isin, sym, sid, co or name, ind, qty, _r(cr, 2), _r(pct, 2),
+                           None if not s["prev_as_of"] or qty is None else qty - ((p[2] or 0) if p else 0),
+                           None if not s["prev_as_of"] else "NEW" if p is None else None])
+            else:
+                other.append([isin, name, ind, _r(cr, 2), _r(pct, 2)])
+        exits = []
+        for isin, p in s["prev"].items():
+            if is_equity_isin(isin) and isin not in s["now"]:
+                sym, sid, co = sym_of.get(isin, (None, None, None))
+                exits.append([isin, sym, sid, co or p[0], p[2]])
+        eq.sort(key=lambda r: -(r[6] or 0))
+        other.sort(key=lambda r: -(r[3] or 0))
+        total = sum(v[3] or 0 for v in s["now"].values())
+        doc = {k: s[k] for k in ("amc", "house", "scheme", "sid", "as_of", "prev_as_of")}
+        doc.update({"total_cr": _r(total, 1), "equity_cr": _r(sum(r[6] or 0 for r in eq), 1),
+                    "equity_pct": _r(sum(r[7] or 0 for r in eq), 1),
+                    "equity": _cols(["isin", "sym", "sid", "co", "industry", "qty", "cr", "pct", "qty_chg", "status"], eq),
+                    "exited": _cols(["isin", "sym", "sid", "co", "prev_qty"], exits),
+                    "other": _cols(["isin", "name", "rating", "cr", "pct"], other[:60]), "other_n": len(other)})
+        (out / "funds" / f"{s['sid']}.json").write_text(json.dumps(doc, separators=(",", ":")))
+        index.append([s["sid"], s["amc"], s["house"], s["scheme"], s["as_of"], len(eq), doc["total_cr"],
+                      doc["equity_pct"], sum(1 for r in eq if r[9] == "NEW"), len(exits)])
+    index.sort(key=lambda r: (r[2], -(r[6] or 0)))
+    (out / "funds.json").write_text(json.dumps(
+        {"latest": mf["latest"], "coverage": _cols(["amc", "house", "latest", "schemes_latest"], mf["coverage"]),
+         **_cols(["fid", "amc", "house", "scheme", "as_of", "stocks", "total_cr", "equity_pct", "new", "exits"], index)},
+        separators=(",", ":")))
+    return len(index)
+
+
 def export_participants(out: Path, rows: list, env: str | None = None,
                         holdings: tuple | None = None) -> int:
     """data/participants/<slug>.json: identity, every spelling filed, how the
@@ -790,9 +960,11 @@ def export_participants(out: Path, rows: list, env: str | None = None,
         index.append([doc["name"], TYPE_LABEL.get(t, t), slug(who), len(ds), t, len(holding_now)])
     index.sort(key=lambda x: -x[3])
     (out / "participants.json").write_text(json.dumps(index, separators=(",", ":")))
-    # The header search: every stock and every participant, as [label, kind, key, hint].
+    # The header search: every stock, participant and fund scheme, as [label, kind, key, hint].
     stocks = json.loads((out / "stocks.json").read_text()) if (out / "stocks.json").exists() else []
-    search = [[r[0], "s", r[2], r[1]] for r in stocks] + [[r[0], "p", r[2], r[1]] for r in index]
+    funds = json.loads((out / "funds.json").read_text())["rows"] if (out / "funds.json").exists() else []
+    search = ([[r[0], "s", r[2], r[1]] for r in stocks] + [[r[0], "p", r[2], r[1]] for r in index]
+              + [[r[3], "f", r[0], r[2]] for r in funds])
     (out / "search.json").write_text(json.dumps(search, separators=(",", ":")))
     return len(index)
 
