@@ -29,7 +29,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -390,6 +390,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     finally:
         q.close()
     by_co = (holdings or ({}, {}, {}, {}))[1]
+    fund = fundamentals()
     ms_ = structure or {"industry": {}, "indices": {}, "actions": {}, "ann": {}, "meet": {}, "pledge": {}}
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
     for sym in syms:
@@ -411,12 +412,17 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "announcements": _cols(["t", "desc", "text", "file"],
                                       sorted(ms_["ann"].get(sym, {}).values(), key=lambda a: a[0], reverse=True)[:80]),
                "meetings": _cols(["d", "purpose", "desc"], sorted(ms_["meet"].get(sym, set()), reverse=True)[:40]),
+               "results": _cols(RESULT_COLS, fund.get(sym, [])),
+               "valuation": valuation(fund.get(sym, []), weekly[sym][-1][1] if weekly.get(sym) else None),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
                          if sym in ms_["pledge"] else None}
         (out / "stocks" / f"{sym_file(sym)}.json").write_text(json.dumps(doc, separators=(",", ":")))
+    def _val(s):
+        v = valuation(fund.get(s, []), weekly[s][-1][1] if weekly.get(s) else None) or {}
+        return v.get("mcap_cr"), v.get("pe")
     index = sorted(([s, co.get(s) or ident.get(s, {}).get("co") or "", sym_file(s), len(deals.get(s, [])),
-                     ms_["industry"].get(s), ms_["indices"].get(s, [])]
+                     ms_["industry"].get(s), ms_["indices"].get(s, []), *_val(s)]
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
@@ -624,6 +630,56 @@ def export_filings(out: Path, ms: dict) -> None:
                              "depository_pledged_pct", "as_of"], pl),
            "industries": len(set(ms["industry"].values())), "industry_coverage": len(ms["industry"])}
     (out / "filings.json").write_text(json.dumps(doc, separators=(",", ":")))
+
+
+def fundamentals() -> dict[str, list]:
+    """symbol -> quarterly results, newest first: consolidated where the
+    company files it, standalone otherwise (src/ingest/results.py)."""
+    path = COLLECTED / "results" / "results_quarterly.parquet"
+    if not path.exists():
+        return {}
+    q = duckdb.connect()
+    try:
+        rows = q.execute(f"""
+            SELECT symbol, qe, consolidated, revenue, other_income, pbt, pat, coalesce(pat_owners, pat), eps,
+                   finance_costs, depreciation, paid_up, face_value, bank, filed
+            FROM (SELECT *, row_number() OVER (PARTITION BY symbol, qe ORDER BY consolidated DESC, filed DESC) rk
+                  FROM read_parquet('{path}')) WHERE rk = 1 ORDER BY symbol, qe DESC""").fetchall()
+    finally:
+        q.close()
+    out: dict[str, list] = defaultdict(list)
+    r2 = lambda v: None if v is None else round(v, 2)  # noqa: E731
+    for sym, qe, cons, rev, oi, pbt, pat, pat_o, eps, fin, dep, paid, fv, bank, filed in rows:
+        shares = (paid / fv) if paid and fv else None          # crore shares (paid-up Rs cr / face Rs)
+        out[sym].append([qe, bool(cons), r2(rev), r2(oi), r2(pbt), r2(pat), r2(pat_o), r2(eps), r2(fin), r2(dep),
+                         None if shares is None else round(shares, 4), bool(bank), filed])
+    return out
+
+
+RESULT_COLS = ["qe", "consolidated", "revenue", "other_income", "pbt", "pat", "pat_owners", "eps",
+               "finance_costs", "depreciation", "shares_cr", "bank", "filed"]
+
+
+def valuation(res: list, last_close: float | None) -> dict | None:
+    """Market cap and trailing P/E from the latest close: market cap = close x
+    shares outstanding; P/E = market cap / the last four quarters' profit to
+    owners — profit, not summed EPS, so a bonus inside the window cannot
+    distort it. Needs four consecutive quarters; None otherwise."""
+    if not res or not last_close:
+        return None
+    shares = res[0][10]
+    mcap = last_close * shares if shares else None          # Rs crore: price x crore shares
+    ttm = None
+    if len(res) >= 4:
+        qs = [date.fromisoformat(r[0]) for r in res[:4]]
+        if (qs[0] - qs[3]).days <= 290 and all(r[6] is not None for r in res[:4]):
+            ttm = sum(r[6] for r in res[:4])
+    rev_ttm = sum(r[2] for r in res[:4]) if len(res) >= 4 and all(r[2] is not None for r in res[:4]) else None
+    return {"close": last_close, "mcap_cr": None if mcap is None else round(mcap, 0),
+            "ttm_profit_cr": None if ttm is None else round(ttm, 1),
+            "ttm_revenue_cr": None if rev_ttm is None else round(rev_ttm, 1),
+            "pe": round(mcap / ttm, 1) if mcap and ttm and ttm > 0 else None,
+            "as_of_quarter": res[0][0]}
 
 
 def _holders_doc(h: dict | None) -> dict | None:

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.institutional-research.results.plist — the nightly quarterly-results sweep
+  (src/archive/results.py), its parse and a site rebuild (scripts/results_nightly.sh).
+
+  21:20 every day: after the 21:00 collector has released the research
+  database; the script also waits while collect_daily.sh runs. A 90-minute
+  wall clock; resumable, so a short night only slows the backfill.
+
+  Install / reload:
+      cp scripts/com.institutional-research.results.plist ~/Library/LaunchAgents/
+      launchctl bootout   gui/$UID/com.institutional-research.results 2>/dev/null
+      launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.institutional-research.results.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.institutional-research.results</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/satya_03/Workspace/institutional-research/scripts/results_nightly.sh</string>
+    </array>
+    <!--
+      21:20 DAILY (2026-10-10): the results backfill and each night's new
+      filings, after the 21:00 collector.
+    -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>20</integer></dict>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_results.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/satya_03/Workspace/institutional-research/logs/launchd_results.err</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/satya_03/Workspace/institutional-research</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
