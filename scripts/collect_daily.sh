@@ -149,6 +149,11 @@ mkdir -p "$REPO/logs"
   note "corpact" $?
   "$REPO/.venv/bin/python" -m src.ingest.corp_actions
   note "corpact_parse" $?
+  # NSE filings for the public site (src/archive/nse_filings.py): promoter
+  # pledges (a snapshot) and the last week of announcements and board
+  # meetings. Dated feeds: a missed night is refetched by the next one.
+  "$REPO/.venv/bin/python" -m src.archive.nse_filings --max-minutes 10
+  note "nse_filings" $?
   # INSIDER FILINGS (0046). The best-powered event class measured so far —
   # promoter sells at 1.25x short against consensus's 1.94x — and the only one
   # whose gap closes in years rather than decades. Every session collected is a
