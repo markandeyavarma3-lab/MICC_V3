@@ -288,6 +288,12 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # truthfully instead of being drowned in a nightly false one.
   "$REPO/.venv/bin/python" -m src.monitor.health
   note "health" $?
+  # THE PUBLIC SITE, LAST (docs/plan/WEBSITE_PLAN.md §5.1). Export, build and,
+  # once the site repo has a remote, publish one orphan snapshot. After every
+  # writer in this run, so it reads a finished warehouse and never holds a
+  # lock a stage needs (2026-10-09: a reader at 21:00 failed seven stages).
+  "$REPO/scripts/site_publish.sh"
+  note "site" $?
   # THE DAILY DIGEST. One screen answering "did last night work, and is anything
   # rotting" — the question HEALTH.md, STATUS.md and DATA_INVENTORY.md each
   # answer a piece of and none answers whole.

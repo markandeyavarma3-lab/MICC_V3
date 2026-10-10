@@ -249,3 +249,18 @@ def test_a_retry_that_also_fails_pages_and_other_failures_still_count(tmp_path):
                                                                                      "FAILED": " mart"}
     from src.monitor.stage_alert import COLLECTION_STAGES
     assert "deals_retry" in COLLECTION_STAGES
+
+
+def test_the_site_is_published_after_every_writer_and_the_health_check():
+    s = SH.read_text()
+    site = s.index('"$REPO/scripts/site_publish.sh"')
+    for earlier in ('-m src.research.outcomes', '"$REPO/scripts/backup.sh"', "-m src.monitor.health"):
+        assert s.index(earlier) < site, earlier
+
+
+def test_the_publish_script_force_pushes_one_orphan_snapshot_and_holds_no_secret():
+    from src.common.paths import ROOT
+    pub = (ROOT / "scripts" / "site_publish.sh").read_text()
+    assert "git init -q -b gh-pages" in pub and "push -q -f" in pub and ".nojekyll" in pub
+    import re
+    assert not re.search(r"ghp_|github_pat_|x-access-token|https://[^/\s]+@", pub)
