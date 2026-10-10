@@ -89,14 +89,17 @@ def targets(old_rows: list[dict], new_rows: list[dict], quarters: int = QUARTERS
     if there is one, else the latest standalone; the newest `quarters`
     quarter-ends. Pure, so the choice is testable."""
     cand: list[dict] = []
+    # A filing without an XBRL file carries "-" (AMARJOTHI, 2026-10-10): it is
+    # not a candidate, so the quarter falls to the next filing that has one.
+    ok = lambda u: bool(u) and u.rstrip().lower().endswith(".xml")  # noqa: E731
     for r in old_rows:
         qe, bd = _d(r.get("toDate")), r.get("broadCastDate") or ""
-        if qe and r.get("xbrl") and r.get("period", "Quarterly") == "Quarterly":
+        if qe and ok(r.get("xbrl")) and r.get("period", "Quarterly") == "Quarterly":
             cand.append({"qe": qe, "cons": r.get("consolidated") == "Consolidated", "url": r["xbrl"],
                          "filed": _d(bd.split(" ")[0]) or "", "route": "old"})
     for r in new_rows:
         qe, bd = _d(r.get("qe_Date")), r.get("broadcast_Date") or ""
-        if qe and r.get("xbrl") and "Financial" in (r.get("type") or "Financial"):
+        if qe and ok(r.get("xbrl")) and "Financial" in (r.get("type") or "Financial"):
             cand.append({"qe": qe, "cons": r.get("consolidated") == "Consolidated", "url": r["xbrl"],
                          "filed": _d(bd.split(" ")[0]) or "", "route": "new"})
     best: dict[str, dict] = {}
@@ -185,7 +188,10 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
             except Exception as e:  # noqa: BLE001
                 record({**base, "status": "FAILED", "error": str(e)[:200]})
                 st["failed"] += 1
-                streak += 1
+                # The breaker is for being refused or cut off; one missing file
+                # (a 404) says nothing about the session and must not end the night.
+                if "404" not in str(e):
+                    streak += 1
                 if streak >= BREAKER:
                     st["stopped"] = f"{streak} consecutive failures"
                     return st
