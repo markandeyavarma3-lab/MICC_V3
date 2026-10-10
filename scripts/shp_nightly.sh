@@ -36,6 +36,9 @@ mkdir -p "$REPO/logs"
   # archive, never a delta, so a parser fix reaches every row on the next run.
   "$REPO/.venv/bin/python" -m src.ingest.shp
   echo "shp_parse=$?"
+  # Named holders above 1% (the site's "who owns what"): same filings, read again.
+  "$REPO/.venv/bin/python" -m src.ingest.shp_holders
+  echo "shp_holders=$?"
 } >> "$LOG" 2>&1
 
 if [ "$RC" -ne 0 ]; then

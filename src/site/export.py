@@ -183,8 +183,11 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
             "health": _health()}
     export_markets(out, env)
     export_insights(out, rows)
-    meta["stocks"] = export_stocks(out, rows, env)
-    meta["participants"] = export_participants(out, rows, env)
+    held = named_holdings()
+    meta["stocks"] = export_stocks(out, rows, env, held)
+    meta["participants"] = export_participants(out, rows, env, held)
+    meta["named_holders"] = len(held[0])
+    _add_widest_holders(out, held)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     return meta
 
@@ -309,7 +312,7 @@ def _cols(cols: list[str], rows: list[list]) -> dict:
     return {"cols": cols, "rows": rows}
 
 
-def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
+def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple | None = None) -> int:
     """data/stocks/<SYM>.json: identity, deals, quarterly ownership, insider
     trades and a WEEKLY close line (daily for ~2,300 names is ~150 MB)."""
     (out / "stocks").mkdir(parents=True, exist_ok=True)
@@ -381,6 +384,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
             weekly[sym].append([d, round(c, 2)])
     finally:
         q.close()
+    by_co = (holdings or ({}, {}, {}, {}))[1]
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
     for sym in syms:
         i = ident.get(sym, {})
@@ -394,7 +398,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
                "deals": _cols(["d", "who", "pid", "type", "side", "qty", "px", "cr", "rt", "kind"], deals.get(sym, [])),
                "own": _cols(["q", *OWNERSHIP], own.get(isin, []) if isin else []),
                "insider": _cols(["d", "person", "cat", "txn", "qty", "cr", "mode"], insider.get(sym, [])),
-               "px": _cols(["d", "close"], weekly.get(sym, []))}
+               "px": _cols(["d", "close"], weekly.get(sym, [])),
+               "holders": _holders_doc(by_co.get(isin) if isin else None)}
         (out / "stocks" / f"{sym_file(sym)}.json").write_text(json.dumps(doc, separators=(",", ":")))
     index = sorted(([s, co.get(s) or ident.get(s, {}).get("co") or "", sym_file(s), len(deals.get(s, []))]
                     for s in syms), key=lambda x: -x[3])
@@ -402,7 +407,100 @@ def export_stocks(out: Path, rows: list, env: str | None = None) -> int:
     return len(syms)
 
 
-def export_participants(out: Path, rows: list, env: str | None = None) -> int:
+#: A filing's holder group -> this site's participant type, used only when the
+#: holder is not already a typed participant (a ruling or the master wins).
+GROUP_TYPE = {"MF": "MUTUAL_FUND", "FPI": "FOREIGN_INSTITUTION", "FOREIGN": "FOREIGN_INSTITUTION",
+              "INSURANCE": "INSURANCE", "AIF": "AIF_PMS", "BANK_FI": "BANK", "GOVERNMENT": "GOVERNMENT",
+              "CORPORATE": "CORPORATE", "INDIVIDUAL": "INDIVIDUAL", "OTHER": "UNKNOWN"}
+
+
+def named_holdings() -> tuple[dict[str, list], dict[str, dict], dict[str, str], dict[str, str]]:
+    """From the named >1% public holders in every shareholding filing
+    (src/ingest/shp_holders.py): per INVESTOR, every company it is named in at
+    that company's latest filing, with the previous filing's figure; per
+    COMPANY (isin), the named holders now and those named last quarter but not
+    now. Names are cleaned with entity_names.normalize — the participant
+    rule — so an investor's holdings and its deals meet on one page.
+
+    Returns (by_investor, by_company, display_name, group)."""
+    from src.ingest.shp_holders import OUT as HOLDERS
+    from src.research.entity_names import normalize
+    if not HOLDERS.exists():
+        return {}, {}, {}, {}
+    q = duckdb.connect()
+    try:
+        raw = q.execute(f"SELECT DISTINCT name FROM read_parquet('{HOLDERS}') WHERE tbl = 'PUBLIC' AND NOT is_label").fetchall()
+        q.execute("CREATE TEMP TABLE nm (name VARCHAR, ent VARCHAR)")
+        q.executemany("INSERT INTO nm VALUES (?, ?)", [(n, normalize(n)) for (n,) in raw])
+        rows = q.execute(f"""
+            WITH h AS (
+                SELECT h.isin, any_value(h.symbol) sym, any_value(h.company) co, h.quarter_end q, nm.ent,
+                       sum(h.pct) pct, any_value(h.grp) grp, any_value(h.name) raw,
+                       h.source_file
+                FROM read_parquet('{HOLDERS}') h JOIN nm USING (name)
+                WHERE h.tbl = 'PUBLIC' AND NOT h.is_label AND h.quarter_end <> ''
+                GROUP BY h.isin, h.quarter_end, nm.ent, h.source_file),
+            -- one filing per (company, quarter): the latest-named file wins a revision
+            f AS (SELECT isin, q, max(source_file) sf FROM h GROUP BY 1, 2),
+            hh AS (SELECT h.* FROM h JOIN f ON f.isin = h.isin AND f.q = h.q AND f.sf = h.source_file),
+            qs AS (SELECT isin, q, row_number() OVER (PARTITION BY isin ORDER BY q DESC) rk FROM f),
+            cur AS (SELECT isin, q FROM qs WHERE rk = 1),
+            prv AS (SELECT isin, q FROM qs WHERE rk = 2),
+            a AS (SELECT hh.* FROM hh JOIN cur USING (isin, q)),
+            b AS (SELECT hh.* FROM hh JOIN prv USING (isin, q)),
+            first_seen AS (SELECT isin, ent, min(q) fq FROM hh GROUP BY 1, 2)
+            SELECT coalesce(a.isin, b.isin), coalesce(a.sym, b.sym), coalesce(a.co, b.co), coalesce(a.ent, b.ent),
+                   coalesce(a.grp, b.grp), coalesce(a.raw, b.raw), cur.q, a.pct, b.pct, fs.fq
+            FROM a FULL JOIN b ON a.isin = b.isin AND a.ent = b.ent
+            JOIN cur ON cur.isin = coalesce(a.isin, b.isin)
+            JOIN first_seen fs ON fs.isin = coalesce(a.isin, b.isin) AND fs.ent = coalesce(a.ent, b.ent)
+            ORDER BY 1, 8 DESC NULLS LAST""").fetchall()
+        spell = dict(q.execute("SELECT ent, coalesce(mode(name) FILTER (WHERE name <> lower(name)), mode(name)) FROM nm GROUP BY 1").fetchall())
+    finally:
+        q.close()
+    by_inv: dict[str, list] = defaultdict(list)
+    by_co: dict[str, dict] = defaultdict(lambda: {"now": [], "exited": []})
+    group: dict[str, str] = {}
+    for isin, sym, co, ent, grp, _raw, qcur, pct, prev, fq in rows:
+        status = ("exited" if pct is None else "new" if prev is None else
+                  "up" if pct > prev + 0.005 else "down" if pct < prev - 0.005 else "same")
+        rec = [round(pct, 2) if pct is not None else None, round(prev, 2) if prev is not None else None, status, fq]
+        group.setdefault(ent, grp)
+        if pct is not None or prev is not None:
+            by_inv[ent].append([sym, sym_file(sym), co, qcur, *rec])
+        entry = [spell.get(ent, ent), slug(ent), grp, *rec]
+        by_co[isin]["quarter"] = qcur
+        by_co[isin]["exited" if pct is None else "now"].append(entry)
+    return by_inv, by_co, spell, group
+
+
+def _add_widest_holders(out: Path, held: tuple) -> None:
+    """insights.json gains the investors named (>1%) in the most companies at
+    their latest filings — a count of where they are, not how they did."""
+    by_inv, _co, spell, group = held
+    rows = []
+    for ent, hs in by_inv.items():
+        now = [h for h in hs if h[4] is not None]
+        if not now:
+            continue
+        rows.append([spell.get(ent, ent), slug(ent), GROUP_TYPE.get(group.get(ent, ""), "UNKNOWN"), len(now),
+                     sum(h[6] == "new" for h in now), sum(h[6] == "exited" for h in hs)])
+    rows.sort(key=lambda r: -r[3])
+    path = out / "insights.json"
+    doc = json.loads(path.read_text()) if path.exists() else {}
+    doc["widest_holders"] = _cols(["who", "pid", "type", "companies", "new", "exited"], rows[:40])
+    path.write_text(json.dumps(doc, separators=(",", ":")))
+
+
+def _holders_doc(h: dict | None) -> dict | None:
+    if not h:
+        return None
+    cols = ["name", "slug", "group", "pct", "prev_pct", "status", "first_q"]
+    return {"quarter": h.get("quarter"), "now": _cols(cols, h["now"]), "exited": _cols(cols, h["exited"])}
+
+
+def export_participants(out: Path, rows: list, env: str | None = None,
+                        holdings: tuple | None = None) -> int:
     """data/participants/<slug>.json: identity, every spelling filed, how the
     type was set, behaviour (descriptive only), deals. No returns, no rank."""
     (out / "participants").mkdir(parents=True, exist_ok=True)
@@ -426,10 +524,13 @@ def export_participants(out: Path, rows: list, env: str | None = None) -> int:
         d = _deal(r)
         by[d["who"]].append([r[0], d["sym"], d["sid"], d["side"], d["qty"], d["px"], d["cr"],
                              int(d["rt"]), d["kind"], d["client"]])
+    by_inv, _by_co, spell, hgroup = holdings or ({}, {}, {}, {})
     index = []
-    for who, ds in by.items():
+    for who in set(by) | set(by_inv):
+        ds = by.get(who, [])
         m = master.get(who, {})
-        t = m.get("type") or "UNKNOWN"
+        t = m.get("type") or GROUP_TYPE.get(hgroup.get(who, ""), "UNKNOWN")
+        held = sorted(by_inv.get(who, []), key=lambda h: -(h[4] or 0))
         years: dict[str, list[int]] = defaultdict(lambda: [0, 0])
         for x in ds:
             years[x[0][:4]][0 if x[3] == "BUY" else 1] += 1
@@ -438,19 +539,26 @@ def export_participants(out: Path, rows: list, env: str | None = None) -> int:
             stocks[x[1]] += 1
         stock_days = {(x[0], x[1]) for x in ds}
         rt_days = {(x[0], x[1]) for x in ds if x[7]}
-        doc = {"name": who, "slug": slug(who), "type": t, "label": TYPE_LABEL.get(t, t),
-               "how": m.get("how"), "confidence": m.get("conf"), "review": m.get("status"),
+        holding_now = [h for h in held if h[4] is not None]
+        # Shown as most often FILED ("LIC of India"); matched on the cleaned
+        # form, which strips words like CORPORATION ("LIFE INSURANCE OF INDIA").
+        doc = {"name": spell.get(who) or who, "slug": slug(who), "type": t, "cleaned": who,
+               "label": TYPE_LABEL.get(t, t),
+               "how": m.get("how") or ("FILING_CATEGORY" if who in hgroup else None),
+               "confidence": m.get("conf"), "review": m.get("status"),
                "notes": m.get("notes"), "house": house_name(m.get("house")), "spellings": spellings.get(who, []),
                "stats": {"deals": len(ds), "buys": sum(x[3] == "BUY" for x in ds),
                          "sells": sum(x[3] != "BUY" for x in ds),
                          "stock_days": len(stock_days),
                          "roundtrip_share": round(len(rt_days) / len(stock_days), 4) if stock_days else 0.0,
-                         "first": ds[0][0], "last": ds[-1][0],
+                         "first": ds[0][0] if ds else None, "last": ds[-1][0] if ds else None,
                          "years": sorted([y, b, s] for y, (b, s) in years.items()),
-                         "top_stocks": sorted(stocks.items(), key=lambda kv: -kv[1])[:15]},
+                         "top_stocks": sorted(stocks.items(), key=lambda kv: -kv[1])[:15],
+                         "companies_held": len(holding_now)},
+               "holdings": _cols(["sym", "sid", "co", "q", "pct", "prev_pct", "status", "first_q"], held),
                "deals": _cols(["d", "sym", "sid", "side", "qty", "px", "cr", "rt", "kind", "client"], ds)}
         (out / "participants" / f"{slug(who)}.json").write_text(json.dumps(doc, separators=(",", ":")))
-        index.append([who, TYPE_LABEL.get(t, t), slug(who), len(ds), t])
+        index.append([doc["name"], TYPE_LABEL.get(t, t), slug(who), len(ds), t, len(holding_now)])
     index.sort(key=lambda x: -x[3])
     (out / "participants.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(index)
