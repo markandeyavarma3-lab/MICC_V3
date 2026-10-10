@@ -181,5 +181,5 @@ def test_an_entity_word_is_corporate_not_a_person():
 def test_foreign_legal_suffixes_are_corporate():
     """UBS AG and KAPITALFORENINGEN PENSAM INVEST were typed INDIVIDUAL (2026-10-10)."""
     pats = P.config()["name_pattern"]
-    for name in ("UBS AG", "BNP PARIBAS SA", "KAPITALFORENINGEN PENSAM INVEST", "ACME PLC"):
+    for name in ("UBS AG", "BNP PARIBAS SA", "KAPITALFORENINGEN PENSAM INVEST", "ACME PLC", "JSW ENERGY", "TATA STEEL"):
         assert P.classify_name(name, pats) == "CORPORATE", name

@@ -113,3 +113,14 @@ def test_a_fund_house_key_is_shown_as_a_name():
     assert X.house_name("FUND HOUSE SBI_FUNDS") == "SBI Funds"
     assert X.house_name("FUND HOUSE NIPPON_INDIA_AMC") == "Nippon India AMC"
     assert X.house_name(None) is None
+
+
+def test_markets_and_insights_are_written_and_carry_no_return(wh):
+    out = wh / "site"
+    X.export(out)
+    m = json.loads((out / "markets.json").read_text())
+    i = json.loads((out / "insights.json").read_text())
+    assert m["fii_dii"]["rows"] == [["2026-10-09", -35.5, 20.0]]
+    assert "oi_index_futures" in m
+    assert i["roundtrip_by_year"]["rows"] == [["2026", 3, 2]]
+    assert i["value_by_year_type"]["rows"] == [["2026", "MUTUAL_FUND", 10.0, 0.0]]   # the round trips are excluded
