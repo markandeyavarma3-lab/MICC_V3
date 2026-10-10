@@ -181,10 +181,128 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
             "sessions": len(index), "deals": len(rows),
             "source": "NSE and BSE public disclosures; participant labels by this project",
             "health": _health()}
+    export_markets(out, env)
+    export_insights(out, rows)
     meta["stocks"] = export_stocks(out, rows, env)
     meta["participants"] = export_participants(out, rows, env)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     return meta
+
+
+def export_markets(out: Path, env: str | None = None) -> None:
+    """data/markets.json: foreign-investor flows (NSDL, 1999+), FII/DII cash,
+    F&O index-futures positioning by category (2014+), the NIFTY 500 total
+    return (1995+) and NIFTY 50 valuation (2021+). Levels and flows only."""
+    q = duckdb.connect()
+    doc: dict = {}
+    try:
+        inv = COLLECTED / "fpi_nsdl" / "fpi_investment.parquet"
+        if inv.exists():
+            # Equity is one line ('' route) to 2009-11 and split by route after;
+            # the 'Sub-total' line is the total there. Never both.
+            eq = (f"FROM read_parquet('{inv}') WHERE is_daily_flow AND category = 'Equity'"
+                  " AND route IN ('', 'Sub-total')")
+            doc["fpi_monthly"] = _cols(["m", "net_cr"], [[m, round(v, 1)] for m, v in q.execute(
+                f"SELECT strftime(reporting_date, '%Y-%m') m, sum(net_cr) {eq} GROUP BY 1 ORDER BY 1").fetchall()])
+            doc["fpi_daily"] = _cols(["d", "net_cr", "secondary_cr"], [[str(d), round(n, 1), None if x is None else round(x, 1)]
+                for d, n, x in q.execute(f"""
+                SELECT t.reporting_date, t.net_cr, s.net_cr FROM (SELECT reporting_date, net_cr {eq}) t
+                LEFT JOIN (SELECT reporting_date, net_cr FROM read_parquet('{inv}') WHERE is_daily_flow
+                           AND category = 'Equity' AND route = 'Stock Exchange') s USING (reporting_date)
+                WHERE t.reporting_date >= current_date - INTERVAL 400 DAY ORDER BY 1""").fetchall()])
+        tri = COLLECTED / "index_tri" / "index_tri.parquet"
+        if tri.exists():
+            doc["nifty500_tri_monthly"] = _cols(["m", "tri"], [[m, round(v, 2)] for m, v in q.execute(
+                f"SELECT strftime(date, '%Y-%m') m, arg_max(tri, date) FROM read_parquet('{tri}')"
+                " WHERE index_key = 'NIFTY500' AND tri > 0 GROUP BY 1 ORDER BY 1").fetchall()])
+        ic = COLLECTED / "index_close" / "index_close.parquet"
+        if ic.exists():
+            doc["nifty50_valuation"] = _cols(["d", "close", "pe", "pb", "dy"], [[str(d), c, pe, pb, dy] for d, c, pe, pb, dy in q.execute(
+                f"SELECT date, close, pe, pb, div_yield FROM read_parquet('{ic}') WHERE index_key = 'NIFTY50'"
+                " AND pe IS NOT NULL ORDER BY date").fetchall()])
+    finally:
+        q.close()
+    flows = fii_dii()
+    doc["fii_dii"] = _cols(["d", "fii", "dii"], [[d, f.get("FII", {}).get("netValue"), f.get("DII", {}).get("netValue")]
+                                               for d, f in sorted(flows.items())])
+    con = duckdb.connect(str(research_db(env)), read_only=True)
+    try:
+        doc["oi_index_futures"] = _cols(["d", "FII", "DII", "Pro", "Client"], [list(r) for r in con.execute("""
+            SELECT CAST(session_date AS VARCHAR),
+                   max(index_fut_net) FILTER (WHERE category = 'FII'), max(index_fut_net) FILTER (WHERE category = 'DII'),
+                   max(index_fut_net) FILTER (WHERE category = 'Pro'), max(index_fut_net) FILTER (WHERE category = 'Client')
+            FROM participant_oi GROUP BY 1 ORDER BY 1""").fetchall()])
+    finally:
+        con.close()
+    (out / "markets.json").write_text(json.dumps(doc, separators=(",", ":")))
+
+
+def export_insights(out: Path, rows: list) -> None:
+    """data/insights.json: descriptive aggregates of the deal tape and the
+    shareholding filings. Who traded, how much, how often — never what
+    happened to prices afterwards, and no ranking by any return."""
+    by_year_type: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    rt_year: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    last = max((r[0] for r in rows), default="")
+    cut = f"{int(last[:4]) - 1}{last[4:]}" if last else ""
+    who_val: dict[str, list] = {}
+    stock_n: dict[str, list] = {}
+    for r in rows:
+        d = _deal(r)
+        y = r[0][:4]
+        rt_year[y][0] += 1
+        rt_year[y][1] += d["rt"]
+        if d["rt"]:
+            continue
+        by_year_type[(y, d["type"])][0 if d["side"] == "BUY" else 1] += d["cr"] or 0
+        if r[0] > cut:
+            w = who_val.setdefault(d["who"], [d["who"], d["pid"], d["type"], 0.0, 0.0, 0])
+            w[3 if d["side"] == "BUY" else 4] += d["cr"] or 0
+            w[5] += 1
+            st = stock_n.setdefault(d["sym"], [d["sym"], d["sid"], d["co"], 0, 0.0])
+            st[3] += 1
+            st[4] += d["cr"] or 0
+    doc = {
+        "asof": last, "window_from": cut,
+        "value_by_year_type": _cols(["y", "type", "buy_cr", "sell_cr"],
+                                    [[y, t, round(b, 1), round(sv, 1)] for (y, t), (b, sv) in sorted(by_year_type.items())]),
+        "roundtrip_by_year": _cols(["y", "rows", "roundtrip_rows"], [[y, n, k] for y, (n, k) in sorted(rt_year.items())]),
+        "largest_participants": _cols(["who", "pid", "type", "buy_cr", "sell_cr", "deals"],
+                                      [[a, b, c, round(x, 1), round(z, 1), n] for a, b, c, x, z, n in
+                                       sorted(who_val.values(), key=lambda w: -(w[3] + w[4]))[:40]]),
+        "most_dealt_stocks": _cols(["sym", "sid", "co", "deals", "value_cr"],
+                                   [[a, b, c, n, round(v, 1)] for a, b, c, n, v in
+                                    sorted(stock_n.values(), key=lambda x: -x[3])[:40]]),
+    }
+    shp = COLLECTED / "shp" / "shp_holdings.parquet"
+    if shp.exists():
+        q = duckdb.connect()
+        try:
+            for key, cats in (("fpi", OWNERSHIP["fpi"]), ("mf", OWNERSHIP["mf"])):
+                inlist = ", ".join(repr(c) for c in cats)
+                shifts = q.execute(f"""
+                    WITH latest AS (SELECT isin, quarter_end, max(broadcast_date) b FROM read_parquet('{shp}')
+                                    WHERE is_calendar_quarter GROUP BY 1, 2),
+                    v AS (SELECT h.isin, any_value(h.symbol) sym, any_value(h.company) co, h.quarter_end q,
+                                 SUM(CASE WHEN category IN ({inlist}) THEN pct_shares ELSE 0 END) pct
+                          FROM read_parquet('{shp}') h JOIN latest l ON l.isin = h.isin
+                            AND l.quarter_end = h.quarter_end AND l.b = h.broadcast_date GROUP BY 1, 4),
+                    -- The latest quarter MOST companies have filed: the newest one
+                    -- holds only early filers for weeks (2026-09-30 had a handful).
+                    lq AS (SELECT max(q) q FROM (SELECT q FROM v GROUP BY q HAVING count(*) >= 1000)),
+                    pairs AS (SELECT a.sym, a.co, a.q, a.pct now_pct, b.pct prev_pct, a.pct - b.pct chg
+                              FROM v a JOIN v b ON b.isin = a.isin AND b.q = (SELECT max(q) FROM v c WHERE c.isin = a.isin AND c.q < a.q)
+                              WHERE a.q = (SELECT q FROM lq))
+                    SELECT sym, co, q, round(prev_pct, 2), round(now_pct, 2), round(chg, 2) FROM pairs
+                    WHERE chg IS NOT NULL ORDER BY chg""").fetchall()
+                doc[f"{key}_shift"] = {
+                    "quarter": shifts[0][2] if shifts else None,
+                    "cols": ["sym", "sid", "co", "prev_pct", "now_pct", "change_pp"],
+                    "up": [[a, sym_file(a), b, p, n, c] for a, b, _q, p, n, c in shifts[::-1][:25] if c > 0],
+                    "down": [[a, sym_file(a), b, p, n, c] for a, b, _q, p, n, c in shifts[:25] if c < 0]}
+        finally:
+            q.close()
+    (out / "insights.json").write_text(json.dumps(doc, separators=(",", ":")))
 
 
 def _cols(cols: list[str], rows: list[list]) -> dict:
