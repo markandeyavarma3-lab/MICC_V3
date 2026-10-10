@@ -27,6 +27,12 @@ dependencies = [
     "pyarrow==25.0.1",
     "scipy==1.18.0",
     "pyyaml==6.0.3",
+    # Added 2026-10-10 for the mutual-fund monthly portfolios (part D of the
+    # site): fund houses publish .xls/.xlsx files, and most list them only in
+    # pages built by JavaScript. calamine reads both Excel formats; playwright
+    # drives the installed Google Chrome (channel="chrome", no browser download).
+    "python-calamine==0.8.3",
+    "playwright==1.63.0",
 ]
 
 [project.optional-dependencies]

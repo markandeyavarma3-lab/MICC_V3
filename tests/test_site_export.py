@@ -63,6 +63,8 @@ def wh(tmp_path, monkeypatch):
     monkeypatch.setattr(X, "COLLECTED", tmp_path / "collected")
     from src.ingest import shp_holders
     monkeypatch.setattr(shp_holders, "OUT", tmp_path / "collected" / "shp" / "none.parquet")
+    from src.ingest import mf_portfolios
+    monkeypatch.setattr(mf_portfolios, "OUT", tmp_path / "collected" / "mf" / "none.parquet")
     return tmp_path
 
 

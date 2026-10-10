@@ -180,3 +180,32 @@ rows.
 - The name.
 - When to start phase 1. It can run alongside the price fix, but nothing is
   published until gate 1 passes.
+
+## 10. Broadening (owner, 2026-10-10: "build everything", order mine)
+
+| Part | What | Source | State |
+|---|---|---|---|
+| A | Who owns what: every named holder above 1% | SHP XBRL (`src/ingest/shp_holders.py`) | live |
+| C | Market structure: pledges, announcements, board meetings, actions, sector and index membership | NSE filings (`src/archive/nse_filings.py`) | live |
+| B | Fundamentals: quarterly results, market cap, trailing P/E | NSE results XBRL (`src/archive/results.py`) | live; backfill nightly |
+| E | Screener and site-wide search | the stock documents | live |
+| D | Mutual-fund monthly portfolios: every holding of every covered scheme | each fund house's site (`src/archive/mf_portfolios.py`, `configs/mf_sources.yml`) | live for the houses below |
+
+**Part D coverage.** SEBI makes each house publish month-end portfolios on
+its own site within ten days; AMFI only links to them. Each house's page is
+rendered nightly and its files kept as served; one parser reads every house's
+layout (`src/ingest/mf_portfolios.py`).
+
+- Covered (2026-10-10): SBI, ICICI Prudential, HDFC, Nippon India, Aditya
+  Birla Sun Life, Motilal Oswal, DSP, Mirae Asset, Tata, Groww, PPFAS, Baroda
+  BNP Paribas, Invesco, Samco, Shriram, Helios, JM Financial (17 houses,
+  ~1,030 schemes for September 2026). Old Bridge is configured; its page
+  lists nothing after February 2026.
+- Refused, and respected: **Kotak** (a bot-check page) and **Bandhan**
+  (HTTP 403) to automated browsers.
+- Not yet mapped: **Axis** (encrypted API traffic), **UTI** (the page hangs
+  headless), **Franklin Templeton** (files named by a path the site serves
+  only as its app shell), **HSBC** and **Union** (their pages list only old
+  years), **Edelweiss, Canara Robeco, Quant, LIC, Sundaram, PGIM, Mahindra
+  Manulife, WhiteOak, 360 ONE, Navi** and the smallest houses. The Funds
+  page lists the houses covered; a house not listed is missing, not empty.
