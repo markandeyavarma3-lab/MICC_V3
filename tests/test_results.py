@@ -14,15 +14,15 @@ pytestmark = pytest.mark.unit
 
 
 def test_consolidated_and_latest_revision_win_and_only_the_newest_quarters_are_kept():
-    old = [{"toDate": "31-Dec-2024", "consolidated": "Non-Consolidated", "xbrl": "s1", "broadCastDate": "10-Jan-2025 10:00:00"},
-           {"toDate": "31-Dec-2024", "consolidated": "Consolidated", "xbrl": "c1", "broadCastDate": "10-Jan-2025 10:00:00"},
-           {"toDate": "30-Sep-2024", "consolidated": "Non-Consolidated", "xbrl": "s0", "broadCastDate": "10-Oct-2024 10:00:00"}]
-    new = [{"qe_Date": "31-MAR-2025", "consolidated": "Consolidated", "xbrl": "c2", "broadcast_Date": "10-Apr-2025 10:00:00",
+    old = [{"toDate": "31-Dec-2024", "consolidated": "Non-Consolidated", "xbrl": "s1.xml", "broadCastDate": "10-Jan-2025 10:00:00"},
+           {"toDate": "31-Dec-2024", "consolidated": "Consolidated", "xbrl": "c1.xml", "broadCastDate": "10-Jan-2025 10:00:00"},
+           {"toDate": "30-Sep-2024", "consolidated": "Non-Consolidated", "xbrl": "s0.xml", "broadCastDate": "10-Oct-2024 10:00:00"}]
+    new = [{"qe_Date": "31-MAR-2025", "consolidated": "Consolidated", "xbrl": "c2.xml", "broadcast_Date": "10-Apr-2025 10:00:00",
             "type": "Integrated Filing- Financials"},
-           {"qe_Date": "31-MAR-2025", "consolidated": "Consolidated", "xbrl": "c2r", "broadcast_Date": "20-May-2025 10:00:00",
+           {"qe_Date": "31-MAR-2025", "consolidated": "Consolidated", "xbrl": "c2r.xml", "broadcast_Date": "20-May-2025 10:00:00",
             "type": "Integrated Filing- Financials"}]
     t = R.targets(old, new, quarters=2)
-    assert [(x["qe"], x["url"]) for x in t] == [("2025-03-31", "c2r"), ("2024-12-31", "c1")]
+    assert [(x["qe"], x["url"]) for x in t] == [("2025-03-31", "c2r.xml"), ("2024-12-31", "c1.xml")]
 
 
 def _xbrl(facts: str, start="2026-04-01", end="2026-06-30") -> str:
@@ -54,3 +54,13 @@ def test_valuation_uses_profit_not_summed_eps_and_needs_four_consecutive_quarter
     assert v["mcap_cr"] == 1000 and v["ttm_profit_cr"] == 400 and v["pe"] == 2.5
     gap = [res[0], res[1], res[2], q("2024-06-30", 100, 20.0, 10.0)]
     assert X.valuation(gap, 50.0)["pe"] is None
+
+
+def test_a_filing_without_an_xbrl_file_is_not_a_target():
+    # AMARJOTHI, 2026-10-10: "-" in the xbrl field; six 404s stopped the night's sweep.
+    from src.archive import results as R
+    old = [{"toDate": "30-Jun-2026", "xbrl": "-", "broadCastDate": "10-Aug-2026 10:00:00", "consolidated": "Consolidated"},
+           {"toDate": "30-Jun-2026", "xbrl": "https://nsearchives.nseindia.com/corporate/xbrl/X_1.xml",
+            "broadCastDate": "10-Aug-2026 10:00:00", "consolidated": "Non-Consolidated"}]
+    got = R.targets(old, [])
+    assert [t["url"] for t in got] == ["https://nsearchives.nseindia.com/corporate/xbrl/X_1.xml"]
