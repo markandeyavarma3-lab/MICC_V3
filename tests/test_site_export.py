@@ -167,3 +167,13 @@ def test_market_structure_reaches_the_stock_file_and_the_filings_feed(wh):
     f = json.loads((out / "filings.json").read_text())
     assert f["meetings"]["rows"][0][:2] == ["2099-12-30", "ACME"]
     assert f["announcements"]["rows"][0][0] == "ACME"
+
+
+def test_the_screener_and_search_index_are_written(wh):
+    out = wh / "site"
+    X.export(out)
+    sc = json.loads((out / "screener.json").read_text())
+    row = dict(zip(sc["cols"], sc["rows"][0], strict=True))
+    assert row["sym"] == "ACME" and row["deals_12m"] == 1      # the mutual fund buy; round trips are not activity
+    search = json.loads((out / "search.json").read_text())
+    assert ["ACME", "s", "ACME", "Acme Ltd"] in search and any(r[1] == "p" and r[0] == "SBI MUTUAL FUND" for r in search)

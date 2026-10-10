@@ -393,6 +393,9 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     fund = fundamentals()
     ms_ = structure or {"industry": {}, "indices": {}, "actions": {}, "ann": {}, "meet": {}, "pledge": {}}
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
+    last_day = max((r[0] for r in rows), default="")
+    cut12 = f"{int(last_day[:4]) - 1}{last_day[4:]}" if last_day else ""
+    screen: list[list] = []
     for sym in syms:
         i = ident.get(sym, {})
         isin = isin_of.get(sym)
@@ -418,6 +421,9 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
                          if sym in ms_["pledge"] else None}
         (out / "stocks" / f"{sym_file(sym)}.json").write_text(json.dumps(doc, separators=(",", ":")))
+        screen.append(_screen_row(sym, doc, deals.get(sym, []), cut12))
+    (out / "screener.json").write_text(json.dumps(_cols(SCREEN_COLS, screen), separators=(",", ":")))
+
     def _val(s):
         v = valuation(fund.get(s, []), weekly[s][-1][1] if weekly.get(s) else None) or {}
         return v.get("mcap_cr"), v.get("pe")
@@ -426,6 +432,39 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
+
+
+SCREEN_COLS = ["sym", "sid", "co", "industry", "indices", "close", "mcap_cr", "pe", "rev_yoy", "pat_yoy",
+               "net_margin", "promoter", "fpi", "mf", "fpi_chg", "mf_chg", "pledged", "deals_12m", "holders"]
+
+
+def _screen_row(sym: str, doc: dict, deals: list, cut12: str) -> list:
+    """One screener row from a finished stock document: levels and changes as
+    filed or traded. Nothing here is a forward return or a score."""
+    v = doc.get("valuation") or {}
+    res = doc["results"]["rows"]
+    own = doc["own"]["rows"]
+
+    def yoy(i: int) -> float | None:
+        if not res:
+            return None
+        a = res[0]
+        b = next((r for r in res if r[0][5:] == a[0][5:] and int(r[0][:4]) == int(a[0][:4]) - 1), None)
+        if not b or not b[i] or a[i] is None or b[i] <= 0:
+            return None
+        return round(100 * (a[i] / b[i] - 1), 1)
+
+    last, prev = (own[-1] if own else None), (own[-2] if len(own) > 1 else None)
+    chg = (lambda k: None if not last or not prev or last[k] is None or prev[k] is None
+           else round(last[k] - prev[k], 2))
+    h = doc.get("holders")
+    return [sym, sym_file(sym), doc.get("co"), doc.get("industry"), doc.get("indices"), v.get("close"),
+            v.get("mcap_cr"), v.get("pe"), yoy(2), yoy(5),
+            round(100 * res[0][5] / res[0][2], 1) if res and res[0][2] and res[0][5] is not None else None,
+            last[1] if last else None, last[2] if last else None, last[4] if last else None, chg(2), chg(4),
+            (doc.get("pledge") or {}).get("pledged_pct_of_promoter"),
+            sum(1 for d in deals if d[0] > cut12 and not d[8]),
+            len(h["now"]["rows"]) if h else 0]
 
 
 #: A filing's holder group -> this site's participant type, used only when the
@@ -751,6 +790,10 @@ def export_participants(out: Path, rows: list, env: str | None = None,
         index.append([doc["name"], TYPE_LABEL.get(t, t), slug(who), len(ds), t, len(holding_now)])
     index.sort(key=lambda x: -x[3])
     (out / "participants.json").write_text(json.dumps(index, separators=(",", ":")))
+    # The header search: every stock and every participant, as [label, kind, key, hint].
+    stocks = json.loads((out / "stocks.json").read_text()) if (out / "stocks.json").exists() else []
+    search = [[r[0], "s", r[2], r[1]] for r in stocks] + [[r[0], "p", r[2], r[1]] for r in index]
+    (out / "search.json").write_text(json.dumps(search, separators=(",", ":")))
     return len(index)
 
 
