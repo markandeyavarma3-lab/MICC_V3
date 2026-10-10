@@ -184,7 +184,11 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
     export_markets(out, env)
     export_insights(out, rows)
     held = named_holdings()
-    meta["stocks"] = export_stocks(out, rows, env, held)
+    ms = market_structure(env)
+    export_filings(out, ms)
+    meta["pledge_rows"], meta["pledge_unmatched"] = ms["pledge_rows"], ms["pledge_unmatched"]
+    meta["industry_coverage"] = len(ms["industry"])
+    meta["stocks"] = export_stocks(out, rows, env, held, ms)
     meta["participants"] = export_participants(out, rows, env, held)
     meta["named_holders"] = len(held[0])
     _add_widest_holders(out, held)
@@ -312,7 +316,8 @@ def _cols(cols: list[str], rows: list[list]) -> dict:
     return {"cols": cols, "rows": rows}
 
 
-def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple | None = None) -> int:
+def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple | None = None,
+                  structure: dict | None = None) -> int:
     """data/stocks/<SYM>.json: identity, deals, quarterly ownership, insider
     trades and a WEEKLY close line (daily for ~2,300 names is ~150 MB)."""
     (out / "stocks").mkdir(parents=True, exist_ok=True)
@@ -385,6 +390,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     finally:
         q.close()
     by_co = (holdings or ({}, {}, {}, {}))[1]
+    ms_ = structure or {"industry": {}, "indices": {}, "actions": {}, "ann": {}, "meet": {}, "pledge": {}}
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
     for sym in syms:
         i = ident.get(sym, {})
@@ -399,9 +405,18 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "own": _cols(["q", *OWNERSHIP], own.get(isin, []) if isin else []),
                "insider": _cols(["d", "person", "cat", "txn", "qty", "cr", "mode"], insider.get(sym, [])),
                "px": _cols(["d", "close"], weekly.get(sym, [])),
-               "holders": _holders_doc(by_co.get(isin) if isin else None)}
+               "holders": _holders_doc(by_co.get(isin) if isin else None),
+               "industry": ms_["industry"].get(sym), "indices": ms_["indices"].get(sym, []),
+               "actions": _cols(["ex", "subject", "record"], sorted(ms_["actions"].get(sym, set()), reverse=True)),
+               "announcements": _cols(["t", "desc", "text", "file"],
+                                      sorted(ms_["ann"].get(sym, {}).values(), key=lambda a: a[0], reverse=True)[:80]),
+               "meetings": _cols(["d", "purpose", "desc"], sorted(ms_["meet"].get(sym, set()), reverse=True)[:40]),
+               "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
+                                   "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
+                         if sym in ms_["pledge"] else None}
         (out / "stocks" / f"{sym_file(sym)}.json").write_text(json.dumps(doc, separators=(",", ":")))
-    index = sorted(([s, co.get(s) or ident.get(s, {}).get("co") or "", sym_file(s), len(deals.get(s, []))]
+    index = sorted(([s, co.get(s) or ident.get(s, {}).get("co") or "", sym_file(s), len(deals.get(s, [])),
+                     ms_["industry"].get(s), ms_["indices"].get(s, [])]
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
@@ -470,6 +485,8 @@ def named_holdings() -> tuple[dict[str, list], dict[str, dict], dict[str, str], 
             by_inv[ent].append([sym, sym_file(sym), co, qcur, *rec])
         entry = [spell.get(ent, ent), slug(ent), grp, *rec]
         by_co[isin]["quarter"] = qcur
+        if pct is not None and pct < 0.01:          # a 0.00% line is a filing artefact, not a holder
+            continue
         by_co[isin]["exited" if pct is None else "now"].append(entry)
     return by_inv, by_co, spell, group
 
@@ -490,6 +507,123 @@ def _add_widest_holders(out: Path, held: tuple) -> None:
     doc = json.loads(path.read_text()) if path.exists() else {}
     doc["widest_holders"] = _cols(["who", "pid", "type", "companies", "new", "exited"], rows[:40])
     path.write_text(json.dumps(doc, separators=(",", ":")))
+
+
+def _archive_rows(report: str) -> list[dict]:
+    """Every row of every archived NSE file of one report type, newest file last."""
+    out: list[dict] = []
+    for f in sorted((ARCHIVE / report / "NSE").glob("**/*.json.gz")):
+        try:
+            d = json.loads(gzip.decompress(f.read_bytes()))
+        except (OSError, ValueError):
+            continue
+        out.extend(d if isinstance(d, list) else d.get("data", []) if isinstance(d, dict) else [])
+    return out
+
+
+def _nse_date(s: str | None) -> str | None:
+    for fmt in ("%d-%b-%Y", "%d-%b-%Y %H:%M:%S", "%d-%m-%Y"):
+        try:
+            return datetime.strptime((s or "").strip(), fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _num(r: dict, k: str) -> float:
+    try:
+        return float((r.get(k) or "0").strip() or 0)
+    except ValueError:
+        return 0.0
+
+
+def market_structure(env: str | None = None) -> dict:
+    """Part C of the site plan, per symbol: official industry and current index
+    membership (NSE constituent files), every corporate action and dividend
+    since 2005 (the archived corporate-action feed, all subjects), recent
+    announcements and board meetings, and the latest promoter-pledge row."""
+    from src.research.entity_names import normalize
+    q = duckdb.connect()
+    industry: dict[str, str] = {}
+    indices: dict[str, list[str]] = defaultdict(list)
+    try:
+        cons = COLLECTED / "constituents" / "constituents.parquet"
+        if cons.exists():
+            for sym, ind, key in q.execute(f"""
+                    WITH l AS (SELECT index_key, max(snapshot_date) d FROM read_parquet('{cons}') GROUP BY 1)
+                    SELECT c.symbol, c.industry, c.index_key FROM read_parquet('{cons}') c
+                    JOIN l ON l.index_key = c.index_key AND l.d = c.snapshot_date ORDER BY 3""").fetchall():
+                if ind:
+                    industry.setdefault(sym, ind)
+                indices[sym].append(key)
+        shp_names = {}
+        shp = COLLECTED / "shp" / "shp_holdings.parquet"
+        if shp.exists():
+            shp_names = {normalize(co): sym for sym, co in q.execute(
+                f"SELECT any_value(symbol), company FROM read_parquet('{shp}') WHERE company IS NOT NULL GROUP BY 2").fetchall()}
+    finally:
+        q.close()
+    actions: dict[str, set] = defaultdict(set)
+    for r in _archive_rows("CORPACT"):
+        sym, ex = (r.get("symbol") or "").upper(), _nse_date(r.get("exDate"))
+        if sym and ex and r.get("subject"):
+            actions[sym].add((ex, r["subject"].strip(), _nse_date(r.get("recDate")) or ""))
+    ann: dict[str, dict] = defaultdict(dict)
+    feed = []
+    for r in _archive_rows("ANNOUNCE"):
+        sym, d = (r.get("symbol") or "").upper(), r.get("sort_date") or ""
+        if not sym or not d:
+            continue
+        key = r.get("seq_id") or (d, r.get("desc"))
+        row = [d[:16], r.get("desc"), (r.get("attchmntText") or "")[:400], r.get("attchmntFile")]
+        ann[sym][key] = row
+        feed.append([sym, sym_file(sym), r.get("sm_name"), *row, key])
+        ind = (r.get("smIndustry") or "").strip()
+        if ind and ind != "-":
+            industry.setdefault(sym, ind)
+    meet: dict[str, set] = defaultdict(set)
+    for r in _archive_rows("BOARDMTG"):
+        sym, d = (r.get("bm_symbol") or "").upper(), _nse_date(r.get("bm_date"))
+        if sym and d:
+            meet[sym].add((d, (r.get("bm_purpose") or "").strip(), (r.get("bm_desc") or "")[:300]))
+            ind = (r.get("sm_indusrty") or "").strip()
+            if ind and ind != "-":
+                industry.setdefault(sym, ind)
+    pledge: dict[str, list] = {}
+    pl_rows = _archive_rows("PLEDGE")
+    unmatched = 0
+    for r in pl_rows:
+        sym = shp_names.get(normalize(r.get("comName") or ""))
+        if not sym:
+            unmatched += 1
+            continue
+        pledge[sym] = [r.get("shp"), *(_num(r, k) for k in ("percPromoterHolding", "percPromoterShares",
+                                                            "percTotShares", "percSharesPledged")),
+                       _nse_date(r.get("broadcastDt"))]
+    seen = set()
+    feed_u = []
+    for f in sorted(feed, key=lambda x: x[3], reverse=True):
+        if f[-1] in seen:
+            continue
+        seen.add(f[-1])
+        feed_u.append(f[:-1])
+    return {"industry": industry, "indices": indices, "actions": actions, "ann": ann, "meet": meet,
+            "pledge": pledge, "feed": feed_u, "pledge_unmatched": unmatched, "pledge_rows": len(pl_rows)}
+
+
+def export_filings(out: Path, ms: dict) -> None:
+    """data/filings.json: the newest announcements, the board meetings ahead
+    (a results calendar), and promoter pledging — as filed."""
+    today = datetime.now(UTC).date().isoformat()
+    upcoming = sorted(((d, sym, sym_file(sym), p, desc) for sym, ms_ in ms["meet"].items()
+                       for d, p, desc in ms_ if d >= today), key=lambda x: (x[0], x[1]))
+    pl = sorted(([sym, sym_file(sym), *v] for sym, v in ms["pledge"].items() if v[2] > 0), key=lambda x: -x[4])
+    doc = {"announcements": _cols(["sym", "sid", "co", "t", "desc", "text", "file"], ms["feed"][:600]),
+           "meetings": _cols(["d", "sym", "sid", "purpose", "desc"], [list(x) for x in upcoming[:400]]),
+           "pledges": _cols(["sym", "sid", "shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
+                             "depository_pledged_pct", "as_of"], pl),
+           "industries": len(set(ms["industry"].values())), "industry_coverage": len(ms["industry"])}
+    (out / "filings.json").write_text(json.dumps(doc, separators=(",", ":")))
 
 
 def _holders_doc(h: dict | None) -> dict | None:

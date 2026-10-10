@@ -72,7 +72,8 @@ _LABEL = re.compile(
     r"overseas corporate bodies|ocbs?|directors?( or director'?s relatives)?|"
     r"foreign portfolio investors?( \(category[ -]*(i|ii|iii)\))?|firms?|employees|"
     r"foreign institutional investors?|foreign banks?|qualified institutional buyers?|"
-    r"key managerial personnel|kmp|escrow accounts?|suspense accounts?|investor education and protection fund)$",
+    r"key managerial personnel|kmp|escrow accounts?|suspense accounts?|investor education and protection fund|"
+    r"fdi[- ]?nri.*|nri ?\((non[- ])?repatriable\)|.*\((non[- ])?repatriable\)|fdi|foreign direct investment)$",
     re.IGNORECASE)
 
 

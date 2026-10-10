@@ -145,3 +145,25 @@ def test_markets_and_insights_are_written_and_carry_no_return(wh):
     assert "oi_index_futures" in m
     assert i["roundtrip_by_year"]["rows"] == [["2026", 3, 2]]
     assert i["value_by_year_type"]["rows"] == [["2026", "MUTUAL_FUND", 10.0, 0.0]]   # the round trips are excluded
+
+
+def test_market_structure_reaches_the_stock_file_and_the_filings_feed(wh):
+    arch = wh / "archive"
+    for rep, rows in (("CORPACT", [{"symbol": "ACME", "exDate": "05-Jun-2026", "recDate": "05-Jun-2026",
+                                     "subject": "Dividend - Rs 6 Per Share"}]),
+                      ("ANNOUNCE", [{"symbol": "ACME", "sort_date": "2026-10-09 12:00:00", "desc": "Credit Rating",
+                                      "attchmntText": "Acme has informed", "attchmntFile": "https://x/y.pdf",
+                                      "seq_id": "1", "sm_name": "Acme Ltd", "smIndustry": "Widgets"}]),
+                      ("BOARDMTG", [{"bm_symbol": "ACME", "bm_date": "30-Dec-2099", "bm_purpose": "Financial Results",
+                                      "bm_desc": "To consider results", "sm_indusrty": "-"}])):
+        d = arch / rep / "NSE" / "year=2026"
+        d.mkdir(parents=True)
+        (d / f"{rep}_1.json.gz").write_bytes(gzip.compress(json.dumps(rows).encode()))
+    out = wh / "site"
+    X.export(out)
+    acme = json.loads((out / "stocks" / "ACME.json").read_text())
+    assert acme["actions"]["rows"] == [["2026-06-05", "Dividend - Rs 6 Per Share", "2026-06-05"]]
+    assert acme["announcements"]["rows"][0][1] == "Credit Rating" and acme["industry"] == "Widgets"
+    f = json.loads((out / "filings.json").read_text())
+    assert f["meetings"]["rows"][0][:2] == ["2099-12-30", "ACME"]
+    assert f["announcements"]["rows"][0][0] == "ACME"
