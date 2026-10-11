@@ -198,6 +198,12 @@ print(' ', spine.build(spine.PRICE, env='prod', con=c).render())
 print(' ', spine.build_adjusted(env='prod', con=c).render())
 "
   note "spine" $?
+  # THE UNIVERSE PAST THE SEED (2026-10-11). The seed's top-500 ends at its
+  # 2026-06-25 rebalance and nothing extended it; the scan panel and the
+  # constructed benchmarks carried June's membership forward. Month-end
+  # rebalances after 2026-10-01, by the seed's own rule (src/warehouse/pit_universe.py).
+  "$REPO/.venv/bin/python" -m src.warehouse.pit_universe
+  note "universe" $?
   # THE RELATIONAL HALF, WHICH WAS NOT IN THIS SCRIPT AND SHOULD HAVE BEEN.
   #
   # land -> master -> clean is the only path collected DEALS take into the

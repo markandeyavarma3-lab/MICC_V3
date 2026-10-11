@@ -146,7 +146,7 @@ def _midcap_sql() -> str:
     """
 
 
-def _constructed_sql(bid: str, spine: str, rank_lo: int, rank_hi: int) -> str:
+def _constructed_sql(bid: str, spine: str, rank_lo: int, rank_hi: int, universe: str | None = None) -> str:
     """An equal-weighted, point-in-time, delisting-aware portfolio.
 
     DELISTING-AWARE IS NOT A LABEL HERE. The daily return is the mean of the
@@ -166,7 +166,7 @@ def _constructed_sql(bid: str, spine: str, rank_lo: int, rank_hi: int) -> str:
       ),
       pu AS (
         SELECT symbol, CAST(rebal_date AS DATE) AS rebal_date, adv_rank
-        FROM read_parquet('{SEED}/pit_universe.parquet')
+        FROM ({universe or f"SELECT * FROM read_parquet('{SEED}/pit_universe.parquet')"})
         WHERE adv_rank BETWEEN {rank_lo} AND {rank_hi}
       ),
       member AS (
@@ -207,8 +207,11 @@ def build(env: str | None = None) -> list[Series]:
     }
     by_id = {b["id"]: b for b in spec()["benchmarks"]}
     lo, hi = by_id["SMALLCAP_SYNTH"]["construction"]["rank_range"]
-    parts["SMALLCAP_SYNTH"] = _constructed_sql("SMALLCAP_SYNTH", spine, lo, hi)
-    parts["EW_TOP500"] = _constructed_sql("EW_TOP500", spine, 1, 500)
+    # The seed's rebalances, then the extension past 2026-10-01 (src/warehouse/pit_universe.py).
+    from src.warehouse import pit_universe
+    uni = pit_universe.source_sql(env)
+    parts["SMALLCAP_SYNTH"] = _constructed_sql("SMALLCAP_SYNTH", spine, lo, hi, uni)
+    parts["EW_TOP500"] = _constructed_sql("EW_TOP500", spine, 1, 500, uni)
 
     # EACH BRANCH IS WRAPPED. A `WITH` clause is only legal at the head of a
     # statement, so a CTE-bearing branch after a UNION ALL is a parser error.

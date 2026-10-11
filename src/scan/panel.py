@@ -9,7 +9,8 @@ ticker is two. Arrays are float32: a 21-year panel of ~4,400 securities is
 
 THE UNIVERSE IS POINT-IN-TIME. A security is in the scan on session t only if
 it was in the top 500 by ADV at the most recent monthly rebalance on or before
-t (seed `pit_universe`, 2005-02 .. 2026-06). Signals are still COMPUTED on
+t (seed `pit_universe` 2005-02 .. 2026-06, then src/warehouse/pit_universe.py's
+month-end rebalances after 2026-10-01). Signals are still COMPUTED on
 every security — a 252-session lookback needs the history before a name
 entered — and only RANKED inside the universe. scan.yml's floor of 100 names a
 date is checked by the IC.
@@ -31,7 +32,7 @@ from datetime import date
 
 import numpy as np
 
-from src.common.paths import SEED, research_db, warehouse_dir
+from src.common.paths import research_db, warehouse_dir
 from src.research.measure import identified_px_ctes
 
 FIELDS = ("open", "high", "low", "close", "volume")
@@ -74,7 +75,9 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
     # that rebalance, and a window opening mid-month had NO universe for its
     # first weeks (found by tests/test_scan_panel.py: 0 names on 2015-06-01).
     # Prices are read from that rebalance and the arrays trimmed back.
-    reb = con.execute(f"SELECT MAX(CAST(rebal_date AS DATE)) FROM read_parquet('{SEED / 'pit_universe.parquet'}')"
+    from src.warehouse import pit_universe
+    uni_src = pit_universe.source_sql(env)       # the seed's rebalances, then the extension (2026-10-11)
+    reb = con.execute(f"SELECT MAX(CAST(rebal_date AS DATE)) FROM ({uni_src})"
                       f" WHERE CAST(rebal_date AS DATE) <= DATE '{start}'").fetchone()[0]
     first = min(start, reb) if reb else start
     try:
@@ -102,7 +105,7 @@ def load(env: str | None = None, start: date = date(2005, 1, 1), end: date | Non
         uni = np.zeros((T, N), dtype=bool)
         pit = con.execute(f"""
             SELECT CAST(u.rebal_date AS DATE), x.security_id
-            FROM read_parquet('{SEED / "pit_universe.parquet"}') u
+            FROM ({uni_src}) u
             JOIN px x ON x.symbol = UPPER(TRIM(u.symbol)) AND x.d = CAST(u.rebal_date AS DATE)
             WHERE u.top500 = 1""").fetchall()
         by_reb: dict = {}

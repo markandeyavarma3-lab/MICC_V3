@@ -32,6 +32,7 @@ these are filings, not sessions.
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import hashlib
 import json
@@ -145,10 +146,9 @@ def _render(ctx, src: dict) -> tuple[list[tuple[str, str]], list[str]]:
     page = ctx.new_page()
     resp: list = []
     page.on("response", lambda r: resp.append(r) if r.request.resource_type in ("xhr", "fetch") else None)
-    try:
+    # A page that never goes idle still has its links.
+    with contextlib.suppress(Exception):
         page.goto(src["page"], wait_until="networkidle", timeout=45000)
-    except Exception:  # noqa: BLE001 - a page that never goes idle still has its links
-        pass
     page.wait_for_timeout(src.get("wait_ms", 3000))
     for c in src.get("clicks", []):
         try:
@@ -248,7 +248,7 @@ def _one_source(src: dict, months: int, max_files: int, deadline: float, q) -> N
 
 
 def collect(only: list[str] | None = None, months: int = 3, max_files: int = 400,
-            max_minutes: float = 60) -> dict:
+            max_minutes: float = 60, source_timeout: float = 600) -> dict:
     """Every source, each in its own process under a deadline. A page whose
     script blocks the browser (HSBC, 2026-10-10: eight idle minutes, no
     timeout fired) then costs one source, not the night."""
@@ -264,7 +264,7 @@ def collect(only: list[str] | None = None, months: int = 3, max_files: int = 400
             st["stopped"] = "time cap" if st["files"] < max_files else "file budget"
             break
         st["sources"] += 1
-        limit = min(left, src.get("timeout_s", 600))
+        limit = min(left, src.get("timeout_s", source_timeout))
         q = ctx.Queue()
         proc = ctx.Process(target=_one_source, args=(src, months, max_files - st["files"], time.time() + limit - 30, q))
         proc.start()
@@ -293,9 +293,11 @@ def main() -> int:
     ap.add_argument("--months", type=int, default=3, help="how many months back to fetch")
     ap.add_argument("--max-files", type=int, default=400)
     ap.add_argument("--max-minutes", type=float, default=60)
+    ap.add_argument("--source-timeout", type=float, default=600,
+                    help="seconds one fund house may take; raise it for a history backfill")
     a = ap.parse_args()
     st = collect([s.strip().upper() for s in a.only.split(",") if s.strip()] or None, a.months, a.max_files,
-                 a.max_minutes)
+                 a.max_minutes, a.source_timeout)
     print(f"  MF: {st['sources']} sources, {st['candidates']} candidate files, {st['files']} stored, "
           f"{st['skipped']} already held, {st['failed']} failed{'; stopped: ' + st['stopped'] if st.get('stopped') else ''}")
     for amc, (n, g) in sorted(st["by_amc"].items()):

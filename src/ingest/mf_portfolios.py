@@ -194,7 +194,7 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
     if not scheme:
         for r in rows[:hi]:                       # 'SCHEME NAME' | 'Helios Flexi Cap Fund' (Helios)
             cells = [_s(c) for c in r if _s(c)]
-            for a, b in zip(cells, cells[1:]):
+            for a, b in zip(cells, cells[1:], strict=False):
                 if re.fullmatch(r"(name of the )?scheme( name)?\s*:?", a, re.I):
                     scheme = b
     if not scheme:                            # 'MONTHLY PORTFOLIO STATEMENT OF SAMCO ... FUND AS ON ...' (Samco)
@@ -230,7 +230,8 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
         isin = _s(r[cols["isin"]]).upper()
         if not ISIN.match(isin):
             continue
-        g = lambda k: r[cols[k]] if k in cols and cols[k] < len(r) else None  # noqa: E731
+        def g(k: str, r=r, cols=cols):
+            return r[cols[k]] if k in cols and cols[k] < len(r) else None
         v = _num(g("value"))
         out.append({"scheme": scheme, "sheet": sheet, "as_of": as_of, "isin": isin, "name": _s(g("name")),
                     "industry": _s(g("industry")), "qty": _num(g("qty")),
