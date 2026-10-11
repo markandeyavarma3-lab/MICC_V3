@@ -25,6 +25,7 @@ which count sessions; these are filings (the SHP lesson, 2026-09-23).
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import hashlib
 import json
@@ -204,10 +205,8 @@ def latest_listings(sym: str) -> dict[str, list]:
     for route in out:
         fs = sorted((ROOT_DIR / "listings").glob(f"{sym}_{route}_*.gz"), key=lambda p: p.stat().st_mtime)
         if fs:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 out[route] = _rows(gzip.decompress(fs[-1].read_bytes()))
-            except (OSError, ValueError):
-                pass
     return out
 
 

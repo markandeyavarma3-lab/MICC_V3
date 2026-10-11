@@ -467,8 +467,10 @@ def _screen_row(sym: str, doc: dict, deals: list, cut12: str) -> list:
         return round(100 * (a[i] / b[i] - 1), 1)
 
     last, prev = (own[-1] if own else None), (own[-2] if len(own) > 1 else None)
-    chg = (lambda k: None if not last or not prev or last[k] is None or prev[k] is None
-           else round(last[k] - prev[k], 2))
+    def chg(k: int) -> float | None:
+        if not last or not prev or last[k] is None or prev[k] is None:
+            return None
+        return round(last[k] - prev[k], 2)
     h = doc.get("holders")
     return [sym, sym_file(sym), doc.get("co"), doc.get("industry"), doc.get("indices"), v.get("close"),
             v.get("mcap_cr"), v.get("pe"), yoy(2), yoy(5),
@@ -825,7 +827,7 @@ def mf_holdings() -> dict | None:
             chg = None if not s["prev_as_of"] or qty is None else qty - ((p[2] or 0) if p else 0)
             by_isin[isin]["rows"].append([s["house"], s["scheme"], s["sid"], qty, _r(cr, 2), _r(pct, 2),
                                           chg, status])
-        for isin, (_n, _i, qty, cr, _p) in s["prev"].items():
+        for isin, (_n, _i, qty, _cr, _p) in s["prev"].items():
             if is_equity_isin(isin) and isin not in s["now"]:
                 by_isin[isin]["exits"].append([s["house"], s["scheme"], s["sid"], qty])
     houses = sorted({(s["amc"], s["house"]) for s in schemes.values()})
