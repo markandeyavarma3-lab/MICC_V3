@@ -105,3 +105,47 @@ passes: top 100 hit 10 of 11 years, q 0.012 (registered 0.009). Its test IC
 is +0.028, down from +0.030. At that effect the power table's top-100 row
 needs about **62 forward blocks** (57 × (0.0296 / 0.0283)²), roughly 5.2
 years, so the read would fall in early 2032.
+
+## 8. Built for registration (2026-10-11), and what building it changed
+
+The owner chose to register (2026-10-11). Building it found three things the
+draft had wrong or left open:
+
+1. **The universe did not extend.** §5 said the universe "keeps arriving"; it
+   did not. The seed's point-in-time top 500 ends at its 2026-06-25 rebalance
+   and every later session carried June's membership forward. Five forward
+   years on it would have scored a frozen 2026 universe. Fixed by
+   `src/warehouse/pit_universe.py`: month-end rebalances by the seed's own rule,
+   recovered and matched to the rupee on 2,307 of 2,307 names, written for
+   month-ends after 2026-10-01 only, so nothing exp_005 scored changes. It runs
+   nightly in the collector.
+2. **The selection's data had no fingerprint.** Both CONFIRM directories
+   (2026-10-03 and the 0088 re-measure) predate the grid's price hash, so the
+   atlas guard refuses them. The partial IC is recomputed in memory from the
+   panel anyway; `src/scan/forward.select` now writes its own manifest (prices,
+   universe and deal arrays hashed) and the spec carries it.
+3. **Forward signals need seven years of history.** Five-year seasonal signals
+   and the 36-month turn-of-month signal are undefined, or a different
+   statistic, on a short lookback. `forward.score` loads 2,600 calendar days
+   before the first entry session.
+
+Settled by the build: the first entry session is the 22nd after 2026-10-01, and the yearly
+health check is scheduled (`configs/remeasure.yml`, `exp006_forward_health`).
+
+**The pass bar (2026-10-11).** §4 proposed t >= 1.645. Asked, the owner left
+the choice to the build ("choose the one which gives the best output"). It is
+NOT chosen by which bar is likeliest to pass — that would void the test — but
+by the project's rules: **one-sided Šidák over the four procedure tests in
+TRACK_S_PROCEDURE, t >= 2.234** (alpha 0.0127). One-sided because every selected
+sign is frozen; Šidák because each test in a family raises the bar. 1.645
+ignores the family; the family's two-sided 2.49 tests a direction the spec
+already fixed. At 80% power this needs **96 complete forward blocks, a read in
+about 2034**; kill 1 becomes fewer than 80 blocks with >= 100 names.
+
+**What the 100 are.** Selected on the grid (keys only, no IC read): every one is
+a three-signal composite, and of their 300 base-signal slots 173 are momentum,
+75 volatility, 41 reversal and 11 seasonal — e.g. +10-day MA ratio, −12-month
+risk-adjusted momentum, +63-day volatility. Neutralising hi_252 and downvol_126
+did not remove the factor families, only two members. A pass would most likely
+mean that known momentum/volatility/reversal combinations kept their
+residual, not that a new edge was found.

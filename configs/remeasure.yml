@@ -25,3 +25,10 @@ items:
     command: RESEARCH_ENV=prod .venv/bin/python -m src.research.holdings_power
     report: docs/reports/HOLDINGS_POWER_PRELIMINARY.md
     reaches_bound: ~23 quarterly cohorts, about 2028; then a new registration (0076)
+  - id: exp006_forward_health
+    what: exp_006 forward test — complete blocks, names per block, candidates computable; NEVER an IC (draft §4, 0090)
+    due: 2027-11-03
+    last_done: 2026-10-11
+    command: RESEARCH_ENV=prod .venv/bin/python -m src.scan.forward --health
+    report: docs/plan/EXP006_FORWARD_RESIDUAL_DRAFT.md
+    reaches_bound: the one read at 96 complete forward blocks, about 2034
