@@ -395,6 +395,14 @@ acknowledged_gaps:
       feeds for the same session WERE recovered from the rolling file on
       2026-09-15 20:31 (their entries were removed); 2026-09-14 was a holiday.
       Decision 0063.
+  - source_id: fii_dii_cash
+    session: 2026-10-12
+    acknowledged: 2026-10-15
+    reason: >-
+      no collector run on 2026-10-11 or 10-12: the machine was off or asleep
+      both evenings (the next boot was 10-13 09:30). Every other feed for the
+      session was recovered on 10-13 from dated archives;
+      /api/fiidiiTradeReact serves the current day only.
   - source_id: nse_block_deals
     session: 2026-09-08
     acknowledged: 2026-09-16

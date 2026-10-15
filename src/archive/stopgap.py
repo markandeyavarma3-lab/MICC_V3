@@ -104,6 +104,21 @@ SOURCES: tuple[Source, ...] = (
 )
 
 
+def _row_count(text: str, kind: str) -> int:
+    """Data rows in a fetched body. CSV: lines after the header. JSON: the
+    record list's length. Until 2026-10-15 JSON always logged 0 — every
+    FII/DII day read "rows=0" with both rows present, the line that would have
+    hidden a genuinely empty day."""
+    if kind == "csv":
+        return max(0, len(text.splitlines()) - 1)
+    try:
+        d = json.loads(text)
+    except (ValueError, TypeError):
+        return 0
+    rows = d if isinstance(d, list) else d.get("data") if isinstance(d, dict) else None
+    return len(rows) if isinstance(rows, list) else 0
+
+
 def _fetch(url: str, referer: str = "https://www.nseindia.com/") -> bytes:
     """GET with retry and backoff. Returns raw bytes or raises."""
     last: Exception | None = None
@@ -243,7 +258,7 @@ def capture(src: Source, session_hint: str | None = None) -> dict:
         "sha256": digest,
         "bytes": len(body),
         "session_date": session,
-        "rows": max(0, len(text.splitlines()) - 1) if src.kind == "csv" and not is_empty else 0,
+        "rows": _row_count(text, src.kind) if not is_empty else 0,
     }
     if is_empty:
         # Stored anyway. An empty day is evidence that we asked and the answer was
