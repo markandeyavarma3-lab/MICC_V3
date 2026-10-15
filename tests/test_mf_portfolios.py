@@ -212,3 +212,27 @@ def test_each_section_of_a_sheet_is_read_under_its_own_header():
     got = P.parse_sheet(rows, "DSPAH", {})
     assert [r["pct"] for r in got] == pytest.approx([9.0, 1.0])     # fractions, scaled, from the right column each time
     assert got[1]["industry"] == "CRISIL AAA" and got[1]["value_cr"] == pytest.approx(1.0)
+
+
+@pytest.mark.unit
+def test_a_template_source_asks_for_each_month_in_the_window():
+    src = {"template": "https://x.example/api?year={year}&month={month}&mm={mm}"}
+    got = A.template_urls(src, 3, today=date(2026, 1, 15))
+    assert got == ["https://x.example/api?year=2025&month=December&mm=12",
+                   "https://x.example/api?year=2025&month=November&mm=11",
+                   "https://x.example/api?year=2025&month=October&mm=10"]
+
+
+@pytest.mark.unit
+def test_stacked_schemes_and_dated_titles_are_named_right():
+    assert P._clean_scheme("SCHEME: UTI - Large Cap Fund") == "UTI - Large Cap Fund"
+    assert P._clean_scheme("IB01-Groww Large Cap Fund") == "Groww Large Cap Fund"
+    assert P._clean_scheme("Franklin India Prima Fund As of Date - 30Aug2019") == "Franklin India Prima Fund"
+    assert P._clean_scheme("Franklin India Flexi Cap Fund ( Formerly known as X) ^") == "Franklin India Flexi Cap Fund"
+    hdr = ["NAME OF THE INSTRUMENT", "RATING/INDUSTRY", "QUANTITY", "MARKET-VALUE", "% TO NAV", "ISIN"]
+    rows = [["SCHEME CODE002STARTS"], ["SCHEME: UTI - Unit Linked Insurance Plan"], ["AS ON 30/09/2026"], hdr,
+            ["EQ - ETERNAL", "Retailing", 10, 100, 2.9, "INE758T01015"],
+            ["SCHEME CODE017STARTS"], ["SCHEME: UTI - Large Cap Fund"], hdr,
+            ["EQ - HDFC", "Banks", 5, 50, 3.1, "INE040A01034"]]
+    got = [(r["scheme"], r["isin"]) for r in P.parse_sheet(rows, "EXPOSURE", {})]
+    assert got == [("UTI - Unit Linked Insurance Plan", "INE758T01015"), ("UTI - Large Cap Fund", "INE040A01034")]

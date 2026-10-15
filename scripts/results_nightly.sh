@@ -17,7 +17,7 @@ mkdir -p "$REPO/logs"
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   # Never while the collector holds the database.
   while pgrep -f collect_daily.sh >/dev/null; do sleep 60; done
-  "$REPO/.venv/bin/python" -m src.archive.results --max-files 3000 --max-minutes 90
+  "$REPO/.venv/bin/python" -m src.archive.results --max-files 6000 --max-minutes 180
   RC=$?
   echo "results=$RC"
   "$REPO/.venv/bin/python" -m src.ingest.results

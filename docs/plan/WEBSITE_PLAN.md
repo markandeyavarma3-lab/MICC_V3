@@ -198,14 +198,14 @@ layout (`src/ingest/mf_portfolios.py`).
 
 - Covered (2026-10-10): SBI, ICICI Prudential, HDFC, Nippon India, Aditya
   Birla Sun Life, Motilal Oswal, DSP, Mirae Asset, Tata, Groww, PPFAS, Baroda
-  BNP Paribas, Invesco, Samco, Shriram, Helios, JM Financial (17 houses,
-  ~1,030 schemes for September 2026). Old Bridge is configured; its page
+  BNP Paribas, Invesco, Samco, Shriram, Helios, JM Financial, and from
+  2026-10-15 Franklin Templeton (to 2015-12) and UTI (to 2023-08) — 19
+  houses, ~1,250 schemes for September 2026. Old Bridge is configured; its page
   lists nothing after February 2026.
 - Refused, and respected: **Kotak** (a bot-check page) and **Bandhan**
   (HTTP 403) to automated browsers.
-- Not yet mapped: **Axis** (encrypted API traffic), **UTI** (the page hangs
-  headless), **Franklin Templeton** (files named by a path the site serves
-  only as its app shell), **HSBC** and **Union** (their pages list only old
+- Not yet mapped: **Axis** (encrypted API traffic), **HSBC** (no answer to
+  plain or headless requests), **Union** (their pages list only old
   years), **Edelweiss, Canara Robeco, Quant, LIC, Sundaram, PGIM, Mahindra
   Manulife, WhiteOak, 360 ONE, Navi** and the smallest houses. The Funds
   page lists the houses covered; a house not listed is missing, not empty.

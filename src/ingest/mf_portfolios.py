@@ -108,10 +108,19 @@ def _month_end(ym: str) -> date:
     return date(y + m // 12, m % 12 + 1, 1) - timedelta(days=1)
 
 
+_SCHEME_ROW = re.compile(r"^\s*scheme\s*:\s*(.+)$", re.I)      # 'SCHEME: UTI - Large Cap Fund' (UTI)
+
+
 def _clean_scheme(name: str) -> str:
-    name = re.sub(r"^[A-Z0-9]{2,8}\s*-\s*", "", name)               # "IB01-Groww Large Cap Fund"
-    name = re.split(r"\s*\((?:an |a |formerly|erstwhile|earlier)", name, maxsplit=1, flags=re.I)[0]
-    return name.strip(" -:")
+    m = _SCHEME_ROW.match(name)
+    if m:
+        name = m.group(1)
+    # A scheme CODE prefix ('IB01-Groww Large Cap Fund'), which has a digit; a
+    # house prefix ('UTI - Large Cap Fund') is part of the name.
+    name = re.sub(r"^(?=[A-Z]*\d)[A-Z0-9]{2,8}\s*-\s*(?=[A-Za-z])", "", name)
+    name = re.split(r"\s*\(\s*(?:an |a |formerly|erstwhile|earlier)", name, maxsplit=1, flags=re.I)[0]
+    name = re.split(r"\s+as\s+of\b", name, maxsplit=1, flags=re.I)[0]   # '... As of Date - 30Aug2019' (Franklin)
+    return re.sub(r"\s+", " ", name).strip(" -:^*.")
 
 
 def scheme_index(wb) -> dict[str, str]:
@@ -197,6 +206,8 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
             for a, b in zip(cells, cells[1:], strict=False):
                 if re.fullmatch(r"(name of the )?scheme( name)?\s*:?", a, re.I):
                     scheme = b
+    if not scheme:
+        scheme = next((_s(c) for c in title if _SCHEME_ROW.match(_s(c))), "")
     if not scheme:                            # 'MONTHLY PORTFOLIO STATEMENT OF SAMCO ... FUND AS ON ...' (Samco)
         for c in title:
             m = re.search(r"portfolio statement (?:of|for)\s+(?!the period)(.+?)(?:\s+(?:as on|as at|for the)\b.*)?$",
@@ -210,13 +221,19 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
             if (re.search(r"fund|scheme|etf|fof|plan|portfolio\b.*\bseries", t, re.I)
                     and not t.startswith("(")
                     and not re.search(r"portfolio (statement|as on)|as on|mutual fund\)?$|^monthly|investment manager|"
-                                      r"asset management company|registered office|\bcin\b|e-?mail|trustee", t, re.I)):
+                                      r"asset management company|registered office|\bcin\b|e-?mail|trustee|"
+                                      r"scheme code\s*\d*\s*starts", t, re.I)):
                 scheme = t
                 break
     scheme = _clean_scheme(scheme or sheet)
     div = _value_divisor(_s(rows[hi][cols["_unit"]])) if "_unit" in cols else 100.0
     out = []
     for r in rows[hi + 1:]:
+        # Several schemes stacked in one sheet, each opened by 'SCHEME: <name>' (UTI).
+        named = next((_s(c) for c in r if _SCHEME_ROW.match(_s(c))), None)
+        if named:
+            scheme = _clean_scheme(named)
+            continue
         # A sheet may carry several sections (equity, then debt), each under
         # its own header row and column order (ABSL, DSP; 2026-10-10).
         if any(_HEADER_ISIN.match(_s(c)) for c in r):
