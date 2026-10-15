@@ -119,7 +119,7 @@ def candidates(src: dict, links: list[tuple[str, str]], blobs: list[str], months
     for href, text in links:
         if FILE.fullmatch(href or "") and inc.search(href + " " + text) and not exc.search(href + " " + text):
             found.setdefault(href, text)
-    if src.get("mode") == "api":
+    if src.get("mode") in ("api", "template"):
         for body in blobs:
             # Whole JSON strings: ICICI's paths have spaces in them.
             for f in JSON_FILE.findall(body.replace("\\/", "/")):
@@ -140,6 +140,35 @@ def candidates(src: dict, links: list[tuple[str, str]], blobs: list[str], months
             continue
         out.append({"url": u, "month": m, "text": text[:120]})
     return sorted(out, key=lambda c: (c["month"], c["url"]), reverse=True)
+
+
+MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+               "October", "November", "December"]
+
+
+def template_urls(src: dict, months: int, today: date | None = None) -> list[str]:
+    """`template` mode: the source's own list API, called once per month in the
+    window (UTI, 2026-10-15: api/get-consolidate-portfolio-disclosure?year=
+    {year}&month={month}, the month spelled out). Pure, so testable."""
+    today = today or datetime.now(UTC).date()
+    out = []
+    for k in range(1, months + 1):
+        y, m = divmod(today.year * 12 + today.month - 1 - k, 12)
+        out.append(src["template"].format(year=y, month=MONTH_NAMES[m], mm=f"{m + 1:02d}"))
+    return out
+
+
+def _fetch_template(ctx, src: dict, months: int) -> list[str]:
+    blobs = []
+    for u in template_urls(src, months):
+        try:
+            r = ctx.request.get(u, headers={"Referer": src["page"]}, timeout=60000)
+            if r.status == 200:
+                blobs.append(r.text())
+        except Exception:  # noqa: BLE001 - one month's list failing is not the source failing
+            continue
+        time.sleep(src.get("rate", 0.7))
+    return blobs
 
 
 def _render(ctx, src: dict) -> tuple[list[tuple[str, str]], list[str]]:
@@ -211,7 +240,8 @@ def _one_source(src: dict, months: int, max_files: int, deadline: float, q) -> N
         browser = pw.chromium.launch(channel="chrome", headless=True)
         ctx = browser.new_context(user_agent=UA, accept_downloads=False)
         try:
-            links, blobs = _render(ctx, src)
+            links, blobs = ([], _fetch_template(ctx, src, months)) if src.get("mode") == "template" \
+                else _render(ctx, src)
             cands = candidates(src, links, blobs, months)
             record({"kind": "listing", "amc": src["amc"], "page": src["page"], "status": "STORED",
                     "links": len(links), "candidates": len(cands), "fetched_at": datetime.now(UTC).isoformat()})

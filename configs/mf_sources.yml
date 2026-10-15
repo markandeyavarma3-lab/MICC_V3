@@ -11,6 +11,8 @@
 #   mode     links (default) | api — api reads file paths out of the JSON the page
 #            fetched, from responses whose URL matches `api`; relative paths are
 #            joined to `base`
+#   mode: template   a list API called once per month in the window; `template`
+#            holds {year}, {month} (January..December) and/or {mm}
 #   clicks   text of tabs to click, in order, before the links are read
 #   next, max_pages   a paginated list: the Next control's text, and how many pages to walk
 #   timeout_s  a hard limit for the source (default 600 s); each source runs in its own process
@@ -20,7 +22,7 @@
 # NOT COVERED, and why (2026-10-10) — see also the disabled entries below:
 #   KOTAK, BANDHAN  their sites refuse automated browsers (a Radware bot-check
 #                   page; HTTP 403). A refusal, respected — not worked around.
-#   AXIS (encrypted API traffic), UTI (the page hangs headless), EDELWEISS,
+#   AXIS (encrypted API traffic), HSBC (the site does not answer plain or headless requests), EDELWEISS,
 #   CANARA, QUANT, LIC and the smaller houses: lists behind interactions not
 #   yet mapped (docs/plan/WEBSITE_PLAN.md §10). Each is added here when it is.
 
@@ -32,6 +34,11 @@ sources:
      base: "https://www.icicipruamc.com/blob", match: "Monthly-Portfolio-Disclosure"}
   - {amc: HDFC, name: HDFC Mutual Fund, page: "https://www.hdfcfund.com/statutory-disclosure/portfolio/monthly-portfolio",
      match: "/Monthly(%20|\\s|_)"}
+  # 2026-10-15: UTI's page builds its list from a JSON API that plain HTTP may call.
+  - {amc: UTI, name: UTI Mutual Fund, mode: template,
+     page: "https://www.utimf.com/downloads/consolidate-all-portfolio-disclosure",
+     template: "https://www.utimf.com/api/get-consolidate-portfolio-disclosure?year={year}&month={month}",
+     match: "portfolio", exclude: "debt|fortnight|half"}
   - {amc: NIPPON, name: Nippon India Mutual Fund, page: "https://mf.nipponindiaim.com/investor-service/downloads/factsheet-portfolio-and-other-disclosures",
      match: "NIMF-MONTHLY-PORTFOLIO", exclude: "fortnight|half|aaum|risk"}
   - {amc: ABSL, name: Aditya Birla Sun Life Mutual Fund, page: "https://mutualfund.adityabirlacapital.com/forms-and-downloads/portfolio",
@@ -51,11 +58,10 @@ sources:
   # Disabled 2026-10-10: the library page lists only 2018-2020 portfolios.
   - {amc: HSBC, name: HSBC Mutual Fund, disabled: true, page: "https://www.assetmanagement.hsbc.co.in/en/mutual-funds/investor-resources/information-library#&accordion1446811090=1",
      timeout_s: 240, match: "monthly", exclude: "closed-matured|fortnight|half|aaum|factsheet|risk"}
-  # Disabled 2026-10-10: the JSON names each file by a relative path that the
-  # site serves only as its app shell; the real download route is not mapped.
-  - {amc: FRANKLIN, name: Franklin Templeton Mutual Fund, disabled: true, mode: api, api: "literature",
+  # Re-enabled 2026-10-15: the JSON's literatureHref downloads from /download + the path.
+  - {amc: FRANKLIN, name: Franklin Templeton Mutual Fund, mode: api, api: "literature",
      page: "https://www.franklintempletonindia.com/investor/reports?firstFilter-5",
-     base: "https://www.franklintempletonindia.com", match: "monthly-portfolio"}
+     base: "https://www.franklintempletonindia.com/download", match: "monthly-portfolio"}
   - {amc: BARODA, name: Baroda BNP Paribas Mutual Fund, page: "https://www.barodabnpparibasmf.in/downloads/monthly-portfolio-scheme",
      match: "Monthly_Portfolio"}
   # Disabled 2026-10-10: the page lists only 2022 portfolios.
