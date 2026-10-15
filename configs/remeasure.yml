@@ -32,3 +32,10 @@ items:
     command: RESEARCH_ENV=prod .venv/bin/python -m src.scan.forward --health
     report: docs/plan/EXP006_FORWARD_RESIDUAL_DRAFT.md
     reaches_bound: the one read at 96 complete forward blocks, about 2034
+  - id: mf_monthly_power
+    what: mutual-fund holding change on MONTHLY scheme portfolios, 21 sessions (1.12x short on 2026-10-15)
+    due: 2027-10-15
+    last_done: 2026-10-15
+    command: RESEARCH_ENV=prod .venv/bin/python -m src.research.mf_monthly_power
+    report: docs/reports/MF_MONTHLY_POWER_PRELIMINARY.md
+    reaches_bound: ~160 monthly cohorts at today's dispersion, about 2029; wider recent coverage may shorten it
