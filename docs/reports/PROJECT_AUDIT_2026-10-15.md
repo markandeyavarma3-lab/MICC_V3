@@ -14,8 +14,8 @@ on 2026-10-15, not copied from earlier reports.
 - **The research is finished for now, by design.** All six registered
   experiments have verdicts; none found repeatable information at the
   project's bound. Three series are waiting on time and are scheduled for
-  re-measurement (2027). One new forward test, exp_006, is built, rehearsed and
-  waiting for the owner's "approve" before about 3 November.
+  re-measurement (2027). One new forward test, exp_006, is REGISTERED (2026-10-15, decision 0090) after
+  the owner's approval.
 - **The public site is built and complete** (five parts, 10 sections, 4,287
   stock pages, 33,029 participant pages, 2,176 fund-scheme pages, every
   cross-link resolves) but **not published**: the GitHub repository does not
@@ -212,3 +212,11 @@ ledger is append-only, so it waits for an explicit go-ahead
 3. **Create the `deal-lens` GitHub repository** to publish the site, and check
    NSE's data terms before it goes public.
 4. The site's name.
+
+## 10. Closed the same evening
+
+- **Ledger backfill committed** (owner: "commit the changes"). TRACK_D_DEALS
+  241, TRACK_O_POSITIONING 8, TRACK_S_PROCEDURE 3, TRACK_H_HOLDINGS 3.
+- **exp_006 registered** (owner: "approve"), 22:26 IST, spec d5791fbb,
+  selection a7d592f2 — both identical to the rehearsal; trials_before 3.
+  Decision 0090.
