@@ -125,3 +125,13 @@ def test_health_credits_a_dated_empty_day_as_held():
     src = inspect.getsource(health.read)
     assert '{"STORED", "DUPLICATE", "EMPTY_DAY"}' in src
     assert "held.setdefault(sid, set()).add(d)" in src
+
+
+def test_a_json_body_counts_its_records():
+    # 2026-10-15: every FII/DII day logged rows=0 with both rows present.
+    from src.archive.stopgap import _row_count
+    body = '[{"category":"DII","date":"14-Oct-2026"},{"category":"FII/FPI","date":"14-Oct-2026"}]'
+    assert _row_count(body, "json") == 2
+    assert _row_count('{"data": [1, 2, 3]}', "json") == 3
+    assert _row_count("not json", "json") == 0
+    assert _row_count("h\na\nb\n", "csv") == 2
