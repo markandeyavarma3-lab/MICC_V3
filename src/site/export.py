@@ -654,6 +654,11 @@ def market_structure(env: str | None = None) -> dict:
             actions[sym].add((ex, r["subject"].strip(), _nse_date(r.get("recDate")) or ""))
     ann: dict[str, dict] = defaultdict(dict)
     feed = []
+    #: name -> symbol as NSE's own filings pair them (announcements, board
+    #: meetings). The pledge feed names a company and nothing else; matching it
+    #: on the shareholding filings' names alone left 211 of 1,548 companies
+    #: unmatched (2026-10-16); these and the security master bring that to 24.
+    filed_names: dict[str, str] = {}
     for r in _archive_rows("ANNOUNCE"):
         sym, d = (r.get("symbol") or "").upper(), r.get("sort_date") or ""
         if not sym or not d:
@@ -662,6 +667,8 @@ def market_structure(env: str | None = None) -> dict:
         row = [d[:16], r.get("desc"), (r.get("attchmntText") or "")[:400], r.get("attchmntFile")]
         ann[sym][key] = row
         feed.append([sym, sym_file(sym), r.get("sm_name"), *row, key])
+        if r.get("sm_name"):
+            filed_names.setdefault(normalize(r["sm_name"]), sym)
         ind = (r.get("smIndustry") or "").strip()
         if ind and ind != "-":
             industry.setdefault(sym, ind)
@@ -670,14 +677,27 @@ def market_structure(env: str | None = None) -> dict:
         sym, d = (r.get("bm_symbol") or "").upper(), _nse_date(r.get("bm_date"))
         if sym and d:
             meet[sym].add((d, (r.get("bm_purpose") or "").strip(), (r.get("bm_desc") or "")[:300]))
+            if r.get("sm_name"):
+                filed_names.setdefault(normalize(r["sm_name"]), sym)
             ind = (r.get("sm_indusrty") or "").strip()
             if ind and ind != "-":
                 industry.setdefault(sym, ind)
     pledge: dict[str, list] = {}
     pl_rows = _archive_rows("PLEDGE")
     unmatched = 0
+    master_names: dict[str, str] = {}
+    try:
+        mc = duckdb.connect(str(research_db(env)), read_only=True)
+        try:
+            master_names = {normalize(n): sym for sym, n in mc.execute(
+                "SELECT canonical_symbol, company_name FROM security_master WHERE company_name IS NOT NULL").fetchall()}
+        finally:
+            mc.close()
+    except duckdb.Error:
+        pass
     for r in pl_rows:
-        sym = shp_names.get(normalize(r.get("comName") or ""))
+        n = normalize(r.get("comName") or "")
+        sym = shp_names.get(n) or filed_names.get(n) or master_names.get(n)
         if not sym:
             unmatched += 1
             continue

@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-15; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-15 16:38 UTC, 5 generation(s), 1 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-15 16:38 UTC, 5 generation(s), 2 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -72,7 +72,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 | 3.2 | symbol_history and one point-in-time resolve() | **VERIFIED** |  |
 | 3.3 | Delisting detection and classification | **VERIFIED** | six reasons (0082): ISIN_CHANGE and LEFT_UNIVERSE are not exits at all; ~487 stay UNKNOWN, mostly mergers no source names; step 6.4 does not read it yet |
 | 3.4 | Resolve the unmatched deal symbols | WIRED | unresolved 4.14% — under the <5% gate |
-| 3.5 | sector_history — point-in-time sectors | — | blocks the industry dimension of CHAR_MATCHED. Measured 2026-10-04: seed index-membership history has no sector indices; NSE index lists give 34% of active names, + seed dim_sector (another taxonomy, lossy map) 63%; NSE's quote API (all names) is bot-protected (403). Not built: a 40%-missing control is worse than none |
+| 3.5 | sector_history — point-in-time sectors | BUILT | built 2026-10-16 from the monthly fund portfolios (AMFI industry, known from the 10th of the next month): 1,538 securities from 2016; covers 53% of the top 500 in 2016, 88% in 2026, nothing before 2016. NOT wired into CHAR_MATCHED — that changes a quoted benchmark and is the owner's decision |
 | 3.6 | Participant normalisation | BUILT | one participant per cleaned name (0083); nothing downstream reads participant_id yet — the mart's PROP_HFT rule still keys on the raw spelling |
 | 3.7 | Behavioural PROP_HFT classifier | **VERIFIED** | 310 participants, 97,249 deal rows, 41.2% of the corpus. `ineligibility_reason` shows only 168 because it is a priority-ordered DISPLAY field and 'same-day round trip' outranks it — a membership question must not be answered from it (0056 amendment 3) |
 | 3.8 | Name-pattern classifier for the residual | WIRED | behavioural only; no name-pattern classifier exists |
@@ -154,4 +154,4 @@ VERIFIED: 46  WIRED: 10  BUILT: 8  SPECIFIED: 13  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `a813e77`.
+Derived at commit `857c799`.

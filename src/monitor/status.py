@@ -488,10 +488,10 @@ def steps() -> list[Step]:
              note="unresolved 4.14% — under the <5% gate"),
         Step("3.5", "3 Identity", "sector_history — point-in-time sectors",
              built=lambda c: c.duck_rows.get("sector_history", 0) > 0,
-             note="blocks the industry dimension of CHAR_MATCHED. Measured 2026-10-04: seed "
-                  "index-membership history has no sector indices; NSE index lists give 34% of active names, "
-                  "+ seed dim_sector (another taxonomy, lossy map) 63%; NSE's quote API (all names) "
-                  "is bot-protected (403). Not built: a 40%-missing control is worse than none"),
+             note="built 2026-10-16 from the monthly fund portfolios (AMFI industry, known from the 10th "
+                  "of the next month): 1,538 securities from 2016; covers 53% of the top 500 in 2016, 88% in "
+                  "2026, nothing before 2016. NOT wired into CHAR_MATCHED — that changes a quoted "
+                  "benchmark and is the owner's decision"),
         Step("3.6", "3 Identity", "Participant normalisation",
              built=lambda c: c.duck_rows.get("participant_master", 0) > 0,
              verified=lambda c: c.tested(r"test_rulings_survive_a_rebuild_and_take_effect"),

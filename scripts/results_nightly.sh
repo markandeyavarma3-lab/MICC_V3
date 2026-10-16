@@ -28,6 +28,9 @@ mkdir -p "$REPO/logs"
   echo "mf=$?"
   "$REPO/.venv/bin/python" -m src.ingest.mf_portfolios
   echo "mf_parse=$?"
+  # Point-in-time industries, extracted from the month-end portfolios (step 3.5).
+  "$REPO/.venv/bin/python" -m src.warehouse.sector_history
+  echo "sector_history=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
 } >> "$LOG" 2>&1
