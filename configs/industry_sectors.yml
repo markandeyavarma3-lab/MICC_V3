@@ -1,0 +1,124 @@
+# AMFI industry labels (as the fund portfolios file them) -> NSE's index sector.
+#
+# Built 2026-10-16 for CHAR_MATCHED_IND (docs/plan/EXP007_RESIGNATIONS_AND_INDUSTRY_PLAN.md §3).
+# Each label takes the NSE sector that most of the stocks the two sources share carry
+# (NSE index constituent files, 22 sectors); 'hand' marks a decision where the overlap was
+# empty, one name, or contradicted by meaning. null = no sector: the stock falls through
+# to the CHAR_MATCHED ladder. FROZEN: a change is a recorded decision, because it
+# changes a benchmark.
+
+labels:
+  "aerospace & defense": "Capital Goods"    # majority 16/16
+  "agricultural commercial & construction vehicles": "Capital Goods"    # majority 2/2
+  "agricultural food & other products": "Fast Moving Consumer Goods"    # majority 14/15
+  "agricultural, commercial & construction vehicles": "Capital Goods"    # majority 7/7
+  "auto": "Automobile and Auto Components"    # majority 8/12
+  "auto ancillaries": "Automobile and Auto Components"    # majority 26/29
+  "auto components": "Automobile and Auto Components"    # majority 40/42
+  "automobiles": "Automobile and Auto Components"    # majority 12/12
+  "banks": "Financial Services"    # majority 34/34
+  "beverages": "Fast Moving Consumer Goods"    # majority 8/8
+  "capital goods": "Capital Goods"    # majority 1/1
+  "capital markets": "Financial Services"    # majority 21/21
+  "cement": "Construction Materials"    # majority 14/15
+  "cement & cement products": "Construction Materials"    # majority 16/16
+  "cement products": "Construction Materials"    # hand
+  "chemicals": "Chemicals"    # majority 24/24
+  "chemicals & petrochemicals": "Chemicals"    # majority 33/34
+  "cigarettes & tobacco products": "Fast Moving Consumer Goods"    # majority 1/1
+  "commercial services": "Services"    # majority 3/4
+  "commercial services & supplies": "Services"    # majority 15/16
+  "construction": "Construction"    # majority 24/43
+  "construction & contracting - civil": "Construction"    # majority 1/1
+  "construction project": "Construction"    # majority 15/17
+  "consumable fuels": "Oil Gas & Consumable Fuels"    # majority 2/3
+  "consumer durables": "Consumer Durables"    # majority 46/47
+  "consumer non durables": "Fast Moving Consumer Goods"    # majority 31/42
+  "consumer services": "Consumer Services"    # hand
+  "diversified": "Diversified"    # majority 3/4
+  "diversified consumer services": "Consumer Services"    # hand
+  "diversified fmcg": "Fast Moving Consumer Goods"    # majority 2/2
+  "diversified metals": "Metals & Mining"    # majority 2/2
+  "electrical equipment": "Capital Goods"    # majority 35/36
+  "engineering services": "Services"    # hand
+  "entertainment": "Media Entertainment & Publication"    # majority 8/8
+  "fast moving consumer goods": "Fast Moving Consumer Goods"    # hand
+  "ferrous metals": "Metals & Mining"    # majority 12/19
+  "fertilisers": "Chemicals"    # majority 6/7
+  "fertilizers & agrochemicals": "Chemicals"    # majority 14/15
+  "finance": "Financial Services"    # majority 70/72
+  "financial technology (fintech)": "Financial Services"    # majority 6/6
+  "food products": "Fast Moving Consumer Goods"    # majority 14/16
+  "gas": "Oil Gas & Consumable Fuels"    # majority 6/6
+  "healthcare": "Healthcare"    # majority 1/1
+  "healthcare equipment & supplies": "Healthcare"    # hand
+  "healthcare services": "Healthcare"    # majority 23/23
+  "hotels resorts and other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels, resorts & other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels, resorts and other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts & other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts & other recreatnl actvities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts and other": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts and other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts and other recreational actvities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&other recreational actvities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&otherrecreational actvities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&otherrecreatnl activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&otherrecreatnl actvi": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels,resorts&otherrecreatnl actvities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels/ resorts and other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels/resorts & other recreational acti": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "hotels/resorts & other recreational activities": "Consumer Services"    # hand (a spelling of hotels, resorts and recreation)
+  "household products": "Fast Moving Consumer Goods"    # majority 2/2
+  "industrial capital goods": "Capital Goods"    # majority 22/24
+  "industrial manufacturing": "Capital Goods"    # majority 18/18
+  "industrial products": "Capital Goods"    # majority 52/62
+  "information technology": "Information Technology"    # hand
+  "insurance": "Financial Services"    # majority 13/13
+  "it - hardware": "Information Technology"    # majority 2/2
+  "it - services": "Information Technology"    # majority 13/16
+  "it - software": "Information Technology"    # majority 28/28
+  "leisure services": "Consumer Services"    # majority 19/20
+  "media": "Media Entertainment & Publication"    # hand
+  "media & entertainment": "Media Entertainment & Publication"    # majority 4/4
+  "metals & minerals trading": "Metals & Mining"    # majority 3/3
+  "minerals & mining": "Metals & Mining"    # majority 6/6
+  "minerals/mining": "Metals & Mining"    # majority 5/6
+  "miscellaneous": null    # hand
+  "non - ferrous metals": "Metals & Mining"    # majority 6/6
+  "not applicable": null    # hand
+  "oil": "Oil Gas & Consumable Fuels"    # majority 4/4
+  "other construction materials": "Construction Materials"    # hand
+  "other consumer services": "Consumer Services"    # hand
+  "other services": "Services"    # majority 1/1
+  "other utilities": "Utilities"    # majority 4/5
+  "paper": "Forest Materials"    # hand
+  "paper forest & jute products": "Forest Materials"    # hand
+  "paper, forest & jute products": "Forest Materials"    # hand
+  "personal products": "Fast Moving Consumer Goods"    # majority 9/9
+  "pesticides": "Chemicals"    # majority 6/6
+  "petroleum products": "Oil Gas & Consumable Fuels"    # majority 7/7
+  "pharmaceuticals": "Healthcare"    # majority 35/35
+  "pharmaceuticals & biotechnology": "Healthcare"    # majority 52/53
+  "power": "Power"    # majority 23/28
+  "power - transmission & equipment": "Capital Goods"    # majority 1/1
+  "printing & publication": "Media Entertainment & Publication"    # hand
+  "realty": "Realty"    # majority 17/19
+  "retailing": "Consumer Services"    # majority 26/27
+  "services": "Services"    # majority 1/2
+  "software": "Information Technology"    # majority 24/31
+  "software products": "Information Technology"    # hand
+  "specialty chemicals": "Chemicals"    # majority 1/1
+  "steel products": "Metals & Mining"    # hand
+  "telecom - equipment & accessories": "Telecommunication"    # majority 6/7
+  "telecom - services": "Telecommunication"    # majority 10/10
+  "textile products": "Textiles"    # majority 7/9
+  "textiles & apparels": "Textiles"    # majority 13/14
+  "textiles - cotton": "Textiles"    # majority 1/1
+  "textiles - synthetic": "Textiles"    # hand
+  "toll bridge operator": "Services"    # hand
+  "trading": "Services"    # majority 2/3
+  "transport infrastructure": "Services"    # majority 4/4
+  "transport services": "Services"    # majority 10/10
+  "transportation": "Services"    # majority 8/10
