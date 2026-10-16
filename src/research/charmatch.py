@@ -85,6 +85,30 @@ MATCH_LEVELS: tuple[tuple[str, str], ...] = (
 )
 
 
+#: CHAR_MATCHED_IND (2026-10-16, docs/plan/EXP007_RESIGNATIONS_AND_INDUSTRY_PLAN.md
+#: §3): the same sector and size tercile, else the same sector, else the
+#: CHAR_MATCHED ladder unchanged. Industry cannot be a fourth intersecting
+#: dimension — a 4-way cell holds a median of one name (measured) — so it leads
+#: a ladder of its own. CHAR_MATCHED itself, and every figure quoted on it, is
+#: untouched: consumers ask for IND_LEVELS explicitly.
+IND_LEVELS: tuple[tuple[str, str], ...] = (
+    ("SECTOR_SIZE3", "sector, size_t"),
+    ("SECTOR", "sector"),
+    *MATCH_LEVELS,
+)
+
+
+def ind_cellmap_sql(names_sql: str, char_panel_glob: str, sector_panel_glob: str) -> str:
+    """cellmap_sql plus (sector, size_t) from warehouse/sector_panel, point in
+    time by the same ASOF rule; NULL where the company has no sector then, so
+    the ladder falls through to the characteristic levels."""
+    return f"""
+        SELECT c.*, s.sector, s.size_t
+        FROM ({cellmap_sql(names_sql, char_panel_glob)}) c
+        ASOF LEFT JOIN read_parquet('{sector_panel_glob}', hive_partitioning=true) s
+          ON s.symbol = c.symbol AND CAST(s.rebalance_date AS DATE) <= c.d"""
+
+
 def min_names_per_cell() -> int:
     """benchmarks.yml's `min_names_per_cell` for CHAR_MATCHED, read not restated."""
     cfg = yaml.safe_load((CONFIGS / "benchmarks.yml").read_text())
@@ -124,7 +148,8 @@ class Ladder:
     match_level: str
 
 
-def ladder(min_cell: int, event: str = "ec", own: str = "own") -> Ladder:
+def ladder(min_cell: int, event: str = "ec", own: str = "own",
+           rungs: tuple[tuple[str, str], ...] | None = None) -> Ladder:
     """Build the ladder for an event table aliased `event` (carrying d, size_q,
     mom_q, vol_q) and the event's own forward return aliased `own` (carrying
     ret, possibly NULL).
@@ -143,9 +168,12 @@ def ladder(min_cell: int, event: str = "ec", own: str = "own") -> Ladder:
     `>=`, NOT `>`. benchmarks.yml says `min_names_per_cell: 10`, which is a
     minimum; `> 10` silently requires eleven and rejects cells the config
     accepts.
+
+    `rungs` defaults to MATCH_LEVELS (CHAR_MATCHED); IND_LEVELS gives
+    CHAR_MATCHED_IND.
     """
     joins, cases, levels = [], [], []
-    for level, keys in MATCH_LEVELS:
+    for level, keys in (MATCH_LEVELS if rungs is None else rungs):
         ks = [k.strip() for k in keys.split(",")]
         on = " AND ".join(f"{level}.{k} = {event}.{k}" for k in ks)
         joins.append(f"LEFT JOIN cm_{level} {level} ON {level}.d = {event}.d AND {on}")

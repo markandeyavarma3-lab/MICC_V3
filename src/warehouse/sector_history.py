@@ -59,8 +59,9 @@ def norm(label: str) -> str:
     return " ".join(label.split()).casefold()
 
 
-def monthly_labels(rows: list[tuple[str, date, str]]) -> dict[tuple[str, date], tuple[str, str]]:
-    """(isin, month_end, industry) rows -> {(isin, month_end): (label, confidence)}. Pure."""
+def monthly_labels(rows: list[tuple]) -> dict[tuple, tuple[str, str]]:
+    """(key, month_end, industry) rows -> {(key, month_end): (label, confidence)}.
+    The key is the security_id in production (an ISIN in some tests). Pure."""
     by: dict[tuple[str, date], Counter] = {}
     spell: dict[tuple[str, date, str], Counter] = {}
     for isin, m, ind in rows:
@@ -117,23 +118,23 @@ class Result:
 
 
 def build(env: str | None = None) -> Result:
+    """Labels are voted per SECURITY, not per ISIN: a company whose ISIN
+    changed (HDFC Bank, 2019 split: INE040A01026 -> INE040A01034) is one
+    company, and keying on the ISIN gave it two overlapping open intervals
+    (found 2026-10-16)."""
     import duckdb
 
     from src.ingest import mf_portfolios as mfi
-    src = duckdb.connect()
-    try:
-        rows = src.execute(f"""
-            SELECT isin, last_day(CAST(as_of AS DATE)), industry FROM read_parquet('{mfi.OUT}')
-            WHERE as_of IS NOT NULL AND isin LIKE 'INE%' AND substr(isin, 8, 2) = '01'
-              AND industry IS NOT NULL AND trim(industry) <> ''""").fetchall()
-    finally:
-        src.close()
-    ivs = intervals(monthly_labels(rows))
     con = duckdb.connect(str(research_db(env)))
     try:
         sid = dict(con.execute("SELECT isin, security_id FROM security_master WHERE isin IS NOT NULL").fetchall())
-        keep = [(sid[i], lab, lab, CLASSIFICATION, vf, vt, conf) for i, lab, vf, vt, conf in ivs if i in sid]
-        missing = len({i for i, *_ in ivs if i not in sid})
+        rows = con.execute(f"""
+            SELECT isin, last_day(CAST(as_of AS DATE)), industry FROM read_parquet('{mfi.OUT}')
+            WHERE as_of IS NOT NULL AND isin LIKE 'INE%' AND substr(isin, 8, 2) = '01'
+              AND industry IS NOT NULL AND trim(industry) <> ''""").fetchall()
+        missing = len({i for i, _, _ in rows if i not in sid})
+        ivs = intervals(monthly_labels([(sid[i], m, ind) for i, m, ind in rows if i in sid]))
+        keep = [(s_, lab, lab, CLASSIFICATION, vf, vt, conf) for s_, lab, vf, vt, conf in ivs]
         con.execute("BEGIN")
         con.execute("DELETE FROM sector_history WHERE classification = ?", [CLASSIFICATION])
         con.executemany("INSERT INTO sector_history (security_id, sector, industry, classification, valid_from,"
@@ -145,8 +146,63 @@ def build(env: str | None = None) -> Result:
                   min((k[4] for k in keep), default=None), max((k[4] for k in keep), default=None))
 
 
+SECTOR_MAP = Path(__file__).resolve().parents[2] / "configs" / "industry_sectors.yml"
+
+
+def sector_map() -> dict[str, str | None]:
+    """AMFI label (lower-cased, spaces collapsed) -> NSE sector, frozen in
+    configs/industry_sectors.yml."""
+    import yaml
+    return {norm(k): v for k, v in yaml.safe_load(SECTOR_MAP.read_text())["labels"].items()}
+
+
+def build_sector_panel(env: str | None = None) -> int:
+    """warehouse/sector_panel: (rebalance_date, symbol, sector, size_t) for every
+    char_panel row whose company has a sector at that date — the cells of
+    CHAR_MATCHED_IND (src/research/charmatch.py). Kept OUT of char_panel so
+    CHAR_MATCHED, and every figure quoted on it, cannot change.
+
+    size_t: size tercile by the panel's own adv20, among ALL names that month
+    (not only those with a sector), so a cell compares like-sized companies.
+    Identity: the char_panel symbol resolves to a security by the identity
+    layer's rule — the symbol_history window covering the date, else the
+    nearest one, ties to the lowest id (src/identity/master.py RESOLVE_SQL)."""
+    import duckdb
+
+    from src.common.partitioned import replace_partitioned
+    from src.common.paths import warehouse_dir
+    cp = str(warehouse_dir(env) / "char_panel" / "**" / "*.parquet")
+    out = warehouse_dir(env) / "sector_panel"
+    con = duckdb.connect(str(research_db(env)), read_only=True)
+    try:
+        con.execute("CREATE TEMP TABLE smap (lab VARCHAR, sector VARCHAR)")
+        con.executemany("INSERT INTO smap VALUES (?, ?)", [(k, v) for k, v in sector_map().items() if v])
+        sql = f"""
+            WITH p AS (
+                SELECT CAST(rebalance_date AS DATE) AS d, symbol, adv20,
+                       NTILE(3) OVER (PARTITION BY rebalance_date ORDER BY adv20) AS size_t
+                FROM read_parquet('{cp}', hive_partitioning=true)),
+            ident AS (
+                SELECT p.*, h.security_id FROM p JOIN symbol_history h ON UPPER(h.symbol) = UPPER(p.symbol)
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY p.d, p.symbol ORDER BY
+                    CASE WHEN p.d >= h.valid_from AND (h.valid_to IS NULL OR p.d <= h.valid_to) THEN 0
+                         WHEN p.d < h.valid_from THEN date_diff('day', p.d, h.valid_from)
+                         ELSE date_diff('day', h.valid_to, p.d) END, h.security_id) = 1)
+            SELECT i.d AS rebalance_date, i.symbol, m.sector, i.size_t
+            FROM ident i
+            JOIN sector_history s ON s.security_id = i.security_id
+             AND i.d BETWEEN s.valid_from AND coalesce(s.valid_to, DATE '2100-01-01')
+            JOIN smap m ON m.lab = lower(regexp_replace(trim(s.industry), '\\s+', ' ', 'g'))"""
+        replace_partitioned(con, sql, out, "rebalance_date")
+        n = con.execute(f"SELECT count(*) FROM read_parquet('{out}/**/*.parquet')").fetchone()[0]
+    finally:
+        con.close()
+    return n
+
+
 def main() -> int:
     print(" ", build().render())
+    print(f"  SECTOR PANEL: {build_sector_panel():,} (month-end, stock) rows with an NSE sector")
     return 0
 
 
