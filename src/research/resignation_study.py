@@ -163,7 +163,8 @@ def run_power() -> str:
               "|---|---|---|---|---:|---:|---:|---:|---:|---:|"]
     for sessions_h, months in HORIZONS:
         df = abnormal(None, evs, sessions_h)
-        for period, sub in (("EXPLORE 2014-2018", df[df["tdate"] < EXPLORE_END]), ("FULL 2014-2026", df)):
+        for period, sub in (("EXPLORE 2014-2018", df[df["tdate"] < EXPLORE_END]),
+                            ("CONFIRM 2019-2026", df[df["tdate"] >= EXPLORE_END]), ("FULL 2014-2026", df)):
             for label, g in [("GOVERNANCE (pooled)", sub), *sorted(sub.groupby("role"))]:
                 for r in mde_rows(g, months, label):
                     lines.append(f"| {period} | {r['population']} | {sessions_h}s | {r['bench']} | {r['events']:,} | "
