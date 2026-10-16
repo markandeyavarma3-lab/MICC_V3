@@ -121,3 +121,30 @@ broad sectors for the same reason.
 5. **Explore** (2014–2018 only): means allowed, reported in full.
 6. **Freeze the draft spec** with what 3–5 found; owner reviews; "approve"
    registers.
+
+## Part 5 — what steps 1–3 found (2026-10-16), and a changed recommendation
+
+- **Announcements 2014–2026 collected** (668 weekly windows, 1.41 M records).
+  Governance resignations after de-clustering: auditor 465, CEO/MD 1,785, CFO
+  1,793, independent director 4,265 (`docs/reports/EXP007_POWER.md`, by year).
+- **Power, dispersion only, pooled governance population, CHAR_MATCHED:**
+
+  | sample | months | 63 sessions | 21 sessions |
+  |---|---:|---:|---:|
+  | EXPLORE 2014–2018 | 60 | 1.60x short | 2.35x short |
+  | CONFIRM 2019–2026 | 90 | **1.00x — at the bound** | 1.48x short |
+  | FULL 2014–2026 | 150 | **0.88x — POWERED** | 1.26x short |
+
+  Each role alone is 2–7x short; only the pooled population can be tested.
+- **CHAR_MATCHED_IND** matches 26% of events at sector x size and 5% at sector;
+  it changes the cohort SD by under 1% (5.74% vs 5.79%). Industry is a
+  check on the benchmark's honesty here, not a power lever.
+
+**The recommendation changes: no EXPLORE; one test on the whole 2014–2026
+sample.** The plan split the data so a look at 2014–2018 could shape the
+design. Nothing needs shaping from returns: the event (governance
+resignation), its direction (negative drift) and its rule (the frozen text
+classifier) come from the literature and the filings, and no mean has been
+read for any period. Spending 2014–2018 on a look leaves CONFIRM exactly at
+its bound, a coin flip; not looking leaves the whole sample powered.
+`resignation_study.py explore` has NOT been run and should not be.
