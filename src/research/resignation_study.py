@@ -133,6 +133,36 @@ def explore(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+EXPERIMENT_ID = "exp_007_governance_resignation_drift"
+ENGINE_ID = "ENGINE_E_EVENTS"
+FAMILY = "TRACK_E_EVENTS"
+PRIMARY_SESSIONS, PRIMARY_MONTHS = 63, 3.0
+T_BAR = -1.645                       # one-sided, negative
+EFFECT_FLOOR = -0.005                # a third of the 1.5% bound
+MIN_COHORTS = 120                    # kill: fewer -> UNDERPOWERED, unread
+
+
+def decide(tdates: pd.Series, ab: pd.Series) -> dict:
+    """The one registered read: events -> monthly cohort means -> a one-sided t
+    with the Bartlett serial inflation whose lag covers the 3-month overlap
+    (power.serial_inflation, 0033). Pure, so the frozen arithmetic is tested."""
+    coh = power.cohort_collapse(tdates, ab, freq="M")
+    n = len(coh)
+    if n < MIN_COHORTS:
+        return {"verdict": "UNDERPOWERED", "cohorts": n}
+    infl, lag = power.serial_inflation(coh, label_periods=round(PRIMARY_MONTHS))
+    mean, sd = float(coh.mean()), float(coh.std(ddof=1))
+    t = mean / (sd / n ** 0.5 * infl ** 0.5)
+    if t <= T_BAR and mean <= EFFECT_FLOOR:
+        v = "DRIFT_CONFIRMED"
+    elif t <= T_BAR:
+        v = "SIGNIFICANT_BUT_SMALL"
+    else:
+        v = "NO_DRIFT"
+    return {"verdict": v, "cohorts": n, "events": int(ab.notna().sum()), "mean_cohort": mean, "t": t,
+            "inflation": infl, "lag": lag, "t_bar": T_BAR, "effect_floor": EFFECT_FLOOR}
+
+
 def _load() -> tuple[list[dict], list[str]]:
     from src.site.export import _archive_rows
     rows = _archive_rows("ANNOUNCE")
