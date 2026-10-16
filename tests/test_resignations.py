@@ -79,3 +79,21 @@ def test_an_auditor_of_a_subsidiary_is_not_the_companys_auditor():
     text = ("views of the audit committee of the Company on resignation of the statutory auditor of Arvind Youth "
             "Brands Private Limited, a material subsidiary of the Company")
     assert R.classify("Updates", text) == "OTHER_OFFICER"
+
+
+@pytest.mark.unit
+def test_explore_refuses_any_confirm_event():
+    import pandas as pd
+
+    from src.research import resignation_study as S
+    df = pd.DataFrame({"tdate": ["2018-12-31", "2019-01-02"], "role": ["CFO", "CFO"],
+                       **{f"ab_{b}": [0.01, -0.02] for b in S.BENCHES}})
+    with pytest.raises(S.ConfirmDataError):
+        S.explore(df)
+    ok = S.explore(df[df["tdate"] < S.EXPLORE_END].copy())
+    assert ok.empty                                        # one event is below the 10-event floor
+
+
+@pytest.mark.unit
+def test_governance_is_the_four_information_roles():
+    assert R.GOVERNANCE == {"AUDITOR", "INDEPENDENT_DIRECTOR", "CEO_MD", "CFO"}
