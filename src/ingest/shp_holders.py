@@ -151,13 +151,23 @@ def parse_file(path: str) -> list[dict]:
 
 def main() -> int:
     import duckdb
-    files = sorted(glob.glob(shp.XBRL_GLOB, recursive=True))
+    files = sorted(glob.glob(shp.XBRL_GLOB, recursive=True)) + sorted(glob.glob(shp.BSE_GLOB, recursive=True))
     rows: list[dict] = []
+    nse_seen: set[tuple[str, str]] = set()
     for f in files:
+        bse = "SHP_BSE" in f
         try:
-            rows.extend(parse_file(f))
+            got = parse_file(f)
         except (OSError, EOFError, UnicodeError) as e:
             print(f"  unreadable {Path(f).name}: {type(e).__name__}")
+            continue
+        # NSE first; a BSE filing (pre-2021-09, src/archive/bse_shp.py) only
+        # where NSE holds no filing for that company and quarter.
+        if bse and got and (got[0]["isin"], got[0]["quarter_end"]) in nse_seen:
+            continue
+        if not bse:
+            nse_seen.update((r["isin"], r["quarter_end"]) for r in got)
+        rows.extend(got)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     try:

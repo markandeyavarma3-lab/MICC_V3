@@ -94,6 +94,7 @@ def test_broadcast_date_joins_on_isin_so_a_renamed_company_still_matches(tmp_pat
     ISIN. 0069 found this exact class of error keying a partition on the symbol."""
     monkeypatch.setattr(shp, "MASTER_GLOB", str(tmp_path / "SHP" / "NSE" / "**" / "*.json.gz"))
     monkeypatch.setattr(shp, "XBRL_GLOB", str(tmp_path / "SHP_XBRL" / "**" / "*.xml.gz"))
+    monkeypatch.setattr(shp, "BSE_GLOB", str(tmp_path / "SHP_BSE" / "**" / "*.xml.gz"))
     _master(tmp_path, "ANGELONE", "INE732I01013")
     x = tmp_path / "SHP_XBRL" / "y"; x.mkdir(parents=True)
     (x / "a.xml.gz").write_bytes(_xbrl("MainD", "INE732I01013", "ANGELBRKG", "0.4", "0.6", "0.06"))
@@ -104,6 +105,7 @@ def test_broadcast_date_joins_on_isin_so_a_renamed_company_still_matches(tmp_pat
 def test_a_filing_with_no_master_row_keeps_its_data_with_an_empty_broadcast_date(tmp_path, monkeypatch):
     monkeypatch.setattr(shp, "MASTER_GLOB", str(tmp_path / "SHP" / "NSE" / "**" / "*.json.gz"))
     monkeypatch.setattr(shp, "XBRL_GLOB", str(tmp_path / "SHP_XBRL" / "**" / "*.xml.gz"))
+    monkeypatch.setattr(shp, "BSE_GLOB", str(tmp_path / "SHP_BSE" / "**" / "*.xml.gz"))
     x = tmp_path / "SHP_XBRL" / "y"; x.mkdir(parents=True)
     (x / "a.xml.gz").write_bytes(_xbrl("MainD", "INE000A01010", "ORPHAN", "0.4", "0.6", "0.06"))
     rows = shp.parse()
@@ -135,6 +137,7 @@ def test_a_filing_with_no_master_row_falls_back_to_the_upload_date_in_its_url(tm
     row. NSE embeds the upload timestamp in the XBRL filename."""
     monkeypatch.setattr(shp, "MASTER_GLOB", str(tmp_path / "SHP" / "NSE" / "**" / "*.json.gz"))
     monkeypatch.setattr(shp, "XBRL_GLOB", str(tmp_path / "SHP_XBRL" / "**" / "*.xml.gz"))
+    monkeypatch.setattr(shp, "BSE_GLOB", str(tmp_path / "SHP_BSE" / "**" / "*.xml.gz"))
     monkeypatch.setattr(shp, "ARCHIVE", tmp_path)
     x = tmp_path / "SHP_XBRL" / "y"; x.mkdir(parents=True)
     (x / "orphan.xml.gz").write_bytes(_xbrl("MainD", "INE000A01010", "ORPHAN", "0.4", "0.6", "0.06"))
