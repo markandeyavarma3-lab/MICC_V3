@@ -26,6 +26,9 @@ mkdir -p "$REPO/logs"
   # host; resumable, ~35,700 files in all (src/archive/bse_shp.py, 2026-10-16).
   "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 6000 --max-minutes 120
   echo "bse_shp=$?"
+  # Security-wise delivery position, every session since 2006 (src/archive/delivery.py).
+  "$REPO/.venv/bin/python" -m src.archive.delivery --max-minutes 30
+  echo "delivery=$?"
   # Fund houses publish by the 10th; a nightly look costs a few page renders
   # and fetches only files not already held.
   "$REPO/.venv/bin/python" -m src.archive.mf_portfolios --months 2 --max-minutes 30
