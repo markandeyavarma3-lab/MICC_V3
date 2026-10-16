@@ -97,3 +97,21 @@ def test_explore_refuses_any_confirm_event():
 @pytest.mark.unit
 def test_governance_is_the_four_information_roles():
     assert R.GOVERNANCE == {"AUDITOR", "INDEPENDENT_DIRECTOR", "CEO_MD", "CFO"}
+
+
+@pytest.mark.unit
+def test_the_registered_read_needs_both_the_t_and_the_effect_floor():
+    import numpy as np
+    import pandas as pd
+
+    from src.research import resignation_study as S
+    months = pd.date_range("2014-01-15", periods=150, freq="MS").strftime("%Y-%m-%d")
+    rng = np.random.default_rng(3)
+    def run(mu, sd):
+        d = pd.Series(np.repeat(months, 5)); x = pd.Series(rng.normal(mu, sd, len(d)))
+        return S.decide(d, x)["verdict"]
+    assert run(-0.02, 0.05) == "DRIFT_CONFIRMED"
+    assert run(-0.003, 0.004) == "SIGNIFICANT_BUT_SMALL"
+    assert run(0.0, 0.05) == "NO_DRIFT"
+    short = pd.Series(np.repeat(months[:100], 3))
+    assert S.decide(short, pd.Series(np.zeros(len(short))))["verdict"] == "UNDERPOWERED"

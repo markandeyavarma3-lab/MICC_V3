@@ -64,6 +64,15 @@ families:
     typical_dof: 150      # ~150 monthly cohorts, 2014-01 .. 2026-07 (NIFTY 50 coverage)
     selection_happens_within: true
     decision_record: "0067"
+  - id: TRACK_E_EVENTS
+    description: "Corporate-event disclosures on NSE's announcement feed (governance
+      resignations first, exp_007): what a stock does after the filing, against
+      matched peers. New 2026-10-16; nothing searched in it before."
+    carried: 0
+    estimator: monthly_cohort_mean
+    typical_dof: 150      # ~150 monthly cohorts, 2014-01 .. 2026-08
+    selection_happens_within: true
+
   - id: TRACK_H_HOLDINGS
     description: "Quarterly institutional holding change (SHP filings: FPI,
       all foreign institutions, mutual funds) as a within-quarter cross-sectional
