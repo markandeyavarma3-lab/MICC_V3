@@ -22,6 +22,10 @@ mkdir -p "$REPO/logs"
   echo "results=$RC"
   "$REPO/.venv/bin/python" -m src.ingest.results
   echo "results_parse=$?"
+  # Shareholding filings before NSE's window (2016 - 2021-06), from BSE's static
+  # host; resumable, ~35,700 files in all (src/archive/bse_shp.py, 2026-10-16).
+  "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 6000 --max-minutes 120
+  echo "bse_shp=$?"
   # Fund houses publish by the 10th; a nightly look costs a few page renders
   # and fetches only files not already held.
   "$REPO/.venv/bin/python" -m src.archive.mf_portfolios --months 2 --max-minutes 30

@@ -146,6 +146,9 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
     the point-in-time entry. `revised` and `interval_days` ride on every row.
     """
     con = duckdb.connect()
+    has_source = "broadcast_source" in {r[0] for r in con.execute(
+        f"DESCRIBE SELECT * FROM read_parquet('{path}')").fetchall()}
+    nse_only = " AND broadcast_source <> 'bse_seed'" if has_source else ""
     # ABSENT MEANS ZERO, WITHIN THE FILING'S OWN TAXONOMY. The 2020-2022
     # taxonomy writes every category, zeros included; V1.1+ omits a category
     # whose holding is zero. Without this a fund's EXIT (2% -> 0) reads as a
@@ -168,7 +171,10 @@ def signals(path=HOLDINGS) -> pd.DataFrame:
                SUM(CASE WHEN lower(category_raw) IN ('shareholdingofpromoterandpromotergroupmember',
                        'publicshareholdingmember', 'nonpromoternonpublicmember') THEN num_shares END) AS shares
         FROM read_parquet('{path}')
-        WHERE broadcast_date <> ''{f" AND broadcast_date <= '{AS_OF}'" if AS_OF else ""}
+        -- NSE's filings only: exp_004's spec names them. The BSE pre-2021 history
+        -- added 2026-10-16 (broadcast_source 'bse_seed') is for new studies; it
+        -- must not change what this registered code measures.
+        WHERE broadcast_date <> ''{nse_only}{f" AND broadcast_date <= '{AS_OF}'" if AS_OF else ""}
         GROUP BY 1,2,3,4,5,6
     """).df()
     con.close()

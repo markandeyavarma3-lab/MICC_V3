@@ -49,6 +49,24 @@ from src.governance import provenance as prov  # noqa: E402
 
 MASTER_GLOB = str(ARCHIVE / "SHP" / "NSE" / "**" / "*.json.gz")
 XBRL_GLOB = str(ARCHIVE / "SHP_XBRL" / "NSE" / "**" / "*.xml.gz")
+#: The pre-2021-09 filings, from BSE's static host (src/archive/bse_shp.py,
+#: 2026-10-16), each dated by the seed index's broadcast time.
+BSE_GLOB = str(ARCHIVE / "SHP_BSE" / "**" / "*.xml.gz")
+
+
+def bse_broadcasts() -> dict[str, str]:
+    """archived BSE file name -> its filing's broadcast date (YYYY-MM-DD)."""
+    man = ARCHIVE / "SHP_BSE" / "manifest.jsonl"
+    out: dict[str, str] = {}
+    if man.exists():
+        for ln in man.read_text().splitlines():
+            try:
+                r = json.loads(ln)
+            except ValueError:
+                continue
+            if r.get("status") == "STORED" and r.get("broadcast"):
+                out[Path(r["path"]).name] = r["broadcast"][:10]
+    return out
 OUT = COLLECTED / "shp" / "shp_holdings.parquet"
 PRODUCED_BY = "src/ingest/shp.py"
 
@@ -359,12 +377,23 @@ def parse_all() -> tuple[list[Holding], list[NamedPromoter]]:
 
     out: list[Holding] = []
     named: list[NamedPromoter] = []
-    for f in sorted(glob.glob(XBRL_GLOB, recursive=True)):
+    bse_dates = bse_broadcasts()
+    nse_seen: set[tuple[str, str]] = set()
+    # NSE first; a BSE file is used only for a (company, quarter) NSE does not hold.
+    files = [(f, "nse") for f in sorted(glob.glob(XBRL_GLOB, recursive=True))] + \
+            [(f, "bse") for f in sorted(glob.glob(BSE_GLOB, recursive=True))]
+    for f, venue in files:
         holdings, promoters = _parse_file(f)
+        if venue == "bse" and holdings and (holdings[0].isin, holdings[0].quarter_end) in nse_seen:
+            continue
         stamp: tuple[str, str] | None = None
         for h in holdings:
+            if venue == "nse":
+                nse_seen.add((h.isin, h.quarter_end))
             fl = by_isin.get((h.isin, h.quarter_end)) or by_symbol.get((h.symbol, h.quarter_end))
-            if fl and fl.broadcast_date:
+            if venue == "bse":
+                bd, src, rev = bse_dates.get(Path(f).name, ""), "bse_seed", False
+            elif fl and fl.broadcast_date:
                 bd, src, rev = fl.broadcast_date, "master", fl.revised
             else:
                 bd, src, rev = url_stamp.get(h.source_file, ""), "xbrl_url" if h.source_file in url_stamp else "", False

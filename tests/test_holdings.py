@@ -373,3 +373,12 @@ def test_run_computes_every_robustness_line_the_spec_names():
     for promised in ("market-relative", "winsorised", "holder-count", "horizon",
                      "recovery factor", "KILL2", "KILL3", "KILL4", "calendar filings only"):
         assert promised in src, promised
+
+
+def test_the_registered_study_never_reads_the_bse_history():
+    """exp_004's spec names NSE's filings; the BSE pre-2021 files
+    (src/archive/bse_shp.py) must not enter its signal."""
+    import inspect
+
+    from src.research import holdings
+    assert "broadcast_source <> 'bse_seed'" in inspect.getsource(holdings.signals) and "nse_only" in inspect.getsource(holdings.signals)
