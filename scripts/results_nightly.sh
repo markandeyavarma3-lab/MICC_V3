@@ -17,15 +17,23 @@ mkdir -p "$REPO/logs"
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   # Never while the collector holds the database.
   while pgrep -f collect_daily.sh >/dev/null; do sleep 60; done
-  "$REPO/.venv/bin/python" -m src.archive.results --max-files 6000 --max-minutes 180
-  RC=$?
-  echo "results=$RC"
-  "$REPO/.venv/bin/python" -m src.ingest.results
-  echo "results_parse=$?"
+  # Results (NSE) and pre-2021 shareholding (BSE) are different hosts: they run
+  # side by side, each at its own polite rate, for up to ten hours (2026-10-18:
+  # results widened from the newest 8 quarters to 40, ~5x the files). Neither
+  # holds the research database; bse_shp reads it read-only for a second.
   # Shareholding filings before NSE's window (2016 - 2021-06), from BSE's static
   # host; resumable, ~35,700 files in all (src/archive/bse_shp.py, 2026-10-16).
-  "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 6000 --max-minutes 120
+  "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 40000 --max-minutes 600 &
+  BSE_PID=$!
+  "$REPO/.venv/bin/python" -m src.archive.results --quarters 40 --max-files 100000 --max-minutes 600
+  echo "results=$?"
+  wait $BSE_PID
   echo "bse_shp=$?"
+  # A long night can run into the next evening's collector: wait it out before
+  # anything that writes the database.
+  while pgrep -f collect_daily.sh >/dev/null; do sleep 60; done
+  "$REPO/.venv/bin/python" -m src.ingest.results
+  echo "results_parse=$?"
   # Security-wise delivery position, every session since 2006 (src/archive/delivery.py).
   "$REPO/.venv/bin/python" -m src.archive.delivery --max-minutes 30
   echo "delivery=$?"
