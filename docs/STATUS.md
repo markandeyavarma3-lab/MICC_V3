@@ -43,7 +43,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-10-16; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-18 08:38 UTC, 3 generation(s), 0 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest 2026-10-18 08:38 UTC, 3 generation(s), 3 commit(s) and 0 archived session(s) not in it; static 9.1 GB verified at iCloud 2026-09-17 |
 
 ## Phase 2 Collection
 
@@ -109,7 +109,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 
 | step | what | status | note |
 |---|---|---|---|
-| 6.1 | Register all four experiments, trial counter to 72 | WIRED | 7 of 4 registered |
+| 6.1 | Register all four experiments, trial counter to 72 | WIRED | 8 of 4 registered |
 | 6.2 | Power analysis per stratum, before any fit | **VERIFIED** |  |
 | 6.3 | deal_forward_outcomes across 9 horizons x 6 benchmarks | **VERIFIED** | 52,365 outcomes, 289,636 benchmark rows against five benchmarks. NIFTY500_TR — the config's declared broad_market_headline, unbuildable for 33 days — joined the panel 2026-09-19 (0077) and enters these rows on the next outcomes run |
 | 6.4 | Delisting/merger handling at 3 recovery factors | **VERIFIED** | measured on EXPLORE sells; NOT persisted into deal_forward_outcomes, which holds 0 rows (6.3). MERGED/SUSPENDED cannot be separated — delisting_reason is UNKNOWN on every row (3.3) |
@@ -118,7 +118,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 | 6.7 | PBO from the CPCV distribution | — |  |
 | 6.8 | Romano-Wolf stepdown for ranking | **VERIFIED** | built for 6.9; the participant leaderboard it corrects has 1 testable candidate (decision 0056) |
 | 6.9 | Null-calibration on shuffled participant labels | **VERIFIED** | the procedure does not manufacture findings from noise (1.8% at a nominal 5%), and the participant study in Plan 2 §6.3 cannot be run: 1 of 7 eligible names has the months a monthly-cohort statistic needs (decision 0056) |
-| 6.10 | Write study_result with corrected p and input hashes | BUILT | 2 row(s), from exp_001 |
+| 6.10 | Write study_result with corrected p and input hashes | BUILT | 3 row(s), from exp_001 |
 | 6R | Re-run exp_001 reproducibly under the DAG (0013) | **VERIFIED** |  |
 
 ## Phase 6S Track S
@@ -154,4 +154,4 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `4d7179b`.
+Derived at commit `788d926`.
