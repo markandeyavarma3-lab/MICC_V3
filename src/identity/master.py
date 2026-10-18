@@ -409,6 +409,13 @@ def exit_inputs(con: duckdb.DuckDBPyConnection) -> None:
         con.execute("CREATE OR REPLACE TEMP TABLE _bse (isin VARCHAR, listing_status VARCHAR)")
 
 
+#: Tables that reference security_master, emptied children-first before a
+#: rebuild, each with what refills it: promoter_entities (src/identity/promoters.py,
+#: the next stage), sector_history (src/warehouse/sector_history.py, run after
+#: identity in the collector), symbol_history (this module, below).
+REBUILT_CHILDREN: tuple[str, ...] = ("promoter_entities", "sector_history", "symbol_history")
+
+
 def clear_for_rebuild(con: duckdb.DuckDBPyConnection) -> None:
     """Empty security_master and everything that references it, children first.
 
@@ -419,9 +426,27 @@ def clear_for_rebuild(con: duckdb.DuckDBPyConnection) -> None:
     `promoter_entities` is derived from security_master by
     `src/identity/promoters.py`, which runs straight after this stage and
     rebuilds it whole, so emptying it here loses nothing.
+
+    `sector_history` too (2026-10-17): filled from 2026-10-16 by
+    src/warehouse/sector_history.py, it points at security_master, and the
+    first rebuild after it was filled failed this stage on the foreign key
+    (security_id 496). The collector rebuilds it straight after identity.
     """
-    con.execute("DELETE FROM promoter_entities")
-    con.execute("DELETE FROM symbol_history")
+    # CHECK BEFORE DELETING (2026-10-18). DuckDB cannot run these deletes in one
+    # transaction, so a refusal half-way leaves the tables before it EMPTY. On
+    # 2026-10-16 an unlisted child (sector_history) refused the master delete
+    # after symbol_history was already gone: two nights with no symbol history
+    # and no deal outcomes. Every table that references security_master must be
+    # listed here, or nothing is deleted.
+    children = {r[0] for r in con.execute(
+        "SELECT DISTINCT table_name FROM duckdb_constraints() "
+        "WHERE constraint_type = 'FOREIGN KEY' AND referenced_table = 'security_master'").fetchall()}
+    unknown = children - set(REBUILT_CHILDREN)
+    if unknown:
+        raise RuntimeError(f"{sorted(unknown)} reference security_master and clear_for_rebuild does not empty them; "
+                           "nothing was deleted. Add each to REBUILT_CHILDREN with what rebuilds it.")
+    for t in REBUILT_CHILDREN:
+        con.execute(f"DELETE FROM {t}")
     con.execute("DELETE FROM security_master")
 
 
