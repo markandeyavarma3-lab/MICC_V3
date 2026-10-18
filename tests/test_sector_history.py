@@ -69,3 +69,50 @@ def test_an_event_without_a_sector_falls_through_to_the_characteristic_cells():
     lad = C.ladder(10, own="ec", rungs=C.IND_LEVELS)
     got = dict(con.execute(f"SELECT ec.symbol, {lad.match_level} FROM ec {lad.joins}").fetchall())
     assert got == {"S0": "SECTOR_SIZE3", "S20": "SIZE_MOM_VOL"}
+
+
+@pytest.mark.unit
+def test_the_identity_rebuild_clears_sector_history_before_the_master(tmp_path):
+    """2026-10-17: the first identity rebuild after sector_history was filled
+    failed on the foreign key. clear_for_rebuild must empty it, children first."""
+    import duckdb
+
+    from src.common import migrate
+    from src.identity import master
+    db = tmp_path / "r.duckdb"
+    migrate.migrate_duckdb(db)
+    con = duckdb.connect(str(db))
+    try:
+        cols = {r[0]: r for r in con.execute("DESCRIBE security_master").fetchall()}
+        need = [c for c, r in cols.items() if r[2] == "NO"]
+        vals = {"security_id": 496, "canonical_symbol": "ACME", "company_name": "Acme", "status": "ACTIVE",
+                "source": "test", "confidence": "HIGH"}
+        con.execute(f"INSERT INTO security_master ({', '.join(need)}) VALUES ({', '.join('?' * len(need))})",
+                    [vals.get(c, "x") for c in need])
+        con.execute("INSERT INTO sector_history VALUES (496, 'Banks', 'Banks', 'AMFI_MF_PORTFOLIO', "
+                    "DATE '2020-01-10', NULL, 'HIGH')")
+        master.clear_for_rebuild(con)
+        assert con.execute("SELECT count(*) FROM security_master").fetchone()[0] == 0
+        assert con.execute("SELECT count(*) FROM sector_history").fetchone()[0] == 0
+    finally:
+        con.close()
+
+
+@pytest.mark.unit
+def test_an_unlisted_child_table_stops_the_rebuild_before_anything_is_deleted(tmp_path, monkeypatch):
+    import duckdb
+
+    from src.common import migrate
+    from src.identity import master
+    db = tmp_path / "r.duckdb"
+    migrate.migrate_duckdb(db)
+    monkeypatch.setattr(master, "REBUILT_CHILDREN", ("promoter_entities", "symbol_history"))   # sector_history unlisted
+    con = duckdb.connect(str(db))
+    try:
+        con.execute("CREATE TEMP TABLE probe AS SELECT 1")
+        n_before = con.execute("SELECT count(*) FROM symbol_history").fetchone()[0]
+        with pytest.raises(RuntimeError, match="sector_history"):
+            master.clear_for_rebuild(con)
+        assert con.execute("SELECT count(*) FROM symbol_history").fetchone()[0] == n_before
+    finally:
+        con.close()

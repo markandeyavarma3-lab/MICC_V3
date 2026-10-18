@@ -537,7 +537,9 @@ def test_the_identity_rebuild_reads_before_it_destroys():
         "the spine is read AFTER the delete; an unreadable partition would "
         "again empty security_master and symbol_history"
     )
+    # Children first: every table in REBUILT_CHILDREN is emptied in the loop,
+    # and only then the master (2026-10-18: the list replaced literal deletes).
     clear = inspect.getsource(master.clear_for_rebuild)
-    order = [clear.index(f"DELETE FROM {t}") for t in
-             ("promoter_entities", "symbol_history", "security_master")]
-    assert order == sorted(order), "a parent is deleted before a child that references it"
+    assert clear.index("for t in REBUILT_CHILDREN") < clear.index('DELETE FROM security_master'), \
+        "a parent is deleted before a child that references it"
+    assert {"promoter_entities", "symbol_history", "sector_history"} <= set(master.REBUILT_CHILDREN)

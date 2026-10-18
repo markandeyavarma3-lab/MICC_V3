@@ -226,6 +226,10 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   note "listing" $?
   "$REPO/.venv/bin/python" -m src.identity.master
   note "identity" $?
+  # Point-in-time industries reference security_master, which identity just
+  # rebuilt (clear_for_rebuild empties them): put them straight back (2026-10-17).
+  "$REPO/.venv/bin/python" -m src.warehouse.sector_history
+  note "sector_history" $?
   # PROMOTERS STRAIGHT AFTER IDENTITY, BEFORE THE MART. identity empties
   # promoter_entities (it references security_master, and the FK refuses the
   # rebuild otherwise); this refills it from the SHP parse, and the mart's
