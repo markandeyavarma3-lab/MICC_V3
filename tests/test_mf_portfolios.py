@@ -218,9 +218,21 @@ def test_each_section_of_a_sheet_is_read_under_its_own_header():
 def test_a_template_source_asks_for_each_month_in_the_window():
     src = {"template": "https://x.example/api?year={year}&month={month}&mm={mm}"}
     got = A.template_urls(src, 3, today=date(2026, 1, 15))
-    assert got == ["https://x.example/api?year=2025&month=December&mm=12",
-                   "https://x.example/api?year=2025&month=November&mm=11",
-                   "https://x.example/api?year=2025&month=October&mm=10"]
+    assert [u for u, _ in got] == ["https://x.example/api?year=2025&month=December&mm=12",
+                                   "https://x.example/api?year=2025&month=November&mm=11",
+                                   "https://x.example/api?year=2025&month=October&mm=10"]
+
+
+@pytest.mark.unit
+def test_a_per_year_post_is_asked_for_once_a_year_and_its_links_are_read():
+    src = {"template": "https://x.example/m.aspx/list", "post": "{{id:'{year}',cat:'Monthly Portfolio'}}"}
+    got = A.template_urls(src, 15, today=date(2026, 3, 15))      # Feb 2026 back to Dec 2024
+    assert [b for _, b in got] == ["{id:'2026',cat:'Monthly Portfolio'}", "{id:'2025',cat:'Monthly Portfolio'}",
+                                   "{id:'2024',cat:'Monthly Portfolio'}"]
+    html = "<ul><li><a href='/Admin/disclouser/Monthly_portfolio_sept_30092025.xlsx'>x</a></li></ul>"
+    c = A.candidates({"page": "https://x.example/p", "base": "https://x.example", "mode": "template",
+                      "match": "portfolio"}, [], [html], 3, date(2025, 10, 20))
+    assert [x["url"] for x in c] == ["https://x.example/Admin/disclouser/Monthly_portfolio_sept_30092025.xlsx"]
 
 
 @pytest.mark.unit
@@ -236,3 +248,38 @@ def test_stacked_schemes_and_dated_titles_are_named_right():
             ["EQ - HDFC", "Banks", 5, 50, 3.1, "INE040A01034"]]
     got = [(r["scheme"], r["isin"]) for r in P.parse_sheet(rows, "EXPOSURE", {})]
     assert got == [("UTI - Unit Linked Insurance Plan", "INE758T01015"), ("UTI - Large Cap Fund", "INE040A01034")]
+
+
+@pytest.mark.unit
+def test_an_undated_template_source_reads_links_out_of_a_js_string():
+    body = "<div><a href='/uploaddir/MonthlyPortfolio/monthlyportfolio_091026155031.xlsx'>x</a></div>"
+    src = {"page": "https://x.example/p", "base": "https://x.example", "mode": "template",
+           "match": "monthlyportfolio", "undated": True}
+    got = A.candidates(src, [], [body], 3, date(2026, 10, 16))
+    assert [(c["url"], c["month"]) for c in got] == [
+        ("https://x.example/uploaddir/MonthlyPortfolio/monthlyportfolio_091026155031.xlsx", "undated")]
+
+
+@pytest.mark.unit
+def test_a_memo_table_after_the_portfolio_is_not_read_as_holdings():
+    rows = [["Sundaram Aggressive Hybrid Fund"], ["Portfolio as on 30-Sep-2026"],
+            ["SL No", "ISIN Code", "Name of the instrument", "Rating / Industry", "Quantity",
+             "Mkt Value Rs. in Lacs", "% of Net Asset"],
+            [1, "INE090A01021", "ICICI Bank Ltd", "Banks", 3280624, 43360.0, 0.0493],
+            [2, "INE002A01018", "Reliance", "Petroleum Products", 2708684, 32152.0, 0.0366],
+            [None, "ISIN", "NAME OF THE SECURITY", "TOTAL AMOUNT DUE (Rs. in Lacs)", None, None, "(Rs. in Lacs)"],
+            [None, "INE123A07012", "Defaulted NCD", 1500.0, None, None, 1500.0]]
+    got = P.parse_sheet(rows, "SPAHF", {})
+    assert [r["isin"] for r in got] == ["INE090A01021", "INE002A01018"]
+    assert got[0]["pct"] == pytest.approx(4.93)          # fractions rescaled once the memo rows are out
+
+
+@pytest.mark.unit
+def test_a_date_beside_its_label_wins_and_an_inception_date_never_does():
+    rows = [["Capitalmind Mutual Fund"], ["SCHEME NAME :", "Capitalmind Multi Asset Allocation Fund"],
+            ["INCEPTION DATE :", "March 16, 2026"], ["MONTHLY PORTFOLIO STATEMENT AS ON :", "September 30, 2026"],
+            ["Name of Instrument / Issuer", "ISIN", "Rating / Industry", "Quantity", "Market Value (Rs. in Lakhs)", "% to NAV"],
+            ["Bajaj Auto Limited", "INE917I01010", "Automobiles", 1164, 126.57, 0.0344]]
+    r = P.parse_sheet(rows, "CMMAAF", {})[0]
+    assert r["as_of"] == date(2026, 9, 30)
+    assert r["scheme"] == "Capitalmind Multi Asset Allocation Fund"

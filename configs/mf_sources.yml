@@ -12,19 +12,23 @@
 #            fetched, from responses whose URL matches `api`; relative paths are
 #            joined to `base`
 #   mode: template   a list API called once per month in the window; `template`
-#            holds {year}, {month} (January..December) and/or {mm}
+#            holds {year}, {month} (January..December), {mm} (01..12) and/or {m} (1..12);
+#            with `post`, the body template, sent as JSON, or as a form post with `form: true`
 #   clicks   text of tabs to click, in order, before the links are read
 #   next, max_pages   a paginated list: the Next control's text, and how many pages to walk
 #   timeout_s  a hard limit for the source (default 600 s); each source runs in its own process
 #   undated  the URLs carry no month; each is fetched once and the file's own
 #            title dates it
 #
-# NOT COVERED, and why (2026-10-10) — see also the disabled entries below:
-#   KOTAK, BANDHAN  their sites refuse automated browsers (a Radware bot-check
-#                   page; HTTP 403). A refusal, respected — not worked around.
-#   AXIS (encrypted API traffic), HSBC (the site does not answer plain or headless requests), EDELWEISS,
-#   CANARA, QUANT, LIC and the smaller houses: lists behind interactions not
-#   yet mapped (docs/plan/WEBSITE_PLAN.md §10). Each is added here when it is.
+# NOT COVERED, and why (updated 2026-10-16) — see also the disabled entries below:
+#   KOTAK, BANDHAN  refuse automated browsers (a Radware bot-check page; HTTP 403).
+#                   A refusal, respected — not worked around.
+#   AXIS, EDELWEISS, CANARA ROBECO  encrypt their API responses ('cipherText',
+#                   'encryptedString'): deliberate protection, respected.
+#   HSBC            does not answer plain or headless requests.
+#   ZERODHA         publishes quarterly, not monthly; UNIFI's page stops at 2025-04.
+#   PGIM, MAHINDRA MANULIFE, WHITEOAK, 360 ONE, NAVI, TRUST, BAJAJ and the smallest
+#                   houses: lists behind interactions not yet mapped.
 
 sources:
   - {amc: SBI, name: SBI Mutual Fund, page: "https://www.sbimf.com/portfolios",
@@ -39,6 +43,29 @@ sources:
      page: "https://www.utimf.com/downloads/consolidate-all-portfolio-disclosure",
      template: "https://www.utimf.com/api/get-consolidate-portfolio-disclosure?year={year}&month={month}",
      match: "portfolio", exclude: "debt|fortnight|half"}
+  # 2026-10-16: Quant lists files from an ASP.NET page method, one POST per year.
+  - {amc: QUANT, name: quant Mutual Fund, mode: template,
+     page: "https://quantmutual.com/statutory-disclosures",
+     template: "https://quantmutual.com/statutorydisclosures.aspx/displaydisclouser",
+     post: "{{id:'{year}',cat:'Monthly Portfolio'}}",
+     base: "https://quantmutual.com", match: "portfolio", exclude: "fortnight|half|debt|aaum|factsheet|risk"}
+  # 2026-10-16: LIC's consolidated list is a form post per (year, month number).
+  - {amc: LIC, name: LIC Mutual Fund, mode: template, form: true,
+     page: "https://www.licmf.com/downloads/monthly-portfolio",
+     template: "https://www.licmf.com/downloads/consolidated-portfolio-files",
+     post: "id=639&month={m}&year={year}",
+     base: "https://www.licmf.com", match: "portfolio"}
+  # 2026-10-16: Sundaram lists every monthly file from an AjaxPro handler;
+  # file names carry the upload time, not the month, so each is dated by its title.
+  - {amc: SUNDARAM, name: Sundaram Mutual Fund, mode: template, undated: true,
+     page: "https://www.sundarammutual.com/Monthly-Fortnightly-Adhoc-Portfolios",
+     template: "https://www.sundarammutual.com/ajax/Modules_Disclosure_Monthly_Fortnightly_Adhoc_Portfolios,App_Web_vg2r0dba.ashx?_method=GetCategory&_session=no",
+     post: "Catid=Monthly", content_type: "text/plain; charset=utf-8",
+     base: "https://www.sundarammutual.com", match: "monthlyportfolio"}
+  - {amc: ANGELONE, name: Angel One Mutual Fund, page: "https://www.angelonemf.com/downloads",
+     match: "Monthly-Portfolio"}
+  - {amc: CAPITALMIND, name: Capitalmind Mutual Fund, page: "https://capitalmindmf.com/statutory-disclosures.html",
+     match: "Monthly_Portfolio"}
   - {amc: NIPPON, name: Nippon India Mutual Fund, page: "https://mf.nipponindiaim.com/investor-service/downloads/factsheet-portfolio-and-other-disclosures",
      match: "NIMF-MONTHLY-PORTFOLIO", exclude: "fortnight|half|aaum|risk"}
   - {amc: ABSL, name: Aditya Birla Sun Life Mutual Fund, page: "https://mutualfund.adityabirlacapital.com/forms-and-downloads/portfolio",
