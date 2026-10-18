@@ -121,8 +121,9 @@ def candidates(src: dict, links: list[tuple[str, str]], blobs: list[str], months
             found.setdefault(href, text)
     if src.get("mode") in ("api", "template"):
         for body in blobs:
-            # Whole JSON strings: ICICI's paths have spaces in them.
-            for f in JSON_FILE.findall(body.replace("\\/", "/")):
+            # Whole JSON strings (ICICI's paths have spaces in them) and plain hrefs in HTML.
+            hrefs = re.findall(r"""href=['"]([^'"]+)['"]""", body)
+            for f in [*JSON_FILE.findall(body.replace("\\/", "/")), *hrefs]:
                 f = f.replace(" ", "%20")
                 u = base.rstrip("/") + f if f.startswith("/") and src.get("base") else urljoin(base, f)
                 if inc.search(u) and not exc.search(u):
@@ -146,25 +147,58 @@ MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "
                "October", "November", "December"]
 
 
-def template_urls(src: dict, months: int, today: date | None = None) -> list[str]:
-    """`template` mode: the source's own list API, called once per month in the
-    window (UTI, 2026-10-15: api/get-consolidate-portfolio-disclosure?year=
-    {year}&month={month}, the month spelled out). Pure, so testable."""
+def template_urls(src: dict, months: int, today: date | None = None) -> list[tuple[str, str | None]]:
+    """`template` mode: the source's own list API, once per month in the window
+    (UTI, 2026-10-15: api/get-consolidate-portfolio-disclosure?year={year}&
+    month={month}, the month spelled out) — or, with `post`, a POST whose body
+    is the template (Quant, 2026-10-16: an ASP.NET page method taking
+    {id:'<year>', cat:'Monthly Portfolio'}). Returns (url, body) pairs, each
+    once: a per-year body is asked for once per year, not twelve times. Pure."""
     today = today or datetime.now(UTC).date()
-    out = []
+    out: list[tuple[str, str | None]] = []
+    seen = set()
     for k in range(1, months + 1):
         y, m = divmod(today.year * 12 + today.month - 1 - k, 12)
-        out.append(src["template"].format(year=y, month=MONTH_NAMES[m], mm=f"{m + 1:02d}"))
+        vals = {"year": y, "month": MONTH_NAMES[m], "mm": f"{m + 1:02d}", "m": m + 1}
+        pair = (src["template"].format(**vals), src["post"].format(**vals) if src.get("post") else None)
+        if pair not in seen:
+            seen.add(pair)
+            out.append(pair)
     return out
 
 
 def _fetch_template(ctx, src: dict, months: int) -> list[str]:
     blobs = []
-    for u in template_urls(src, months):
+    for u, body in template_urls(src, months):
         try:
-            r = ctx.request.get(u, headers={"Referer": src["page"]}, timeout=60000)
+            hdr = {"Referer": src["page"]}
+            if body is None:
+                r = ctx.request.get(u, headers=hdr, timeout=60000)
+            else:
+                # Bytes, not str: Playwright JSON-encodes a str body a second time,
+                # and the page method then receives a quoted string (Quant, HTTP 500).
+                # JSON by default (Quant's page method); `form: true` for an
+                # ordinary form post (LIC, 2026-10-16), sent as an XHR.
+                ctype = src.get("content_type") or ("application/x-www-form-urlencoded; charset=UTF-8"
+                                                     if src.get("form") else "application/json; charset=utf-8")
+                extra = {"X-Requested-With": "XMLHttpRequest"} if src.get("form") else {}
+                r = ctx.request.post(u, data=body.encode(), timeout=60000,
+                                     headers={**hdr, **extra, "Content-Type": ctype})
             if r.status == 200:
-                blobs.append(r.text())
+                text = r.text()
+                # An ASP.NET page method wraps its HTML in {"d": "..."}: unwrap it so
+                # the links inside are plain hrefs.
+                try:
+                    d = json.loads(text)
+                    if isinstance(d, dict) and isinstance(d.get("d"), str):
+                        text = d["d"]
+                except ValueError:
+                    pass
+                # An AjaxPro handler answers with a quoted JS string, its quotes
+                # escaped (Sundaram, 2026-10-16): unquote it.
+                if len(text) > 1 and text[0] == text[-1] == "'":
+                    text = text[1:-1].replace("\\'", "'").replace('\\"', '"')
+                blobs.append(text)
         except Exception:  # noqa: BLE001 - one month's list failing is not the source failing
             continue
         time.sleep(src.get("rate", 0.7))

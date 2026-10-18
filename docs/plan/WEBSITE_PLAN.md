@@ -196,16 +196,14 @@ its own site within ten days; AMFI only links to them. Each house's page is
 rendered nightly and its files kept as served; one parser reads every house's
 layout (`src/ingest/mf_portfolios.py`).
 
-- Covered (2026-10-10): SBI, ICICI Prudential, HDFC, Nippon India, Aditya
-  Birla Sun Life, Motilal Oswal, DSP, Mirae Asset, Tata, Groww, PPFAS, Baroda
-  BNP Paribas, Invesco, Samco, Shriram, Helios, JM Financial, and from
-  2026-10-15 Franklin Templeton (to 2015-12) and UTI (to 2023-08) — 19
-  houses, ~1,250 schemes for September 2026. Old Bridge is configured; its page
-  lists nothing after February 2026.
-- Refused, and respected: **Kotak** (a bot-check page) and **Bandhan**
-  (HTTP 403) to automated browsers.
-- Not yet mapped: **Axis** (encrypted API traffic), **HSBC** (no answer to
-  plain or headless requests), **Union** (their pages list only old
-  years), **Edelweiss, Canara Robeco, Quant, LIC, Sundaram, PGIM, Mahindra
-  Manulife, WhiteOak, 360 ONE, Navi** and the smallest houses. The Funds
+- Covered (2026-10-16), 25 houses, 2.58 M holdings rows, ~1,370 schemes for
+  September 2026: SBI, ICICI Prudential, HDFC, Nippon India, Aditya Birla Sun
+  Life, UTI, Franklin Templeton, Motilal Oswal, DSP, Mirae Asset, Tata, Quant,
+  LIC, Sundaram, Groww, PPFAS, Baroda BNP Paribas, Invesco, Samco, Shriram,
+  Helios, JM Financial, Angel One, Capitalmind; Old Bridge configured (its page
+  stops at 2026-03). Deepest histories: Sundaram from 2012-09, ABSL, PPFAS, LIC
+  and Franklin from 2015-12.
+- Refused, and respected: Kotak and Bandhan (bot checks), Axis, Edelweiss and
+  Canara Robeco (encrypted API responses). HSBC does not answer; Zerodha is
+  quarterly only. The rest are listed in configs/mf_sources.yml. The Funds
   page lists the houses covered; a house not listed is missing, not empty.

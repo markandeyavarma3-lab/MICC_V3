@@ -197,8 +197,24 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
     title = [c for r in rows[:hi] for c in r if c not in (None, "")]
     # A dated title ("Portfolio as on ...") first; any other date in the
     # title rows (a launch date, a risk-o-meter date) only as a fallback.
-    stated = [c for c in title if re.search(r"as on|as at|ended|portfolio", _s(c), re.I)]
-    as_of = next((d for d in (parse_date(c) for c in [*stated, *title]) if d), None)
+    # A label with its date in the NEXT cell ('MONTHLY PORTFOLIO STATEMENT AS
+    # ON :' | 'September 30, 2026'; Capitalmind 2026-10-16) is a stated date
+    # too; a row about INCEPTION is never one (its date read as the as-of put a
+    # September file in March).
+    label = re.compile(r"as on|as at|ended|portfolio", re.I)
+    stated, rest = [], []
+    for row in rows[:hi]:
+        cells = [c for c in row if c not in (None, "")]
+        if any(re.search(r"inception|launch|allotment", _s(c), re.I) for c in cells):
+            continue
+        for i, c in enumerate(cells):
+            if label.search(_s(c)):
+                stated.append(c)
+                if parse_date(c) is None and i + 1 < len(cells):
+                    stated.append(cells[i + 1])
+            else:
+                rest.append(c)
+    as_of = next((d for d in (parse_date(c) for c in [*stated, *rest]) if d), None)
     scheme = index.get(sheet.strip().upper(), "")
     if not scheme:
         for r in rows[:hi]:                       # 'SCHEME NAME' | 'Helios Flexi Cap Fund' (Helios)
@@ -228,6 +244,7 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
     scheme = _clean_scheme(scheme or sheet)
     div = _value_divisor(_s(rows[hi][cols["_unit"]])) if "_unit" in cols else 100.0
     out = []
+    reading = True
     for r in rows[hi + 1:]:
         # Several schemes stacked in one sheet, each opened by 'SCHEME: <name>' (UTI).
         named = next((_s(c) for c in r if _SCHEME_ROW.match(_s(c))), None)
@@ -238,11 +255,17 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
         # its own header row and column order (ABSL, DSP; 2026-10-10).
         if any(_HEADER_ISIN.match(_s(c)) for c in r):
             nc = _columns(r)
-            if "isin" in nc and ("pct" in nc or "value" in nc):
+            # A later section counts only if it is a holdings table — it has a
+            # %-of-NAV column. Memo tables after the portfolio (amounts due on
+            # defaulted paper, valuation notes; Sundaram 2026-10-16) also head
+            # with ISIN, and their rupee amounts read as holdings put a hybrid
+            # fund at 767% of NAV.
+            reading = "isin" in nc and "pct" in nc
+            if reading:
                 cols = nc
                 div = _value_divisor(_s(r[cols["_unit"]])) if "_unit" in cols else div
             continue
-        if len(r) <= cols["isin"]:
+        if not reading or len(r) <= cols["isin"]:
             continue
         isin = _s(r[cols["isin"]]).upper()
         if not ISIN.match(isin):
