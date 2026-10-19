@@ -96,7 +96,7 @@ def _get(url: str) -> bytes:
 
 
 def sweep(max_files: int = 3000, max_minutes: float = 120) -> dict:
-    t0 = time.monotonic()
+    t0 = time.time()  # wall clock: a sleeping Mac must not carry a night into the collector
     have = done()
     st = {"files": 0, "missing": 0, "failed": 0, "skipped": 0, "stopped": ""}
     streak = 0
@@ -107,7 +107,7 @@ def sweep(max_files: int = 3000, max_minutes: float = 120) -> dict:
         if st["files"] >= max_files:
             st["stopped"] = "file budget"
             break
-        if time.monotonic() - t0 > max_minutes * 60:
+        if time.time() - t0 > max_minutes * 60:
             st["stopped"] = "time cap"
             break
         time.sleep(RATE_LIMIT)
