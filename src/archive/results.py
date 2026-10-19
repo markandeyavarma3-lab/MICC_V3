@@ -132,7 +132,7 @@ def _save(kind: str, name: str, body: bytes) -> Path:
 
 def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
           quarters: int = QUARTERS) -> dict:
-    t0 = time.monotonic()
+    t0 = time.time()  # wall clock: a sleeping Mac must not carry a night into the collector
     listed, stored = state()
     fresh = (datetime.now(UTC) - timedelta(days=LISTING_FRESH_DAYS)).isoformat()
     # Never-listed companies first, then the stalest listing.
@@ -141,7 +141,7 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
     st = {"symbols": 0, "listings": 0, "files": 0, "failed": 0, "stopped": ""}
     streak = 0
     for sym in order:
-        if time.monotonic() - t0 > max_minutes * 60:
+        if time.time() - t0 > max_minutes * 60:
             st["stopped"] = "time cap"
             break
         if st["files"] >= max_files:
