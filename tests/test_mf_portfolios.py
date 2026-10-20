@@ -247,6 +247,16 @@ def test_a_per_year_post_is_asked_for_once_a_year_and_its_links_are_read():
 
 
 @pytest.mark.unit
+def test_a_regulatory_notice_above_the_table_is_not_the_scheme_name():
+    hdr = ["ISIN", "Name of Instrument", "Rating", "Quantity", "Market Value (In Rs. lakh)", "% To Net Assets"]
+    rows = [["[Pursuant to Regulation 59 A of Securities and Exchange Board of India (Mutual Funds)"],
+            ["", "Portfolio as on 30-Jun-2023"], hdr,
+            ["INE040A01034", "HDFC Bank Ltd", "Banks", 10, 100, 0.05]]
+    got = {r["scheme"] for r in P.parse_sheet(rows, "TRUSTMF Liquid Fund", {})}
+    assert got == {"TRUSTMF Liquid Fund"}
+
+
+@pytest.mark.unit
 def test_stacked_schemes_and_dated_titles_are_named_right():
     assert P._clean_scheme("SCHEME: UTI - Large Cap Fund") == "UTI - Large Cap Fund"
     assert P._clean_scheme("IB01-Groww Large Cap Fund") == "Groww Large Cap Fund"
