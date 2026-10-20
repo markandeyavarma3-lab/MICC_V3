@@ -15,47 +15,62 @@ so the two are comparable, and it is current to yesterday.
 estimate that cannot be compared with the previous one says nothing about
 whether the sweep is helping.
 
-## Landing: **UNDERPOWERED at the plausible bound** — MDE 3.89% per quarter against a bound of 1.50% (2.59x)
+## Landing: **UNDERPOWERED at the plausible bound** — MDE 4.06% per quarter against a bound of 1.50% (2.71x)
 
-- stock-quarters with a matured 63-session return: **20,013** across **1309 companies** (of 2,886 in the universe)
-- quarters with >= 100 names: **19** (2021-09-30 -> 2026-03-31); names per quarter: min 829, median 1032, max 1242
-- mean within-quarter cross-sectional SD of the outcome: **36.44%**
-- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.39%**
-- MDE (two-sided 5%, 80% power): **3.89%**; analytic cross-check 3.85%
-- outcome tails, pooled: 1st percentile -43.3%, 99th +90.0%
-- the same MDE with the outcome winsorised at those tails: **1.95%** (1.30x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
+- stock-quarters with a matured 63-session return: **54,492** across **2707 companies** (of 2,886 in the universe)
+- quarters with >= 100 names: **34** (2018-03-31 -> 2026-06-30); names per quarter: min 1181, median 1533, max 2095
+- mean within-quarter cross-sectional SD of the outcome: **55.18%**
+- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.45%**
+- MDE (two-sided 5%, 80% power): **4.06%**; analytic cross-check 4.00%
+- outcome tails, pooled: 1st percentile -53.6%, 99th +119.3%
+- the same MDE with the outcome winsorised at those tails: **1.44%** (0.96x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
 
 ## How to read it
 
 The MDE scales as 1/sqrt(names per decile) within a quarter and 1/sqrt(quarters)
-across them. The full universe has ~2.2x the names of this sample, which cuts
-the within-quarter term by ~sqrt(2.2) = 1.5x IF the cross-section is
+across them. The full universe has ~1.1x the names of this sample, which cuts
+the within-quarter term by ~sqrt(1.1) = 1.0x IF the cross-section is
 independent — it is not; stocks move together within a quarter, and that common
 component does not shrink with names. The honest projection for the full panel
-is therefore BETWEEN this number and this number / 1.5, and only the full
+is therefore BETWEEN this number and this number / 1.0, and only the full
 run says where.
 
-Reaching the bound from here needs (2.59)^2 = 6.7x the effective
+Reaching the bound from here needs (2.71)^2 = 7.3x the effective
 observations. Four more quarters arrive per year.
 
 | quarter | names | note |
 |---|---|---|
-| 2021-09-30 | 829 | |
-| 2021-12-31 | 864 | |
-| 2022-03-31 | 860 | |
-| 2022-06-30 | 900 | |
-| 2022-09-30 | 925 | |
-| 2022-12-31 | 940 | |
-| 2023-03-31 | 975 | |
-| 2023-06-30 | 973 | |
-| 2023-09-30 | 1009 | |
-| 2023-12-31 | 1032 | |
-| 2024-03-31 | 1067 | |
-| 2024-06-30 | 1080 | |
-| 2024-09-30 | 1116 | |
-| 2024-12-31 | 1145 | |
-| 2025-03-31 | 1173 | |
-| 2025-06-30 | 1165 | |
-| 2025-09-30 | 1200 | |
-| 2025-12-31 | 1242 | |
-| 2026-03-31 | 1229 | |
+| 2018-03-31 | 1366 | |
+| 2018-06-30 | 1376 | |
+| 2018-09-30 | 1467 | |
+| 2018-12-31 | 1475 | |
+| 2019-03-31 | 1522 | |
+| 2019-06-30 | 1408 | |
+| 2019-09-30 | 1333 | |
+| 2019-12-31 | 1404 | |
+| 2020-03-31 | 1441 | |
+| 2020-06-30 | 1456 | |
+| 2020-09-30 | 1405 | |
+| 2020-12-31 | 1426 | |
+| 2021-03-31 | 1578 | |
+| 2021-06-30 | 1556 | |
+| 2021-09-30 | 1382 | |
+| 2021-12-31 | 1441 | |
+| 2022-03-31 | 1429 | |
+| 2022-06-30 | 1503 | |
+| 2022-09-30 | 1545 | |
+| 2022-12-31 | 1566 | |
+| 2023-03-31 | 1626 | |
+| 2023-06-30 | 1619 | |
+| 2023-09-30 | 1699 | |
+| 2023-12-31 | 1729 | |
+| 2024-03-31 | 1785 | |
+| 2024-06-30 | 1805 | |
+| 2024-09-30 | 1879 | |
+| 2024-12-31 | 1929 | |
+| 2025-03-31 | 1973 | |
+| 2025-06-30 | 1963 | |
+| 2025-09-30 | 2037 | |
+| 2025-12-31 | 2095 | |
+| 2026-03-31 | 2079 | |
+| 2026-06-30 | 1181 | |
