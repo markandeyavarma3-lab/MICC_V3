@@ -235,8 +235,10 @@ def parse_sheet(rows: list[list], sheet: str, index: dict[str, str]) -> list[dic
         for c in title:
             t = _s(c)
             if (re.search(r"fund|scheme|etf|fof|plan|portfolio\b.*\bseries", t, re.I)
-                    and not t.startswith("(")
+                    and not t.startswith(("(", "["))
+                    # '[Pursuant to Regulation 59 A of ... (Mutual Funds)' (Trust, 2022-2025) is a notice, not a name.
                     and not re.search(r"portfolio (statement|as on)|as on|mutual fund\)?$|^monthly|investment manager|"
+                                      r"pursuant to|regulation\s+\d+|"
                                       r"asset management company|registered office|\bcin\b|e-?mail|trustee|"
                                       r"scheme code\s*\d*\s*starts", t, re.I)):
                 scheme = t
