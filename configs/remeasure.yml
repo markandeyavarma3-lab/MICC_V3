@@ -19,7 +19,7 @@ items:
     report: docs/reports/INSIDER_POWER.md
     reaches_bound: ~148 twelve-month cohorts, about 2029 (INSIDER_POWER.md)
   - id: mf_holding_change
-    what: mutual-fund holding change, 63 sessions, CHAR_MATCHED (exp_004 d_mf; 2026-10-20 re-run on 54,492 stock-quarters: 2.71x short raw, 0.96x winsorised)
+    what: mutual-fund holding change, 63 sessions, CHAR_MATCHED (exp_004 d_mf; the 2026-10-20 re-run on 54,492 stock-quarters was 2.71x short raw, 0.96x winsorised)
     due: 2027-10-15
     last_done: 2026-10-20
     command: RESEARCH_ENV=prod .venv/bin/python -m src.research.holdings_power
