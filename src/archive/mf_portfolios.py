@@ -157,13 +157,16 @@ def template_urls(src: dict, months: int, today: date | None = None) -> list[tup
     today = today or datetime.now(UTC).date()
     out: list[tuple[str, str | None]] = []
     seen = set()
+    # {page} walks a paginated list API, pages 1..`pages` (WhiteOak, 2026-10-20:
+    # a CMS that answers 100 records a page).
     for k in range(1, months + 1):
         y, m = divmod(today.year * 12 + today.month - 1 - k, 12)
-        vals = {"year": y, "month": MONTH_NAMES[m], "mm": f"{m + 1:02d}", "m": m + 1}
-        pair = (src["template"].format(**vals), src["post"].format(**vals) if src.get("post") else None)
-        if pair not in seen:
-            seen.add(pair)
-            out.append(pair)
+        for page in range(1, src.get("pages", 1) + 1):
+            vals = {"year": y, "month": MONTH_NAMES[m], "mm": f"{m + 1:02d}", "m": m + 1, "page": page}
+            pair = (src["template"].format(**vals), src["post"].format(**vals) if src.get("post") else None)
+            if pair not in seen:
+                seen.add(pair)
+                out.append(pair)
     return out
 
 

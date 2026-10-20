@@ -20,15 +20,18 @@
 #   undated  the URLs carry no month; each is fetched once and the file's own
 #            title dates it
 #
-# NOT COVERED, and why (updated 2026-10-16) — see also the disabled entries below:
+# NOT COVERED, and why (updated 2026-10-20) — see also the disabled entries below:
 #   KOTAK, BANDHAN  refuse automated browsers (a Radware bot-check page; HTTP 403).
 #                   A refusal, respected — not worked around.
 #   AXIS, EDELWEISS, CANARA ROBECO  encrypt their API responses ('cipherText',
 #                   'encryptedString'): deliberate protection, respected.
 #   HSBC            does not answer plain or headless requests.
 #   ZERODHA         publishes quarterly, not monthly; UNIFI's page stops at 2025-04.
-#   PGIM, MAHINDRA MANULIFE, WHITEOAK, 360 ONE, NAVI, TRUST, BAJAJ and the smallest
-#                   houses: lists behind interactions not yet mapped.
+#   MAHINDRA MANULIFE  encrypts its API payloads ('payload' ciphertext, 2026-10-20):
+#                   deliberate protection, respected.
+#   360 ONE         its downloads pages render no list to a headless browser (2026-10-20).
+#   NAVI, BAJAJ     the monthly tab exposes no file links or list API (2026-10-20);
+#                   not yet mapped, as are the smallest houses.
 
 sources:
   - {amc: SBI, name: SBI Mutual Fund, page: "https://www.sbimf.com/portfolios",
@@ -62,6 +65,28 @@ sources:
      template: "https://www.sundarammutual.com/ajax/Modules_Disclosure_Monthly_Fortnightly_Adhoc_Portfolios,App_Web_vg2r0dba.ashx?_method=GetCategory&_session=no",
      post: "Catid=Monthly", content_type: "text/plain; charset=utf-8",
      base: "https://www.sundarammutual.com", match: "monthlyportfolio"}
+  # 2026-10-20: PGIM's disclosure API returns the whole Monthly Portfolio section
+  # in one POST: consolidated files 2015-04 .. 2021-06, per-scheme files from
+  # 2024-04 (.xlsx and .xlsb; calamine reads both). Its own list skips 2021-07 .. 2024-03.
+  - {amc: PGIM, name: PGIM India Mutual Fund, mode: template,
+     page: "https://www.pgimindia.com/mutual-funds/disclosures",
+     template: "https://www.pgimindia.com/api/v1/brochure/published/disclosure",
+     post: "{{\"headerId\":2,\"sectionId\":\"SECTION_747960037\",\"source\":\"W\",\"branchCode\":null}}",
+     match: "brochure/about-us/image/"}
+  # 2026-10-20: Trust lists every monthly file (from 2021-02) in one POST; file
+  # names carry the upload time, not the month, so each is dated by its title.
+  - {amc: TRUST, name: TRUST Mutual Fund, mode: template, undated: true,
+     page: "https://www.trustmf.com/disclosures",
+     template: "https://www.trustmf.com/api/api/Trust/GetData",
+     post: "{{\"systemQueryFileName\":\"disclosuresweb.xml\",\"tagName\":\"GetDisclosureByType\",\"searchField\":\"\",\"searchValue\":\"\",\"sortField\":\"uploaddate\",\"sortDirection\":\"DESC\",\"replaceField\":\"_slug_\",\"replaceValue\":\"portfolio-monthly-disclosure\"}}",
+     match: "trustmf\\.com/Content/"}
+  # 2026-10-20: WhiteOak's portfolio page reads a CMS list API, 100 records a
+  # page (732 monthly per-scheme files); files are named by scheme and a hash,
+  # so each is dated by its title. Raise `pages` as the list grows.
+  - {amc: WHITEOAK, name: WhiteOak Capital Mutual Fund, mode: template, undated: true, pages: 10,
+     page: "https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios",
+     template: "https://cms.whiteoakamc.com/api/scheme-portfolios?pagination%5Bpage%5D={page}&pagination%5BpageSize%5D=100&sort%5B0%5D=published_date:desc&sort%5B1%5D=id:desc&populate=*&filters%5Bperiod%5D%5B$eq%5D=monthly",
+     match: "content\\.whiteoakamc\\.com/"}
   - {amc: ANGELONE, name: Angel One Mutual Fund, page: "https://www.angelonemf.com/downloads",
      match: "Monthly-Portfolio"}
   - {amc: CAPITALMIND, name: Capitalmind Mutual Fund, page: "https://capitalmindmf.com/statutory-disclosures.html",
