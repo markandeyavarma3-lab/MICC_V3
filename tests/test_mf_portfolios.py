@@ -224,6 +224,17 @@ def test_a_template_source_asks_for_each_month_in_the_window():
 
 
 @pytest.mark.unit
+def test_a_paginated_list_is_walked_page_by_page_once():
+    src = {"template": "https://cms.example/api/p?page={page}&size=100", "pages": 3}
+    got = A.template_urls(src, 24, today=date(2026, 10, 20))
+    assert [u for u, _ in got] == [f"https://cms.example/api/p?page={p}&size=100" for p in (1, 2, 3)]
+    blob = '{"data":[{"doc_file":{"url":"https://content.example/Mid_Cap_Fund_ed80fd3766.xls"}}]}'
+    c = A.candidates({"page": "https://x.example/p", "mode": "template", "undated": True,
+                      "match": "content\\.example/"}, [], [blob], 24, date(2026, 10, 20))
+    assert [(x["url"], x["month"]) for x in c] == [("https://content.example/Mid_Cap_Fund_ed80fd3766.xls", "undated")]
+
+
+@pytest.mark.unit
 def test_a_per_year_post_is_asked_for_once_a_year_and_its_links_are_read():
     src = {"template": "https://x.example/m.aspx/list", "post": "{{id:'{year}',cat:'Monthly Portfolio'}}"}
     got = A.template_urls(src, 15, today=date(2026, 3, 15))      # Feb 2026 back to Dec 2024
