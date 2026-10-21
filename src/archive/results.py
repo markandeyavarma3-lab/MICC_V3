@@ -76,6 +76,24 @@ def state(manifest: Path | None = None) -> tuple[dict[str, str], set[str]]:
     return listed, stored
 
 
+def gone(manifest: Path | None = None) -> set[str]:
+    """XBRL urls NSE answered 404 for: missing for good, never asked again. Every
+    run walks the symbols in the same order, and re-trying these (three attempts
+    each, with backoff) spent a whole 2026-10-21 window before the 19,330 files
+    not yet fetched were reached."""
+    manifest = manifest or MANIFEST
+    out: set[str] = set()
+    if manifest.exists():
+        for ln in manifest.read_text().splitlines():
+            try:
+                r = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if r.get("kind") == "xbrl" and r.get("status") == "FAILED" and "404" in str(r.get("error", "")):
+                out.add(r["url"])
+    return out
+
+
 def _d(s: str | None) -> str | None:
     for fmt in ("%d-%b-%Y", "%d-%b-%Y %H:%M:%S", "%d-%B-%Y"):
         try:
@@ -134,6 +152,7 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
           quarters: int = QUARTERS) -> dict:
     t0 = time.time()  # wall clock: a sleeping Mac must not carry a night into the collector
     listed, stored = state()
+    dead = gone()
     fresh = (datetime.now(UTC) - timedelta(days=LISTING_FRESH_DAYS)).isoformat()
     # Never-listed companies first, then the stalest listing.
     order = sorted(symbols, key=lambda s: listed.get(s, ""))
@@ -172,7 +191,7 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
             st["stopped"] = f"{streak} consecutive failures"
             break
         for t in targets(lists["old"], lists["new"], quarters):
-            if t["url"] in stored or st["files"] >= max_files:
+            if t["url"] in stored or t["url"] in dead or st["files"] >= max_files:
                 continue
             time.sleep(RATE_LIMIT)
             base = {"kind": "xbrl", "symbol": sym, "qe": t["qe"], "consolidated": t["cons"], "route": t["route"],
