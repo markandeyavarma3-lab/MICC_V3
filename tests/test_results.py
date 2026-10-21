@@ -38,6 +38,18 @@ def test_a_company_filing_reads_the_quarter_in_crore():
     assert r["revenue"] == 72275.0 and r["pat"] == 13420.0 and r["eps"] == 36.9 and not r["bank"]
 
 
+def test_an_undefined_oned_is_read_only_when_the_filing_states_a_quarter():
+    # NSE's older _WEB renderings reference OneD without defining it (ALKEM 2021-06-30).
+    def web(start, end):
+        return (f'<in-bse-fin:DateOfStartOfReportingPeriod contextRef="OneD">{start}</in-bse-fin:DateOfStartOfReportingPeriod>'
+                f'<in-bse-fin:DateOfEndOfReportingPeriod contextRef="OneD">{end}</in-bse-fin:DateOfEndOfReportingPeriod>'
+                '<in-bse-fin:RevenueFromOperations contextRef="OneD" unitRef="INR">27313600000.00</in-bse-fin:RevenueFromOperations>')
+    r = I.parse(web("2021-04-01", "2021-06-30"))
+    assert r["revenue"] == 2731.36 and r["period_end"] == "2021-06-30"
+    assert I.parse(web("2021-04-01", "2022-03-31")) is None        # a year, not a quarter
+    assert I.parse(web("", "")) is None                              # no stated period
+
+
 def test_a_bank_filing_reads_interest_earned_as_revenue():
     x = _xbrl('<in-capmkt:InterestEarned contextRef="OneD" unitRef="INR">905753300000</in-capmkt:InterestEarned>'
               '<in-capmkt:ProfitLossForThePeriod contextRef="OneD" unitRef="INR">203826900000</in-capmkt:ProfitLossForThePeriod>')
