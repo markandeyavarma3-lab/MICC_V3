@@ -76,3 +76,13 @@ def test_a_filing_without_an_xbrl_file_is_not_a_target():
             "broadCastDate": "10-Aug-2026 10:00:00", "consolidated": "Non-Consolidated"}]
     got = R.targets(old, [])
     assert [t["url"] for t in got] == ["https://nsearchives.nseindia.com/corporate/xbrl/X_1.xml"]
+
+
+def test_a_file_nse_answered_404_for_is_never_asked_for_again(tmp_path):
+    import json
+    m = tmp_path / "manifest.jsonl"
+    rows = [{"kind": "xbrl", "status": "FAILED", "url": "u/missing", "error": "all 3 attempts failed: HTTP Error 404: Not Found"},
+            {"kind": "xbrl", "status": "FAILED", "url": "u/refused", "error": "HTTP Error 403: Forbidden"},
+            {"kind": "xbrl", "status": "STORED", "url": "u/held"}]
+    m.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    assert R.gone(m) == {"u/missing"}          # a refusal is retried; only a 404 is final
