@@ -74,6 +74,12 @@ def quarter_context(text: str) -> str | None:
     for cid, (s, e) in spans.items():
         if 80 <= (e - s).days <= 100:
             return cid
+    # NSE's 2016-2023 '_WEB' renderings (INDAS, NBFC, BANKING) reference OneD
+    # without defining it (ALKEM 2021-06-30, measured 2026-10-21); their
+    # dimensioned 'One...' contexts span the quarter, so OneD is the quarter.
+    # parse() checks the filing's own reporting-period dates before keeping it.
+    if 'contextRef="OneD"' in text:
+        return "OneD"
     return None
 
 
@@ -98,6 +104,13 @@ def parse(text: str) -> dict | None:
     row["bank"] = "InterestEarned" in facts
     s, e = facts.get("DateOfStartOfReportingPeriod"), facts.get("DateOfEndOfReportingPeriod")
     row["period_start"], row["period_end"] = s, e
+    if cid == "OneD" and f'id="{cid}"' not in text:
+        # An undefined OneD is trusted only when the filing states a quarter-long period.
+        try:
+            if not 80 <= (date.fromisoformat(e) - date.fromisoformat(s)).days <= 100:
+                return None
+        except (TypeError, ValueError):
+            return None
     row["nature"] = facts.get("NatureOfReportStandaloneConsolidated")
     row["audited"] = facts.get("WhetherResultsAreAuditedOrUnaudited")
     return row if any(k in row for k in ("revenue", "pat")) else None
@@ -106,7 +119,7 @@ def parse(text: str) -> dict | None:
 def main() -> int:
     import duckdb
     rows = []
-    bad = 0
+    bad = mislabelled = 0
     for ln in R.MANIFEST.read_text().splitlines() if R.MANIFEST.exists() else []:
         r = json.loads(ln)
         if r.get("kind") != "xbrl" or r.get("status") != "STORED":
@@ -117,6 +130,12 @@ def main() -> int:
             p = None
         if not p:
             bad += 1
+            continue
+        if p.get("period_end") and p["period_end"] != r["qe"]:
+            # NSE's index files some filings under the wrong quarter (AEGISLOG's
+            # '2017-03-31' is Jan-Mar 2018; 13 of 35,901 on 2026-10-21). The file's own
+            # period is right, but relabelling could collide with a genuine filing: drop it.
+            mislabelled += 1
             continue
         rows.append({"symbol": r["symbol"], "qe": r["qe"], "consolidated": r["consolidated"], "filed": r["filed"],
                      "route": r["route"], **p})
@@ -136,7 +155,7 @@ def main() -> int:
     finally:
         con.close()
     print(f"  RESULTS: {len(rows):,} quarterly rows for {len({r['symbol'] for r in rows}):,} companies"
-          f" ({bad} files without a quarter or a revenue/profit line) -> {OUT.name}")
+          f" ({bad} files without a quarter or a revenue/profit line; {mislabelled} filed under the wrong quarter, dropped) -> {OUT.name}")
     return 0
 
 
