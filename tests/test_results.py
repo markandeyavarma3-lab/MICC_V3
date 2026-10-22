@@ -50,6 +50,19 @@ def test_an_undefined_oned_is_read_only_when_the_filing_states_a_quarter():
     assert I.parse(web("", "")) is None                              # no stated period
 
 
+def test_a_filing_without_a_start_date_is_read_only_when_it_names_a_quarter():
+    # Banks and pre-Ind-AS filings state no start date; ReportingQuarter decides (3PLAND, HDFCBANK).
+    def old(quarter):
+        return ('<in-bse-fin:DateOfStartOfFinancialYear contextRef="OneD">2018-04-01</in-bse-fin:DateOfStartOfFinancialYear>'
+                f'<in-bse-fin:ReportingQuarter contextRef="OneD">{quarter}</in-bse-fin:ReportingQuarter>'
+                '<in-bse-fin:ProfitLossForThePeriod contextRef="OneD" unitRef="INR">-1200000.00</in-bse-fin:ProfitLossForThePeriod>')
+    r = I.parse(old("Third quarter"))
+    assert r["pat"] == -0.12 and r["period_end"] == "2018-12-31"
+    assert I.parse(old("Fourth quarter"))["period_end"] == "2019-03-31"
+    assert I.parse(old("Half yearly")) is None                       # may be six months
+    assert I.parse(old("Yearly")) is None
+
+
 def test_a_bank_filing_reads_interest_earned_as_revenue():
     x = _xbrl('<in-capmkt:InterestEarned contextRef="OneD" unitRef="INR">905753300000</in-capmkt:InterestEarned>'
               '<in-capmkt:ProfitLossForThePeriod contextRef="OneD" unitRef="INR">203826900000</in-capmkt:ProfitLossForThePeriod>')

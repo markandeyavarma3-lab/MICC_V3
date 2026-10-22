@@ -24,7 +24,7 @@ import gzip
 import json
 import re
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -55,6 +55,7 @@ FIELDS: dict[str, tuple[str, ...]] = {
 RUPEE_FIELDS = {"revenue", "other_income", "total_income", "expenses", "finance_costs", "depreciation",
                 "operating_expenses", "pbt", "tax", "pat", "pat_owners", "paid_up"}
 
+_QUARTER_NO = {"first quarter": 1, "second quarter": 2, "third quarter": 3, "fourth quarter": 4}
 _CTX = re.compile(r'<xbrli:context id="([^"]+)"[^>]*>(.*?)</xbrli:context>', re.S)
 _START = re.compile(r"<xbrli:startDate>([\d-]+)</xbrli:startDate>")
 _END = re.compile(r"<xbrli:endDate>([\d-]+)</xbrli:endDate>")
@@ -105,12 +106,25 @@ def parse(text: str) -> dict | None:
     s, e = facts.get("DateOfStartOfReportingPeriod"), facts.get("DateOfEndOfReportingPeriod")
     row["period_start"], row["period_end"] = s, e
     if cid == "OneD" and f'id="{cid}"' not in text:
-        # An undefined OneD is trusted only when the filing states a quarter-long period.
+        # An undefined OneD is trusted only when the filing states a quarter-long
+        # period, or (banks and pre-Ind-AS filings, which state no start date) names
+        # its ReportingQuarter as a quarter: the quarter's end is then the financial
+        # year's start plus 3, 6, 9 or 12 months, and main() checks it against the
+        # quarter NSE files it under. 'Half yearly' and 'Yearly' filings stay out:
+        # their figures may span six or twelve months.
         try:
             if not 80 <= (date.fromisoformat(e) - date.fromisoformat(s)).days <= 100:
                 return None
         except (TypeError, ValueError):
-            return None
+            k = _QUARTER_NO.get((facts.get("ReportingQuarter") or "").strip().lower())
+            try:
+                fy = date.fromisoformat(facts.get("DateOfStartOfFinancialYear") or "")
+            except ValueError:
+                return None
+            if not k:
+                return None
+            y, m = divmod(fy.year * 12 + fy.month - 1 + 3 * k, 12)
+            row["period_end"] = (date(y, m + 1, 1) - timedelta(days=1)).isoformat()
     row["nature"] = facts.get("NatureOfReportStandaloneConsolidated")
     row["audited"] = facts.get("WhetherResultsAreAuditedOrUnaudited")
     return row if any(k in row for k in ("revenue", "pat")) else None
