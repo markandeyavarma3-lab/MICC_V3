@@ -33,16 +33,18 @@ from src.monitor import backup_state, health
 IST = ZoneInfo("Asia/Kolkata")
 
 
-def _runs(days: int = 3) -> list[tuple[str, list[str]]]:
+def _runs(days: int = 3, log: Path | None = None) -> list[tuple[str, list[str]]]:
     """Recent collector runs and the stages each reported non-zero.
 
     Read from the log rather than a status file, because the log is what exists
     when the run dies before writing anything else.
     """
-    logs = sorted(Path(ROOT / "logs").glob("collect_*.log"))
-    if not logs:
-        return []
-    text = logs[-1].read_text(errors="ignore").splitlines()
+    if log is None:
+        logs = sorted(Path(ROOT / "logs").glob("collect_*.log"))
+        if not logs:
+            return []
+        log = logs[-1]
+    text = log.read_text(errors="ignore").splitlines()
     out: list[tuple[str, list[str]]] = []
     stamp, failed = None, []
     for line in text:

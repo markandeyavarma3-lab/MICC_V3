@@ -15,15 +15,15 @@ so the two are comparable, and it is current to yesterday.
 estimate that cannot be compared with the previous one says nothing about
 whether the sweep is helping.
 
-## Landing: **UNDERPOWERED at the plausible bound** — MDE 4.06% per quarter against a bound of 1.50% (2.71x)
+## Landing: **UNDERPOWERED at the plausible bound** — MDE 3.99% per quarter against a bound of 1.50% (2.66x)
 
-- stock-quarters with a matured 63-session return: **54,492** across **2707 companies** (of 2,886 in the universe)
-- quarters with >= 100 names: **34** (2018-03-31 -> 2026-06-30); names per quarter: min 1181, median 1533, max 2095
-- mean within-quarter cross-sectional SD of the outcome: **55.18%**
-- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.45%**
-- MDE (two-sided 5%, 80% power): **4.06%**; analytic cross-check 4.00%
-- outcome tails, pooled: 1st percentile -53.6%, 99th +119.3%
-- the same MDE with the outcome winsorised at those tails: **1.44%** (0.96x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
+- stock-quarters with a matured 63-session return: **54,828** across **2709 companies** (of 2,886 in the universe)
+- quarters with >= 100 names: **34** (2018-03-31 -> 2026-06-30); names per quarter: min 1333, median 1533, max 2095
+- mean within-quarter cross-sectional SD of the outcome: **55.17%**
+- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.42%**
+- MDE (two-sided 5%, 80% power): **3.99%**; analytic cross-check 4.00%
+- outcome tails, pooled: 1st percentile -53.5%, 99th +119.3%
+- the same MDE with the outcome winsorised at those tails: **1.43%** (0.95x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
 
 ## How to read it
 
@@ -35,7 +35,7 @@ component does not shrink with names. The honest projection for the full panel
 is therefore BETWEEN this number and this number / 1.0, and only the full
 run says where.
 
-Reaching the bound from here needs (2.71)^2 = 7.3x the effective
+Reaching the bound from here needs (2.66)^2 = 7.1x the effective
 observations. Four more quarters arrive per year.
 
 | quarter | names | note |
@@ -72,5 +72,5 @@ observations. Four more quarters arrive per year.
 | 2025-06-30 | 1963 | |
 | 2025-09-30 | 2037 | |
 | 2025-12-31 | 2095 | |
-| 2026-03-31 | 2079 | |
-| 2026-06-30 | 1181 | |
+| 2026-03-31 | 2080 | |
+| 2026-06-30 | 1499 | |
