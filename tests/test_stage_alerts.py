@@ -81,16 +81,19 @@ def test_the_digest_answers_the_question_a_person_actually_asks():
 
 
 @pytest.mark.needs_data
-def test_the_digest_reports_stage_failures_not_only_data_staleness():
+def test_the_digest_reports_stage_failures_not_only_data_staleness(tmp_path):
     """The gap this closes. A run where every feed is current but charpanel
-    died must NOT read as a good night."""
+    died must NOT read as a good night. A fixed log, not the live one: the live
+    log's last nine runs were all clean by 2026-10-22, and a test that fails
+    because the collector is healthy tests the calendar."""
     from src.monitor import digest
 
-    runs = digest._runs()
-    assert runs, "no runs parsed from the collector log"
-    assert any(failed for _stamp, failed in runs), (
-        "September's charpanel failures are in the log; the parser sees none"
-    )
+    assert digest._runs(), "no runs parsed from the collector log"
+    log = tmp_path / "collect_2026-09.log"
+    log.write_text("--- 2026-09-12 18:30:00 IST pid=1\nspine=0\ncharpanel=1\n"
+                   "--- 2026-09-13 18:30:00 IST pid=2\nspine=0\ncharpanel=0\n")
+    assert digest._runs(log=log) == [("2026-09-12 18:30:00 IST", ["charpanel"]),
+                                     ("2026-09-13 18:30:00 IST", [])]
 
 
 @pytest.mark.needs_data
