@@ -32,6 +32,13 @@ items:
     command: RESEARCH_ENV=prod .venv/bin/python -m src.scan.forward --health
     report: docs/plan/EXP006_FORWARD_RESIDUAL_DRAFT.md
     reaches_bound: the one read at 96 complete forward blocks, about 2034
+  - id: pead_power
+    what: post-earnings drift, top minus bottom SUE fifth, 63 sessions, CHAR_MATCHED (1.59x short on 2026-10-24, random fifths)
+    due: 2027-04-24
+    last_done: 2026-10-24
+    command: RESEARCH_ENV=prod .venv/bin/python -m src.research.pead_power
+    report: docs/reports/PEAD_POWER_PRELIMINARY.md
+    reaches_bound: about 2.5x the SUE-eligible months at today's dispersion, roughly 2031; earlier results history would shorten it
   - id: mf_monthly_power
     what: mutual-fund holding change on MONTHLY scheme portfolios, 21 sessions (1.37x short on 2026-10-20, after PGIM/Trust/WhiteOak)
     due: 2027-10-15
