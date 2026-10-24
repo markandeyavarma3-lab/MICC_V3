@@ -99,3 +99,25 @@ def test_a_file_nse_answered_404_for_is_never_asked_for_again(tmp_path):
             {"kind": "xbrl", "status": "STORED", "url": "u/held"}]
     m.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     assert R.gone(m) == {"u/missing"}          # a refusal is retried; only a 404 is final
+
+
+def test_a_quarter_without_xbrl_falls_back_to_the_html_table_and_only_then():
+    xml = {"toDate": "31-Mar-2018", "xbrl": "https://x/a.xml", "consolidated": "Consolidated",
+           "broadCastDate": "10-May-2018 10:00:00", "period": "Quarterly",
+           "resultDetailedDataLink": "https://x/financial_res_A_2.html"}
+    old = {"toDate": "31-Dec-2014", "xbrl": "https://x/-", "consolidated": "Non-Consolidated",
+           "broadCastDate": "19-Jan-2015 11:41:01", "period": "Quarterly",
+           "resultDetailedDataLink": "https://x/financial_res_A_1.html"}
+    got = {t["qe"]: (t["url"], t.get("kind", "xbrl")) for t in R.targets([xml, old], [], 90)}
+    assert got == {"2018-03-31": ("https://x/a.xml", "xbrl"), "2014-12-31": ("https://x/financial_res_A_1.html", "html")}
+
+
+def test_the_pre_xbrl_html_table_reads_in_crore():
+    rows = [("Consolidated / Non-Consolidated", "Non-Consolidated", "Period Ended", "31-Dec-2014"),
+            ("Description", "Amount(Rs. in lakhs)"),
+            ("(a) Net sales/income from operations (Net of excise duty)", "1219200.00"),
+            ("Net Profit / (Loss) for the period", "305500.00"), ("(a) Basic", "26.73"), ("Exceptional items", "-")]
+    html = "<table>" + "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows) + "</table>"
+    r = I.parse_html(html)
+    assert (r["revenue"], r["pat"], r["eps"], r["period_end"], r["bank"]) == (12192.0, 3055.0, 26.73, "2014-12-31", False)
+    assert I.parse_html(html.replace("Amount(Rs. in lakhs)", "Amount")) is None   # no unit, no amounts

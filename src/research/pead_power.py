@@ -57,10 +57,13 @@ def eligible(res: pd.DataFrame) -> pd.Series:
 def events(env: str | None = None) -> tuple[list[resignations.Event], pd.DataFrame]:
     """One event per company-quarter, ISIN as of the filing date, dated the day
     after the filing (abnormal() enters at the first session on or after it)."""
-    # A result without a filing date has no safe entry day (100 of 49,204 on 2026-10-24): left out, and counted.
-    res = duckdb.sql(f"SELECT symbol, qe, filed, pat FROM read_parquet('{RESULTS}') "
-                     f"WHERE TRY_CAST(filed AS DATE) IS NOT NULL").df()
-    res["eligible"] = eligible(res)
+    # Every quarter's profit scales the SUE, dated or not: NSE's 2005 - mid-2007
+    # HTML results carry no broadcast date, but they are history. A result
+    # without a filing date has no safe entry day, so it is never an event:
+    # left out after eligibility, and counted.
+    allq = duckdb.sql(f"SELECT symbol, qe, filed, pat FROM read_parquet('{RESULTS}')").df()
+    allq["eligible"] = eligible(allq)
+    res = allq[pd.to_datetime(allq["filed"], errors="coerce").notna()].copy()
     con = duckdb.connect(str(measure.research_db(env)), read_only=True)
     try:
         con.register("res", res)

@@ -19,13 +19,13 @@ mkdir -p "$REPO/logs"
   while pgrep -f collect_daily.sh >/dev/null; do sleep 60; done
   # Results (NSE) and pre-2021 shareholding (BSE) are different hosts: they run
   # side by side, each at its own polite rate, for up to ten hours (2026-10-18:
-  # results widened from the newest 8 quarters to 40, ~5x the files). Neither
+  # results widened from the newest 8 quarters to 40, ~5x the files; 2026-10-24: to 90, back to 2005, the pre-XBRL quarters read from NSE's HTML tables). Neither
   # holds the research database; bse_shp reads it read-only for a second.
   # Shareholding filings before NSE's window (2016 - 2021-06), from BSE's static
   # host; resumable, ~35,700 files in all (src/archive/bse_shp.py, 2026-10-16).
   "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 40000 --max-minutes 600 &
   BSE_PID=$!
-  "$REPO/.venv/bin/python" -m src.archive.results --quarters 40 --max-files 100000 --max-minutes 600
+  "$REPO/.venv/bin/python" -m src.archive.results --quarters 90 --max-files 100000 --max-minutes 600
   echo "results=$?"
   wait $BSE_PID
   echo "bse_shp=$?"

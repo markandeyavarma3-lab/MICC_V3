@@ -24,7 +24,7 @@ import gzip
 import json
 import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -130,16 +130,88 @@ def parse(text: str) -> dict | None:
     return row if any(k in row for k in ("revenue", "pat")) else None
 
 
+# --- the pre-XBRL HTML tables (2005-2017) ----------------------------------
+# NSE's nsearchives/archives/financial_results/financial_res_<SYM>_<seq>.html:
+# one <tr> per line item, label then amount, the unit stated once
+# ('Amount(Rs. in lakhs)'). The wording differs by format and by bank/non-bank
+# (INFY 2014, HDFCBANK 2012, 20MICRONS 2011, measured 2026-10-24); each field
+# lists its wordings in priority order, matched at the start of the label.
+HTML_FIELDS: dict[str, tuple[str, ...]] = {
+    "revenue": (r"(\(a\) )?net sales ?/ ?income from operation", r"interest earned", r"total income from operations"),
+    "other_income": (r"other income",),
+    "total_income": (r"total income$",),
+    "expenses": (r"total expen",),
+    "finance_costs": (r"finance costs", r"interest$", r"interest expended"),
+    "depreciation": (r"(\(e\) )?depreciation",),
+    "pbt": (r".*from ordinary activities before tax",),
+    "tax": (r"tax expense",),
+    "pat": (r"net profit ?(\(\+\) ?)?/ ?\(?loss\)? ?(\(-\) )?for the period",),
+    "pat_owners": (r"net profit.*after taxes, minority interest",),
+    "eps": (r"(\(a\) )?basic( eps before extraordinary items)?\b",),
+    "face_value": (r"face value",),
+    "paid_up": (r"paid-?up equity share capital",),
+}
+_UNIT = {"lakh": 100.0, "crore": 1.0, "thousand": 1e4, "million": 10.0}
+_TR = re.compile(r"<tr[^>]*>(.*?)</tr>", re.S | re.I)
+_TD = re.compile(r"<t[dh][^>]*>(.*?)</t[dh]>", re.S | re.I)
+
+
+def _cell(html: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).replace("&amp;", "&").replace("&nbsp;", " ").strip()
+
+
+def parse_html(text: str) -> dict | None:
+    """One pre-XBRL results table -> the same row parse() returns, amounts in Rs crore."""
+    pairs = []
+    for tr in _TR.findall(text):
+        cells = [_cell(c) for c in _TD.findall(tr)]
+        # Header rows hold several label | value pairs ('Period | Quarterly | Period Ended | 31-Dec-2014').
+        for i in range(0, len(cells) - 1, 2):
+            if cells[i]:
+                pairs.append((cells[i].lower(), cells[i + 1]))
+    if not pairs:
+        return None
+    unit = next((v.lower() + " " + k for k, v in pairs if k.startswith("description") or "amount" in k), "")
+    div = next((d for w, d in _UNIT.items() if w in unit), None)
+    if div is None:
+        div = 1e7 if re.search(r"rs\.?\)|in rs\b|rupees", unit) else None
+    if div is None:
+        return None                                  # no stated unit: an amount cannot be read safely
+    row: dict = {}
+    for field, pats in HTML_FIELDS.items():
+        for pat in pats:
+            v = next((v for k, v in pairs if re.match(pat, k)), None)
+            if v in (None, "", "-"):
+                continue
+            try:
+                x = float(v.replace(",", ""))
+            except ValueError:
+                continue
+            row[field] = x / div if field in RUPEE_FIELDS else x
+            break
+    row["bank"] = any(k.startswith("interest earned") for k, _ in pairs)
+    pe = next((v for k, v in pairs if k.startswith("period ended")), None)
+    try:
+        row["period_end"] = datetime.strptime(pe, "%d-%b-%Y").date().isoformat() if pe else None
+    except ValueError:
+        row["period_end"] = None
+    row["period_start"] = None
+    row["nature"] = next((v for k, v in pairs if k.startswith("consolidated / non")), None)
+    row["audited"] = next((v for k, v in pairs if k.startswith("audited / un") or k.startswith("un-audited")), None)
+    return row if any(k in row for k in ("revenue", "pat")) else None
+
+
 def main() -> int:
     import duckdb
     rows = []
     bad = mislabelled = 0
     for ln in R.MANIFEST.read_text().splitlines() if R.MANIFEST.exists() else []:
         r = json.loads(ln)
-        if r.get("kind") != "xbrl" or r.get("status") != "STORED":
+        if r.get("kind") not in ("xbrl", "html") or r.get("status") != "STORED":
             continue
         try:
-            p = parse(gzip.decompress(Path(r["path"]).read_bytes()).decode("utf-8", "replace"))
+            text = gzip.decompress(Path(r["path"]).read_bytes()).decode("utf-8", "replace")
+            p = parse_html(text) if r["kind"] == "html" else parse(text)
         except (OSError, ValueError):
             p = None
         if not p:
