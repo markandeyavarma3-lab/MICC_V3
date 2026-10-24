@@ -71,7 +71,7 @@ def state(manifest: Path | None = None) -> tuple[dict[str, str], set[str]]:
                 continue
             if r.get("kind") == "listing" and r.get("status") == "STORED":
                 listed[r["symbol"]] = max(listed.get(r["symbol"], ""), r["fetched_at"])
-            elif r.get("kind") == "xbrl" and r.get("status") == "STORED":
+            elif r.get("kind") in ("xbrl", "html") and r.get("status") == "STORED":
                 stored.add(r["url"])
     return listed, stored
 
@@ -89,7 +89,7 @@ def gone(manifest: Path | None = None) -> set[str]:
                 r = json.loads(ln)
             except json.JSONDecodeError:
                 continue
-            if r.get("kind") == "xbrl" and r.get("status") == "FAILED" and "404" in str(r.get("error", "")):
+            if r.get("kind") in ("xbrl", "html") and r.get("status") == "FAILED" and "404" in str(r.get("error", "")):
                 out.add(r["url"])
     return out
 
@@ -126,6 +126,22 @@ def targets(old_rows: list[dict], new_rows: list[dict], quarters: int = QUARTERS
         b = best.get(c["qe"])
         if b is None or (c["cons"], c["filed"]) > (b["cons"], b["filed"]):
             best[c["qe"]] = c
+    # Before XBRL (2005-2016; measured 2026-10-24: 0 of ~70,000 old-route rows
+    # carry one) NSE kept each result as an HTML table on nsearchives
+    # (resultDetailedDataLink; INFY 2014-12-31 reads Rs 12,192 cr revenue).
+    # Taken only for a quarter with NO XBRL filing, so every quarter chosen
+    # before keeps its choice and nothing held is fetched again.
+    html: dict[str, dict] = {}
+    for r in old_rows:
+        qe, bd, u = _d(r.get("toDate")), r.get("broadCastDate") or "", r.get("resultDetailedDataLink") or ""
+        if (qe and qe not in best and u.lower().endswith(".html")
+                and r.get("period", "Quarterly") == "Quarterly"):
+            c = {"qe": qe, "cons": r.get("consolidated") == "Consolidated", "url": u,
+                 "filed": _d(bd.split(" ")[0]) or "", "route": "old", "kind": "html"}
+            b = html.get(qe)
+            if b is None or (c["cons"], c["filed"]) > (b["cons"], b["filed"]):
+                html[qe] = c
+    best.update(html)
     return [best[q] for q in sorted(best, reverse=True)[:quarters]]
 
 
@@ -194,13 +210,14 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
             if t["url"] in stored or t["url"] in dead or st["files"] >= max_files:
                 continue
             time.sleep(RATE_LIMIT)
-            base = {"kind": "xbrl", "symbol": sym, "qe": t["qe"], "consolidated": t["cons"], "route": t["route"],
+            kind = t.get("kind", "xbrl")
+            base = {"kind": kind, "symbol": sym, "qe": t["qe"], "consolidated": t["cons"], "route": t["route"],
                     "filed": t["filed"], "url": t["url"], "fetched_at": datetime.now(UTC).isoformat()}
             try:
                 body = ca._get(op, t["url"], REFERER)
                 if b"<" not in body[:200]:
                     raise ValueError("not XML")
-                dest = _save(f"xbrl/year={t['qe'][:4]}", f"{sym}_{t['qe']}_{'C' if t['cons'] else 'S'}", body)
+                dest = _save(f"{kind}/year={t['qe'][:4]}", f"{sym}_{t['qe']}_{'C' if t['cons'] else 'S'}", body)
                 record({**base, "status": "STORED", "bytes": len(body), "path": str(dest)})
                 stored.add(t["url"])
                 st["files"] += 1
