@@ -1,6 +1,6 @@
 # exp_004 v3 — quarterly institutional holding change, on the quarters no one has read
 
-**Status: DRAFT. NOT REGISTERED. Nothing is frozen and nothing is charged.**
+**Status: OPTION C CHOSEN (owner, 2026-10-25, decision 0092) — NOT REGISTERED. The clean quarters wait; the A/B tail rule is still open.**
 Written 2026-10-25 for the owner to choose from. Two versions are set side by
 side in §4; they differ in ONE rule — whether extreme returns are capped. The
 owner picks A, B, or neither (§7). Nothing is registered until the owner writes

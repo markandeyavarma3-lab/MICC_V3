@@ -263,11 +263,35 @@ def render(r: Result, n_isins: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+#: Decision 0092 (Option C): exp_004 v2 read the quarter-ends 2021-Q3 on, up to
+#: its data date (registered 2026-10-08). Every quarter-end in this window is
+#: treated as read — 2026-Q2 included, conservatively. A v3 may be tested only
+#: on the CLEAN pool: quarter-ends before it, and every one after it.
+SEEN_FROM, SEEN_TO = "2021-07-01", "2026-06-30"
+
+
+def clean(df):
+    """The stock-quarters no registered study has read a signal against."""
+    q = df["quarter_end"].astype(str)
+    return df[(q < SEEN_FROM) | (q > SEEN_TO)]
+
+
+def render_clean(r: Result) -> str:
+    return "\n".join([
+        "", "## The clean pool (decision 0092)", "",
+        f"exp_004 v3 waits (Option C) until this pool can see its bound. Quarter-ends {SEEN_FROM[:7]} "
+        f"to {SEEN_TO[:7]} were read by v2 and are excluded; every later quarter joins the pool.", "",
+        f"- quarters: **{r.n_quarters}** ({r.quarters[0]} .. {r.quarters[-1]}), stock-quarters **{r.n_stock_quarters:,}**",
+        f"- MDE: **{r.mde:.2%}** ({r.ratio:.2f}x the bound) uncapped; **{r.mde_winsor:.2%}** "
+        f"({r.ratio_winsor:.2f}x) capped at 1st/99th — the two versions of the v3 draft",
+        "- `docs/plan/EXP004_V3_REGISTRATION_DRAFT.md`; re-measured yearly (`configs/remeasure.yml`)", ""])
+
+
 def main() -> int:
     df = _frame()
     n_isins = int(df["security_id"].nunique())
     r = assess(df)
-    text = render(r, n_isins)
+    text = render(r, n_isins) + render_clean(assess(clean(df)))
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(text)
     print(text)
