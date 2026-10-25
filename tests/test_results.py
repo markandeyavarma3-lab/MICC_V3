@@ -121,3 +121,23 @@ def test_the_pre_xbrl_html_table_reads_in_crore():
     r = I.parse_html(html)
     assert (r["revenue"], r["pat"], r["eps"], r["period_end"], r["bank"]) == (12192.0, 3055.0, 26.73, "2014-12-31", False)
     assert I.parse_html(html.replace("Amount(Rs. in lakhs)", "Amount")) is None   # no unit, no amounts
+
+
+def test_an_empty_results_page_is_missing_for_good_not_a_refusal(tmp_path, monkeypatch):
+    """nsearchives answers a page it does not hold with an empty 200; six in a row
+    stopped the 2026-10-25 run as if refused."""
+    import json
+    monkeypatch.setattr(R, "MANIFEST", tmp_path / "manifest.jsonl")
+    monkeypatch.setattr(R, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(R, "RATE_LIMIT", 0)
+    old = [{"toDate": f"31-Dec-{y}", "xbrl": "https://x/-", "consolidated": "Non-Consolidated",
+            "broadCastDate": f"10-Feb-{y + 1} 10:00:00", "period": "Quarterly",
+            "resultDetailedDataLink": f"https://x/financial_res_A_{y}.html"} for y in range(2005, 2015)]
+    monkeypatch.setattr(R, "latest_listings", lambda s: {"old": old, "new": []})
+    monkeypatch.setattr(R, "state", lambda: ({"A": "9999"}, set()))
+    monkeypatch.setattr(R.ca, "_opener", lambda: None)
+    monkeypatch.setattr(R.ca, "_get", lambda op, u, ref: b"")
+    st = R.sweep(["A"], max_files=100, max_minutes=5, quarters=90)
+    assert st["stopped"] == "" and st["failed"] == 10                  # all ten tried; no breaker
+    assert len(R.gone(R.MANIFEST)) == 10                                # and none asked for again
+    assert all("404" in json.loads(ln)["error"] for ln in R.MANIFEST.read_text().splitlines())
