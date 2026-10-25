@@ -19,12 +19,12 @@ items:
     report: docs/reports/INSIDER_POWER.md
     reaches_bound: ~148 twelve-month cohorts, about 2029 (INSIDER_POWER.md)
   - id: mf_holding_change
-    what: mutual-fund holding change, 63 sessions, CHAR_MATCHED (exp_004 d_mf; the 2026-10-20 re-run on 54,492 stock-quarters was 2.71x short raw, 0.96x winsorised)
-    due: 2027-10-15
-    last_done: 2026-10-20
+    what: exp_004 v3 clean pool (decision 0092), quarterly holding change, 63 sessions; on 2026-10-25 capped 1.47x short, uncapped 4.76x
+    due: 2027-10-25
+    last_done: 2026-10-25
     command: RESEARCH_ENV=prod .venv/bin/python -m src.research.holdings_power
     report: docs/reports/HOLDINGS_POWER_PRELIMINARY.md
-    reaches_bound: ~23 quarterly cohorts, about 2028; then a new registration (0076)
+    reaches_bound: capped at about 46 clean quarters, about 2032; uncapped not this decade; the A/B tail rule is chosen before any read
   - id: exp006_forward_health
     what: exp_006 forward test — complete blocks, names per block, candidates computable; NEVER an IC (draft §4, 0090)
     due: 2027-11-03

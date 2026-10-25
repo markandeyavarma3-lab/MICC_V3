@@ -81,3 +81,11 @@ observations. Four more quarters arrive per year.
 | 2025-12-31 | 2095 | |
 | 2026-03-31 | 2082 | |
 | 2026-06-30 | 1808 | |
+
+## The clean pool (decision 0092)
+
+exp_004 v3 waits (Option C) until this pool can see its bound. Quarter-ends 2021-07 to 2026-06 were read by v2 and are excluded; every later quarter joins the pool.
+
+- quarters: **21** (2016-06-30 .. 2021-06-30), stock-quarters **31,684**
+- MDE: **7.13%** (4.76x the bound) uncapped; **2.20%** (1.47x) capped at 1st/99th — the two versions of the v3 draft
+- `docs/plan/EXP004_V3_REGISTRATION_DRAFT.md`; re-measured yearly (`configs/remeasure.yml`)

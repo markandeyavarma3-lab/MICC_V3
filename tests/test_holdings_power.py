@@ -131,3 +131,10 @@ def test_the_market_leg_is_the_total_return_index_not_a_price_index():
     src = inspect.getsource(hp)
     assert "market_tri_sql()" in src
     assert "global_indices_daily" not in src, "the seed price leg is back"
+
+
+def test_the_clean_pool_excludes_every_quarter_v2_read_and_keeps_the_rest():
+    """Decision 0092: v3 may be tested only on quarter-ends v2 never read."""
+    df = pd.DataFrame({"quarter_end": ["2016-06-30", "2021-06-30", "2021-09-30", "2026-06-30", "2026-09-30"],
+                       "security_id": range(5), "rel": 0.0})
+    assert list(hp.clean(df)["quarter_end"]) == ["2016-06-30", "2021-06-30", "2026-09-30"]
