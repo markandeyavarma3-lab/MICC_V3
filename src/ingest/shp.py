@@ -287,6 +287,16 @@ def _parse_file(path: str) -> tuple[list[Holding], list[NamedPromoter]]:
         if "ISIN" in d:
             head.update(d)
             break
+    # BSE's 2016-06-23 schema (filings for 2016 - 2017) carries no ISIN element
+    # at all: its header is the context with ScripCode, and the ISIN is the one
+    # src/archive/bse_shp.py named the file by, from the seed's filing record.
+    # Without this 11,601 filings parsed to an empty ISIN and were dropped,
+    # eight quarters the holdings panel never saw (measured 2026-10-25).
+    if not head:
+        head.update(next((d for d in facts.values() if "ScripCode" in d), {}))
+        m = re.match(r"(IN[A-Z0-9]{10})_\d{4}-\d{2}-\d{2}_", Path(path).name)
+        if m and "SHP_BSE" in str(path):
+            head["ISIN"] = m.group(1)
     isin = head.get("ISIN", "")
     symbol = (head.get("Symbol") or head.get("SymbolOfListedEntity") or "").strip().upper()
     company = head.get("NameOfTheCompany", "")

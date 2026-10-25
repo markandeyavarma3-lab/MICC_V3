@@ -15,45 +15,52 @@ so the two are comparable, and it is current to yesterday.
 estimate that cannot be compared with the previous one says nothing about
 whether the sweep is helping.
 
-## Landing: **UNDERPOWERED at the plausible bound** — MDE 3.99% per quarter against a bound of 1.50% (2.66x)
+## Landing: **UNDERPOWERED at the plausible bound** — MDE 3.91% per quarter against a bound of 1.50% (2.61x)
 
-- stock-quarters with a matured 63-session return: **54,828** across **2709 companies** (of 2,886 in the universe)
-- quarters with >= 100 names: **34** (2018-03-31 -> 2026-06-30); names per quarter: min 1333, median 1533, max 2095
-- mean within-quarter cross-sectional SD of the outcome: **55.17%**
-- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.42%**
-- MDE (two-sided 5%, 80% power): **3.99%**; analytic cross-check 4.00%
-- outcome tails, pooled: 1st percentile -53.5%, 99th +119.3%
-- the same MDE with the outcome winsorised at those tails: **1.43%** (0.95x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
+- stock-quarters with a matured 63-session return: **66,579** across **2821 companies** (of 2,886 in the universe)
+- quarters with >= 100 names: **41** (2016-06-30 -> 2026-06-30); names per quarter: min 1358, median 1583, max 2095
+- mean within-quarter cross-sectional SD of the outcome: **63.43%**
+- SE of the mean random-decile spread across quarters (permutation, 2,000 draws): **1.40%**
+- MDE (two-sided 5%, 80% power): **3.91%**; analytic cross-check 3.88%
+- outcome tails, pooled: 1st percentile -55.2%, 99th +119.5%
+- the same MDE with the outcome winsorised at those tails: **1.32%** (0.88x the bound) — reported so the share of the dispersion that is a handful of extreme quarters-for-one-stock is visible; whether to clip is a registration decision
 
 ## How to read it
 
 The MDE scales as 1/sqrt(names per decile) within a quarter and 1/sqrt(quarters)
-across them. The full universe has ~1.1x the names of this sample, which cuts
-the within-quarter term by ~sqrt(1.1) = 1.0x IF the cross-section is
+across them. The full universe has ~1.0x the names of this sample, which cuts
+the within-quarter term by ~sqrt(1.0) = 1.0x IF the cross-section is
 independent — it is not; stocks move together within a quarter, and that common
 component does not shrink with names. The honest projection for the full panel
 is therefore BETWEEN this number and this number / 1.0, and only the full
 run says where.
 
-Reaching the bound from here needs (2.66)^2 = 7.1x the effective
+Reaching the bound from here needs (2.61)^2 = 6.8x the effective
 observations. Four more quarters arrive per year.
 
 | quarter | names | note |
 |---|---|---|
-| 2018-03-31 | 1366 | |
-| 2018-06-30 | 1376 | |
-| 2018-09-30 | 1467 | |
-| 2018-12-31 | 1475 | |
-| 2019-03-31 | 1522 | |
-| 2019-06-30 | 1408 | |
-| 2019-09-30 | 1333 | |
-| 2019-12-31 | 1404 | |
-| 2020-03-31 | 1441 | |
-| 2020-06-30 | 1456 | |
-| 2020-09-30 | 1405 | |
-| 2020-12-31 | 1426 | |
-| 2021-03-31 | 1578 | |
-| 2021-06-30 | 1556 | |
+| 2016-06-30 | 1374 | |
+| 2016-09-30 | 1589 | |
+| 2016-12-31 | 1590 | |
+| 2017-03-31 | 1621 | |
+| 2017-06-30 | 1633 | |
+| 2017-09-30 | 1695 | |
+| 2017-12-31 | 1642 | |
+| 2018-03-31 | 1437 | |
+| 2018-06-30 | 1415 | |
+| 2018-09-30 | 1502 | |
+| 2018-12-31 | 1502 | |
+| 2019-03-31 | 1544 | |
+| 2019-06-30 | 1428 | |
+| 2019-09-30 | 1358 | |
+| 2019-12-31 | 1414 | |
+| 2020-03-31 | 1452 | |
+| 2020-06-30 | 1463 | |
+| 2020-09-30 | 1414 | |
+| 2020-12-31 | 1432 | |
+| 2021-03-31 | 1583 | |
+| 2021-06-30 | 1561 | |
 | 2021-09-30 | 1382 | |
 | 2021-12-31 | 1441 | |
 | 2022-03-31 | 1429 | |
@@ -72,5 +79,5 @@ observations. Four more quarters arrive per year.
 | 2025-06-30 | 1963 | |
 | 2025-09-30 | 2037 | |
 | 2025-12-31 | 2095 | |
-| 2026-03-31 | 2080 | |
-| 2026-06-30 | 1499 | |
+| 2026-03-31 | 2082 | |
+| 2026-06-30 | 1808 | |
