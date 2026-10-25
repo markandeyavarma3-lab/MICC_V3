@@ -215,6 +215,12 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
                     "filed": t["filed"], "url": t["url"], "fetched_at": datetime.now(UTC).isoformat()}
             try:
                 body = ca._get(op, t["url"], REFERER)
+                if not body and kind == "html":
+                    # nsearchives answers a results page it does not hold with an
+                    # empty 200, not a 404 (ARCHIES 2013-12-31; INFY beside it
+                    # served in full, 2026-10-25). Missing for good: the same as a
+                    # 404, so it neither trips the breaker nor is asked for again.
+                    raise ValueError("empty body, treated as HTTP 404 (page not held)")
                 if b"<" not in body[:200]:
                     raise ValueError("not XML")
                 dest = _save(f"{kind}/year={t['qe'][:4]}", f"{sym}_{t['qe']}_{'C' if t['cons'] else 'S'}", body)
