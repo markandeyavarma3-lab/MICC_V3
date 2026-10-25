@@ -69,6 +69,15 @@ def test_the_mde_matches_the_analytic_formula_on_gaussian_outcomes():
     assert r.n_quarters == 18
 
 
+def test_the_same_rows_in_any_order_give_the_same_mde():
+    """DuckDB returns rows in no fixed order; a seeded MDE must not depend on it
+    (3.75% and 3.92% from the same 66,579 stock-quarters, 2026-10-25)."""
+    df = _panel(quarters=12, names=150, sd=0.10)
+    a = hp.assess(df, draws=300, seed=5)
+    b = hp.assess(df.sample(frac=1.0, random_state=9), draws=300, seed=5)
+    assert a.mde == b.mde and a.mde_winsor == b.mde_winsor
+
+
 def test_more_names_per_quarter_lowers_the_mde_and_more_quarters_lowers_it_too():
     base = hp.assess(_panel(quarters=18, names=160), draws=800).mde
     wide = hp.assess(_panel(quarters=18, names=640), draws=800).mde

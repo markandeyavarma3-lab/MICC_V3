@@ -52,6 +52,23 @@ def test_the_header_is_found_by_its_isin_whichever_context_holds_it(tmp_path):
         assert rows and all(r.isin == "INE000A01010" and r.symbol == "ACME" for r in rows), header
 
 
+def test_a_2016_schema_bse_filing_takes_its_isin_from_the_archive_file_name(tmp_path):
+    """BSE's 2016-06-23 schema has no ISIN element (11,601 filings for 2016-2017):
+    the header is the ScripCode context, the ISIN the one the archive named it by."""
+    raw = gzip.decompress(_xbrl("OneD", "INE000A01010", "ACME", "41.37", "58.63", "6.37")).decode()
+    old = raw.replace('<in-bse-shp:ISIN contextRef="OneD" unitRef="pure">INE000A01010</in-bse-shp:ISIN>',
+                      '<in-bse-shp:ScripCode contextRef="OneD" unitRef="pure">500001</in-bse-shp:ScripCode>')
+    d = tmp_path / "SHP_BSE" / "year=2017"
+    d.mkdir(parents=True)
+    f = d / "IN9110D01011_2017-03-31_7e029bb0.xml.gz"
+    f.write_bytes(gzip.compress(old.encode()))
+    rows = shp.parse_xbrl_file(str(f))
+    assert rows and all(r.isin == "IN9110D01011" and r.company == "ACME LTD" for r in rows)
+    g = tmp_path / "elsewhere.xml.gz"
+    g.write_bytes(gzip.compress(old.encode()))
+    assert all(r.isin == "" for r in shp.parse_xbrl_file(str(g)))   # only the BSE archive's names are trusted
+
+
 def test_a_fraction_scale_filing_is_normalised_to_percent_and_says_so(tmp_path):
     f = tmp_path / "new.xml.gz"; f.write_bytes(_xbrl("MainD", "INE000A01010", "ACME", "0.4137", "0.5863", "0.0637"))
     rows = {r.category: r for r in shp.parse_xbrl_file(str(f))}

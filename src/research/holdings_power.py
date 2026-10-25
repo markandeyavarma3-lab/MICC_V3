@@ -174,6 +174,10 @@ def _null_se(groups: dict, quarters: list[str], draws: int, rng) -> float:
 
 def assess(df, draws: int = DRAWS, seed: int = SEED_RNG) -> Result:
     rng = np.random.default_rng(seed)
+    # A fixed row order before the draws: DuckDB returns rows in no set order, and
+    # the same 66,579 stock-quarters gave 3.75% on one run and 3.92% on the next
+    # (2026-10-25). Seeded draws are reproducible only over the same order.
+    df = df.sort_values(["quarter_end", "security_id"], kind="mergesort")
     groups = {q: g["rel"].to_numpy() for q, g in df.groupby("quarter_end") if len(g) >= MIN_PER_QUARTER}
     quarters = sorted(groups)
     if len(quarters) < 2:
