@@ -1,7 +1,7 @@
 # Project audit — 2026-10-15
 
 A full check of the institutional-research project and its public-site
-companion (`deal-lens`): what exists, whether it runs, whether the pieces are
+companion (`research-website`): what exists, whether it runs, whether the pieces are
 connected, what was broken and what was fixed. Every figure below was measured
 on 2026-10-15, not copied from earlier reports.
 
@@ -34,7 +34,7 @@ any of these disclosures carries repeatable information about later returns,
 under rules fixed before looking (write-once registry, hashed specifications,
 family-wise trial counting). Paper research only: no orders, no live trading.
 
-| | research repo | site repo (`deal-lens`) |
+| | research repo | site repo (`research-website`) |
 |---|---|---|
 | purpose | collect, store, test | show the data, descriptively |
 | code | 103 Python modules, 28,027 lines | Astro 5, 10 sections |
@@ -58,7 +58,7 @@ data/raw/collected  ──►  warehouse (price spine, adjusted spine, benchmark
 research database: deals mart, identity, participants, outcomes
    │
    ├──► research modules (power, studies) ──► governance db (registry, ledger, results)
-   └──► site export ──► deal-lens/public/data ──► Astro build ──► (GitHub Pages, once the repo exists)
+   └──► site export ──► research-website/public/data ──► Astro build ──► (GitHub Pages, once the repo exists)
 ```
 
 | job (launchd) | when | what | state |
@@ -147,7 +147,7 @@ owner's "approve" before about 3 November** — and the ledger fix in §8 first.
   files (`~/.micc_kite`, `~/.micc_kite_token`, `~/.micc_telegram_token`) are
   mode 600; Kite data is read by nothing the site exports (a test pins it).
 
-## 7. The public site (`deal-lens`)
+## 7. The public site (`research-website`)
 
 Five parts built (who owns what, market structure, fundamentals, screener and
 search, mutual-fund portfolios). The audit followed every link type in the
@@ -155,7 +155,7 @@ page data — search to page, screener to stock, stock to fund, fund to stock,
 stock to holder, participant to stock, deal to participant — over the indexes
 and samples of every page type: **no broken link**. The site rebuilds every
 evening. It is **not public**: `site_publish.sh` reports "NOT published: no
-origin remote" until the owner creates the `deal-lens` repository.
+origin remote" until the owner creates the `research-website` repository.
 
 ## 8. Findings
 
@@ -209,7 +209,7 @@ ledger is append-only, so it waits for an explicit go-ahead
 
 1. **Go-ahead for the ledger backfill** (§8) — needed before exp_006.
 2. **exp_006: "approve" to register**, before about 3 November.
-3. **Create the `deal-lens` GitHub repository** to publish the site, and check
+3. **Create the `research-website` GitHub repository** to publish the site, and check
    NSE's data terms before it goes public.
 4. The site's name.
 

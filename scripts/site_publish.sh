@@ -4,9 +4,9 @@
 # Run by collect_daily.sh after the backup and the health check (the
 # `site` stage), and by hand. docs/plan/WEBSITE_PLAN.md §5.1.
 #
-#   1. src/site/export.py writes ../deal-lens/public/data from the warehouse
+#   1. src/site/export.py writes ../research-website/public/data from the warehouse
 #      (read-only; the collector's writers have finished by now)
-#   2. astro build writes ../deal-lens/dist
+#   2. astro build writes ../research-website/dist
 #   3. IF the site repo has an `origin`, dist is pushed to its gh-pages
 #      branch as ONE orphan commit, force-pushed: the data is ~260 MB and
 #      changes nightly, so keeping its history would grow the repo forever.
@@ -17,7 +17,7 @@
 
 set -u
 REPO="$HOME/Workspace/institutional-research"
-SITE="$HOME/Workspace/deal-lens"
+SITE="$HOME/Workspace/research-website"
 NODE_BIN="$(ls -d "$HOME"/.nvm/versions/node/v2*/bin 2>/dev/null | sort -V | tail -1)"
 export PATH="$NODE_BIN:$PATH"
 export RESEARCH_ENV=prod
@@ -43,7 +43,7 @@ cp -R "$SITE/dist/." "$TMP/"
   cd "$TMP" || exit 1
   git init -q -b gh-pages
   git add -A
-  git -c user.name="Deal Lens publisher" -c user.email="noreply@users.noreply.github.com" \
+  git -c user.name="Research website publisher" -c user.email="noreply@users.noreply.github.com" \
       commit -q -m "Snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
   git push -q -f "$ORIGIN" gh-pages:gh-pages
 ) || { echo "site_publish: push to $ORIGIN failed"; exit 1; }

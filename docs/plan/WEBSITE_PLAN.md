@@ -1,7 +1,7 @@
 # Website plan: a public, daily, data-only view of Indian institutional activity
 
 **Status: DRAFT, 2026-10-09.** Written from the owner's answers that day. The
-name is a working title (**"Deal Lens"**); the owner chooses before launch.
+name is a working title (**"the research website"**); the owner chooses before launch.
 
 ## 1. What it is, and what it never is
 
@@ -143,7 +143,7 @@ rows.
 
 - **`institutional-research` (this repo):** the exporter, `src/site/`,
   tested like everything else.
-- **New public repo (`deal-lens`, working name):** the Astro project plus the
+- **New public repo (`research-website`, working name):** the Astro project plus the
   nightly `gh-pages` snapshot.
 - **No secret goes in either repo.** The push uses the owner's existing git
   credentials on the Mac.
