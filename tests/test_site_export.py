@@ -179,3 +179,42 @@ def test_the_screener_and_search_index_are_written(wh):
     assert row["sym"] == "ACME" and row["deals_12m"] == 1      # the mutual fund buy; round trips are not activity
     search = json.loads((out / "search.json").read_text())
     assert ["ACME", "s", "ACME", "Acme Ltd"] in search and any(r[1] == "p" and r[0] == "SBI MUTUAL FUND" for r in search)
+
+
+LOG = """--- 2026-10-25 18:39:59 IST pid=1
+deals=1
+  stage alert: desktop=True; email=email sent to someone@example.com via 587/starttls; telegram=telegram FAILED after 0/1 part(s): URLError
+❌ FAILED — 3 stage(s)   34 stages in 205m 09s
+--- 2026-10-26 18:37:54 IST pid=2
+  email sent to someone@example.com via 587/starttls
+  telegram sent to 12345 (1 message(s))
+✅ ALL CLEAN   33 stages in 37m 22s
+--- 2026-10-26 21:00:01 IST pid=3
+deals=0
+"""
+
+
+@pytest.mark.unit
+def test_recent_runs_are_read_from_the_log_newest_first_and_an_unfinished_run_is_left_out():
+    runs = X._runs_from_log(LOG)
+    assert [r["started"] for r in runs] == ["2026-10-26 18:37:54 IST", "2026-10-25 18:39:59 IST"]
+    assert runs[0] | {} == {"started": "2026-10-26 18:37:54 IST", "ok": True, "failed": 0, "stages": 33,
+                            "minutes": 37, "email": "sent", "telegram": "sent"}
+    assert (runs[1]["ok"], runs[1]["failed"], runs[1]["minutes"], runs[1]["telegram"]) == (False, 3, 205, "failed")
+
+
+@pytest.mark.unit
+def test_the_system_page_never_carries_an_address_or_a_chat_id(tmp_path, monkeypatch):
+    # Real data stays out of a unit test: the archive walk, the coverage scan and health.
+    monkeypatch.setattr(X, "_archive_inventory", lambda: [{"source": "BULK", "files": 3, "mb": 1}])
+    monkeypatch.setattr(X, "_coverage", lambda: [])
+    monkeypatch.setattr(X, "_health", lambda: [])
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "collect_2026-10.log").write_text(LOG)
+    (logs / "last_run.tsv").write_text("# started 2026-10-26T13:07:54+00:00\ndeals\t0\t1593\nhealth\t0\t1\n")
+    doc = X.export_system(tmp_path, logs)
+    text = (tmp_path / "system.json").read_text()
+    assert "@" not in text and "12345" not in text
+    assert doc["last_run"]["stages"] == [{"stage": "deals", "exit": 0, "seconds": 1593},
+                                         {"stage": "health", "exit": 0, "seconds": 1}]

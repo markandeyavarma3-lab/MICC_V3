@@ -1,10 +1,10 @@
 """export.py — the public website's data, written nightly as static JSON.
 
-docs/plan/WEBSITE_PLAN.md. The site (a separate repository, deal-lens) is a
+docs/plan/WEBSITE_PLAN.md. The site (a separate repository, research-website) is a
 static Astro build; everything it shows comes from these files, written by
 this module from the warehouse after the collector finishes.
 
-WHAT IT WRITES under <out>/ (default: ../deal-lens/public/data):
+WHAT IT WRITES under <out>/ (default: ../research-website/public/data):
   meta.json                 built_at, latest session, data health, counts
   sessions.json             [{date, deals, bulk, block, roundtrip_share}] newest first
   sessions/<YYYY-MM-DD>.json one session: deals with our participant labels,
@@ -38,7 +38,7 @@ import duckdb  # noqa: E402
 
 from src.common.paths import ARCHIVE, COLLECTED, ROOT, research_db, warehouse_dir  # noqa: E402
 
-SITE_DATA = ROOT.parent / "deal-lens" / "public" / "data"
+SITE_DATA = ROOT.parent / "research-website" / "public" / "data"
 CR = 1e7   # rupees per crore
 
 #: Display labels for participant types. The type codes stay in the data.
@@ -197,6 +197,7 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
     meta["named_holders"] = len(held[0])
     _add_widest_holders(out, held)
     _add_fund_counts(out, mf, sym_of)
+    export_system(out)
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     return meta
 
@@ -355,6 +356,13 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
             history[sym].append([hs, fr, to, ser])
     finally:
         con.close()
+    # The seed closed 1,668 symbol windows on its snapshot date (2019-12-02) with
+    # nothing after them; for a company still ACTIVE the last window is open, not
+    # ended ("INFY 2011-07-01 -> 2019-12-02" read as if Infosys stopped trading).
+    # Display only: symbol_history itself is the identity layer's, unchanged.
+    for sym, rows in history.items():
+        if rows and rows[-1][2] and (ident.get(sym) or {}).get("status") == "ACTIVE":
+            rows[-1][2] = None
     for sym, i in ident.items():
         if i["isin"]:
             isin_of.setdefault(sym, i["isin"])
@@ -991,6 +999,128 @@ def export_participants(out: Path, rows: list, env: str | None = None,
     return len(index)
 
 
+#: What runs when (launchd plists, measured 2026-10-26). Shown on the System page.
+SCHEDULE = [
+    {"time": "18:30", "job": "Daily collector", "what": "deals, prices, indices, flows, filings, F&O, identity, warehouse, backup, health, site"},
+    {"time": "18:45", "job": "Shareholding sweep", "what": "NSE shareholding filings and their parse"},
+    {"time": "21:00", "job": "Collector, second pass", "what": "the same stages again, for anything published late"},
+    {"time": "21:20", "job": "Night backfill", "what": "quarterly results, BSE history, delivery, mutual-fund portfolios"},
+]
+_RUN_END = re.compile(r"(✅ ALL CLEAN|❌ FAILED — (\d+) stage\(s\))\s+(\d+) stages in (?:(\d+)m )?(\d+)s")
+
+
+def _runs_from_log(text: str, keep: int = 14) -> list[dict]:
+    """Recent collector runs from the log: start, verdict, stage count, minutes,
+    and which alert channels answered. No address or chat id is kept."""
+    runs: list[dict] = []
+    cur: dict | None = None
+    for line in text.splitlines():
+        if line.startswith("--- "):
+            cur = {"started": line[4:].split(" pid=")[0].strip(), "ok": None, "failed": 0,
+                   "stages": None, "minutes": None, "email": None, "telegram": None}
+            runs.append(cur)
+        elif cur is not None and (m := _RUN_END.search(line)):
+            cur["ok"] = m.group(1).startswith("✅")
+            cur["failed"] = int(m.group(2) or 0)
+            cur["stages"] = int(m.group(3))
+            cur["minutes"] = round(int(m.group(4) or 0) + int(m.group(5)) / 60)
+        elif cur is not None:
+            # One stage-alert line reports every channel ("email=email sent ...;
+            # telegram=telegram FAILED ..."): each channel is read on its own.
+            if "email sent" in line or "email=" in line:
+                cur["email"] = "sent" if "email sent" in line else "failed"
+            if "telegram sent" in line or "telegram FAILED" in line:
+                cur["telegram"] = "failed" if "telegram FAILED" in line else "sent"
+    return [r for r in runs if r["ok"] is not None][-keep:][::-1]
+
+
+def _archive_inventory() -> list[dict]:
+    """Files and bytes per raw-archive source: the layer that is never changed."""
+    from src.common.paths import ARCHIVE
+    out = []
+    for d in sorted(p for p in Path(ARCHIVE).iterdir() if p.is_dir()):
+        n = b = 0
+        for f in d.rglob("*"):
+            if f.is_file():
+                n += 1
+                b += f.stat().st_size
+        out.append({"source": d.name, "files": n, "mb": round(b / 1e6)})
+    return out
+
+
+#: (label, files under ROOT/data, date column, what one row is). Parquet only:
+#: read in memory, never through the research database.
+COVERAGE = [
+    ("Daily prices", "prod/warehouse/price_spine_adj/**/*.parquet", "date", "stock-day"),
+    ("F&O contracts", "prod/warehouse/fno_spine/**/*.parquet", "date", "contract-day"),
+    ("Delivery position", "raw/collected/delivery/delivery.parquet", "date", "stock-day"),
+    ("Index total return", "raw/collected/index_tri/index_tri.parquet", "date", "index-day"),
+    ("Foreign investor flows", "raw/collected/fpi_nsdl/fpi_investment.parquet", "reporting_date", "day"),
+    ("Insider trades", "raw/collected/insider/insider_trading.parquet", "filing_date", "filing"),
+    ("Corporate actions", "raw/collected/corporate_actions/corporate_actions.parquet", "date", "action"),
+    ("Quarterly results", "raw/collected/results/results_quarterly.parquet", "qe", "company-quarter"),
+    ("Shareholding patterns", "raw/collected/shp/shp_holdings.parquet", "quarter_end", "holding row"),
+    ("Named shareholders", "raw/collected/shp/shp_named_holders.parquet", "quarter_end", "holder row"),
+    ("Mutual-fund portfolios", "raw/collected/mf/mf_portfolios.parquet", "as_of", "holding"),
+]
+
+
+def _coverage() -> list[dict]:
+    """Rows and date range per collected dataset, for the Overview."""
+    out = []
+    con = duckdb.connect()
+    try:
+        for label, rel, col, unit in COVERAGE:
+            f = ROOT / "data" / rel
+            try:
+                n, lo, hi = con.execute(
+                    f"SELECT count(*), min(CAST({col} AS VARCHAR)), max(CAST({col} AS VARCHAR)) "
+                    f"FROM read_parquet('{f}', hive_partitioning=true)").fetchone()
+                out.append({"dataset": label, "rows": int(n), "from": (lo or "")[:10], "to": (hi or "")[:10], "unit": unit})
+            except Exception as exc:  # noqa: BLE001 - one missing file is not the page failing
+                out.append({"dataset": label, "error": type(exc).__name__})
+    finally:
+        con.close()
+    return out
+
+
+def export_system(out: Path, logs: Path | None = None) -> dict:
+    """system.json for the System page: schedule, recent runs, the last run's
+    stages, alert channels, backup and the raw archive. Files only — no
+    database is opened, so it can be rebuilt at any hour."""
+    logs = logs or ROOT / "logs"
+    doc: dict = {"built_at": datetime.now(UTC).isoformat(timespec="seconds"), "schedule": SCHEDULE}
+    try:
+        cl = sorted(logs.glob("collect_*.log"))
+        doc["runs"] = _runs_from_log("\n".join(p.read_text(errors="ignore") for p in cl[-2:]))
+    except Exception as exc:  # noqa: BLE001 - the site must still build
+        doc["runs"] = [{"error": type(exc).__name__}]
+    try:
+        lines = (logs / "last_run.tsv").read_text().splitlines()
+        doc["last_run"] = {"started": lines[0].replace("# started ", "").strip() if lines else None,
+                           "stages": [{"stage": s, "exit": int(e), "seconds": int(t)}
+                                      for s, e, t in (ln.split("\t") for ln in lines[1:] if ln.count("\t") == 2)]}
+    except Exception as exc:  # noqa: BLE001
+        doc["last_run"] = {"error": type(exc).__name__}
+    try:
+        from src.monitor import backup_state
+        b = backup_state.read()
+        doc["backup"] = {"taken_at": b.taken_at.isoformat(timespec="minutes") if b.taken_at else None,
+                         "generations": b.generations, "sessions_at_risk": b.sessions_at_risk,
+                         "commits_behind": b.commits_behind,
+                         "static_verified": b.static_verified[0][1].date().isoformat() if b.static_verified else None}
+    except Exception as exc:  # noqa: BLE001
+        doc["backup"] = {"error": type(exc).__name__}
+    try:
+        doc["archive"] = _archive_inventory()
+    except Exception as exc:  # noqa: BLE001
+        doc["archive"] = [{"error": type(exc).__name__}]
+    doc["coverage"] = _coverage()
+    doc["health"] = _health()
+    (out / "system.json").write_text(json.dumps(doc, indent=1))
+    return doc
+
+
 def _health() -> list[dict]:
     """The collector's own staleness check, so the site says when it is stale."""
     try:
@@ -1006,7 +1136,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=SITE_DATA)
     ap.add_argument("--since", default="2005-01-01")
+    ap.add_argument("--system", action="store_true",
+                    help="refresh only system.json (files, no database): safe at any hour, e.g. during a demo")
     a = ap.parse_args()
+    if a.system:
+        d = export_system(a.out)
+        # The running site serves its built copy: refresh that too, so a page
+        # reload shows the new run without a rebuild (the demo's live step).
+        built = a.out.parent.parent / "dist" / "data"
+        if built.is_dir():
+            (built / "system.json").write_text((a.out / "system.json").read_text())
+        print(f"  SYSTEM: {len(d.get('runs', []))} runs, last {d.get('runs', [{}])[0].get('started')} -> {a.out}/system.json")
+        return 0
     t0 = datetime.now(UTC)
     m = export(a.out, since=a.since)
     print(f"  SITE EXPORT: {m['sessions']:,} sessions, {m['deals']:,} deals, latest {m['latest_session']} "
