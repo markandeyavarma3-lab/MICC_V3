@@ -125,6 +125,17 @@ def due(today: date | None = None, stamp: Path | None = None) -> bool:
         return True
 
 
+def missed_yesterday(today: date | None = None, stamp: Path | None = None) -> bool:
+    """True when the last digest delivered is older than yesterday's."""
+    today = today or datetime.now(IST).date()
+    stamp = stamp or STAMP
+    try:
+        last = date.fromisoformat(stamp.read_text().strip())
+    except (OSError, ValueError):
+        return True
+    return last < today - timedelta(days=1)
+
+
 def mark(today: date | None = None, stamp: Path | None = None) -> None:
     """Record delivery. Never raises — a digest that was SENT must not be
     reported as failed because a stamp file could not be written."""
@@ -215,6 +226,15 @@ def main() -> int:
     if once and not due():
         print("digest: already delivered today; nothing sent")
         return 0
+    # ONE SUMMARY A DAY, AFTER THE EVENING'S LAST COLLECTOR RUN (owner,
+    # 2026-10-28): `--email-from 20` sends from the 21:00 pass, not the 18:30
+    # one, so it covers the whole day; but at any hour if yesterday's went
+    # unsent (the Mac was off at 21:00), so no day goes unreported.
+    if "--email-from" in sys.argv:
+        hour = int(sys.argv[sys.argv.index("--email-from") + 1])
+        if datetime.now(IST).hour < hour and not missed_yesterday():
+            print(f"digest: waits for the evening pass (from {hour}:00); nothing sent")
+            return 0
 
     text = render()
     print(text)

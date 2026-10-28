@@ -218,3 +218,14 @@ def test_the_system_page_never_carries_an_address_or_a_chat_id(tmp_path, monkeyp
     assert "@" not in text and "12345" not in text
     assert doc["last_run"]["stages"] == [{"stage": "deals", "exit": 0, "seconds": 1593},
                                          {"stage": "health", "exit": 0, "seconds": 1}]
+
+
+@pytest.mark.unit
+def test_export_stocks_never_rebinds_its_deal_list():
+    """A loop `for sym, rows in history.items()` shadowed the deals and crashed
+    every site export on 2026-10-27/28 (the latest 'session' read as 'ZYLO')."""
+    import ast
+    fn = next(n for n in ast.walk(ast.parse(inspect.getsource(X))) if isinstance(n, ast.FunctionDef) and n.name == "export_stocks")
+    targets = [t for n in ast.walk(fn) if isinstance(n, (ast.For, ast.comprehension, ast.Assign))
+               for t in ast.walk(n.target if hasattr(n, "target") else n.targets[0]) if isinstance(t, ast.Name)]
+    assert "rows" not in {t.id for t in targets}

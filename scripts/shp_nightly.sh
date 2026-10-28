@@ -24,6 +24,9 @@ mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
+  # Wait (up to 15 min) for NSE to answer before fetching: a run that starts
+  # before the internet is back after sleep fails every stage (owner, 2026-10-28).
+  "$REPO/.venv/bin/python" -m src.monitor.netcheck || true
   # 1500 files: under an hour at the ~1,150/h NSE tolerated on 2026-09-17 before
   # throttling; the 150-minute wall clock ends the run by 03:30 regardless.
   "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 2500 --max-minutes 130

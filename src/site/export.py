@@ -360,9 +360,11 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     # nothing after them; for a company still ACTIVE the last window is open, not
     # ended ("INFY 2011-07-01 -> 2019-12-02" read as if Infosys stopped trading).
     # Display only: symbol_history itself is the identity layer's, unchanged.
-    for sym, rows in history.items():
-        if rows and rows[-1][2] and (ident.get(sym) or {}).get("status") == "ACTIVE":
-            rows[-1][2] = None
+    # (named `windows`, not `rows`: `rows` is this function's deal list, and
+    # shadowing it crashed every site export from 2026-10-27 to 10-28.)
+    for sym, windows in history.items():
+        if windows and windows[-1][2] and (ident.get(sym) or {}).get("status") == "ACTIVE":
+            windows[-1][2] = None
     for sym, i in ident.items():
         if i["isin"]:
             isin_of.setdefault(sym, i["isin"])

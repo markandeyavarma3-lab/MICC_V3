@@ -442,8 +442,12 @@ def notify_telegram(subject: str, body: str) -> str:
         return f"telegram FAILED: {type(exc).__name__}: {exc}"
 
 
-def broadcast(title: str, body: str) -> dict[str, str]:
+def broadcast(title: str, body: str, email: bool = False) -> dict[str, str]:
     """Every channel, one call. The ONE place a channel is added or removed.
+
+    EMAIL IS OPT-IN (owner, 2026-10-28): alerts go to Telegram and the desktop;
+    email carries one summary a day (digest.py), not one message per failure.
+    A caller that must email passes email=True.
 
     Previously each alert site called `notify_desktop` and then `notify_email`
     by hand, so adding a third channel meant finding every pair — and missing
@@ -453,7 +457,7 @@ def broadcast(title: str, body: str) -> dict[str, str]:
     """
     return {
         "desktop": str(notify_desktop(title, body)),
-        "email": notify_email(title, body),
+        "email": notify_email(title, body) if email else "email skipped (daily summary only)",
         "telegram": notify_telegram(title, body),
     }
 
