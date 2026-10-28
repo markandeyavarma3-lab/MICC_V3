@@ -83,6 +83,9 @@ mkdir -p "$REPO/logs"
 
 {
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
+  # Wait (up to 15 min) for NSE to answer before fetching: a run that starts
+  # before the internet is back after sleep fails every stage (owner, 2026-10-28).
+  "$REPO/.venv/bin/python" -m src.monitor.netcheck || true
   "$REPO/.venv/bin/python" -m src.archive.stopgap
   # `deals`, not `exit` (2026-09-17). The stage was named for the exit code it
   # recorded back when that was all this script recorded; on a phone, "FAIL
@@ -325,7 +328,10 @@ print(' ', spine.build_adjusted(env='prod', con=c).render())
   # reported the backup as it stood BEFORE this run's backup — "AT RISK, 1
   # archived session not in it" on any day the run collected something, which
   # is every day. The digest is a report on the finished run, so it goes last.
-  "$REPO/.venv/bin/python" -m src.monitor.digest --once-daily --email --telegram || true
+  # One summary email a day (owner, 2026-10-28): from the 21:00 pass, or
+  # from the next run if yesterday's was never sent. Telegram per run is
+  # runreport's, below.
+  "$REPO/.venv/bin/python" -m src.monitor.digest --once-daily --email-from 20 --email --telegram || true
 } >> "$LOG" 2>&1
 
 # THE RUN IS OVER, SAID IN THE RECORD (2026-09-25). Without this line the

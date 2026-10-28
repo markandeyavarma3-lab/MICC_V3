@@ -17,6 +17,9 @@ mkdir -p "$REPO/logs"
   echo "--- $(date '+%Y-%m-%d %H:%M:%S %Z') pid=$$"
   # Never while the collector holds the database.
   while pgrep -f collect_daily.sh >/dev/null; do sleep 60; done
+  # Wait (up to 15 min) for NSE to answer before fetching: a run that starts
+  # before the internet is back after sleep fails every stage (owner, 2026-10-28).
+  "$REPO/.venv/bin/python" -m src.monitor.netcheck || true
   # Results (NSE) and pre-2021 shareholding (BSE) are different hosts: they run
   # side by side, each at its own polite rate, for up to ten hours (2026-10-18:
   # results widened from the newest 8 quarters to 40, ~5x the files; 2026-10-24: to 90, back to 2005, the pre-XBRL quarters read from NSE's HTML tables). Neither
