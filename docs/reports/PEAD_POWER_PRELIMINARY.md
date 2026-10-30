@@ -4,39 +4,49 @@
 
 ## Events
 
-- company-quarters with a filing date: **49,104** (2017-09-30 .. 2026-09-30); 100 without one are left out (no safe entry day)
-- with an NSE symbol matched to an ISIN on the filing date: **48,894**
-- where a seasonal-random-walk SUE is computable (profit now and a year before, >= 4 earlier seasonal differences): **30,669**
+- company-quarters with a filing date: **61,594** (2007-03-31 .. 2026-09-30); 1,582 without one are left out (no safe entry day)
+- with an NSE symbol matched to an ISIN on the filing date: **61,350**
+- where a seasonal-random-walk SUE is computable (profit now and a year before, >= 4 earlier seasonal differences): **43,906**
 
 | year | quarters | SUE-eligible |
 |---|---:|---:|
-| 2017 | 3 | 0 |
-| 2018 | 3,838 | 0 |
-| 2019 | 3,930 | 2 |
-| 2020 | 4,776 | 2,887 |
-| 2021 | 5,086 | 4,234 |
-| 2022 | 5,425 | 4,375 |
-| 2023 | 6,131 | 4,851 |
-| 2024 | 7,295 | 5,603 |
-| 2025 | 8,052 | 5,798 |
-| 2026 | 4,568 | 2,919 |
+| 2007 | 616 | 451 |
+| 2008 | 899 | 669 |
+| 2009 | 910 | 771 |
+| 2010 | 972 | 860 |
+| 2011 | 1,032 | 884 |
+| 2012 | 1,096 | 933 |
+| 2013 | 1,111 | 1,045 |
+| 2014 | 1,140 | 1,081 |
+| 2015 | 1,190 | 1,087 |
+| 2016 | 1,300 | 1,123 |
+| 2017 | 1,213 | 1,058 |
+| 2018 | 3,964 | 961 |
+| 2019 | 4,059 | 1,027 |
+| 2020 | 4,925 | 3,232 |
+| 2021 | 5,240 | 4,371 |
+| 2022 | 5,589 | 4,509 |
+| 2023 | 6,320 | 5,005 |
+| 2024 | 7,392 | 5,776 |
+| 2025 | 8,056 | 5,979 |
+| 2026 | 4,570 | 3,084 |
 
 ## Power of a top-minus-bottom-fifth spread (random members)
 
 | sample | horizon | benchmark | events | monthly cohorts | spread SD | MDE | bound | MDE / bound |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| all results | 21s | MKT | 39,996 | 86 | 4.57% | 1.42% | 0.50% | 2.84x |
-| all results | 21s | CHAR_MATCHED | 39,996 | 86 | 4.55% | 1.45% | 0.50% | 2.90x |
-| all results | 21s | CHAR_MATCHED_IND | 39,996 | 86 | 4.52% | 1.42% | 0.50% | 2.84x |
-| SUE-eligible | 21s | MKT | 27,176 | 62 | 4.04% | 1.47% | 0.50% | 2.95x |
-| SUE-eligible | 21s | CHAR_MATCHED | 27,176 | 62 | 4.10% | 1.49% | 0.50% | 2.97x |
-| SUE-eligible | 21s | CHAR_MATCHED_IND | 27,176 | 62 | 3.97% | 1.44% | 0.50% | 2.88x |
-| all results | 63s | MKT | 37,593 | 85 | 7.22% | 2.27% | 1.50% | 1.51x |
-| all results | 63s | CHAR_MATCHED | 37,593 | 85 | 7.33% | 2.28% | 1.50% | 1.52x |
-| all results | 63s | CHAR_MATCHED_IND | 37,593 | 85 | 7.33% | 2.28% | 1.50% | 1.52x |
-| SUE-eligible | 63s | MKT | 25,416 | 59 | 6.43% | 2.39% | 1.50% | 1.59x |
-| SUE-eligible | 63s | CHAR_MATCHED | 25,416 | 59 | 6.34% | 2.38% | 1.50% | 1.59x |
-| SUE-eligible | 63s | CHAR_MATCHED_IND | 25,416 | 59 | 6.28% | 2.33% | 1.50% | 1.56x |
+| all results | 21s | MKT | 50,750 | 184 | 4.95% | 1.05% | 0.50% | 2.10x |
+| all results | 21s | CHAR_MATCHED | 50,750 | 184 | 5.04% | 1.07% | 0.50% | 2.15x |
+| all results | 21s | CHAR_MATCHED_IND | 50,750 | 184 | 4.94% | 1.05% | 0.50% | 2.10x |
+| SUE-eligible | 21s | MKT | 40,978 | 180 | 4.93% | 1.05% | 0.50% | 2.10x |
+| SUE-eligible | 21s | CHAR_MATCHED | 40,978 | 180 | 4.97% | 1.05% | 0.50% | 2.11x |
+| SUE-eligible | 21s | CHAR_MATCHED_IND | 40,978 | 180 | 4.89% | 1.04% | 0.50% | 2.07x |
+| all results | 63s | MKT | 47,970 | 183 | 8.38% | 1.77% | 1.50% | 1.18x |
+| all results | 63s | CHAR_MATCHED | 47,970 | 183 | 8.51% | 1.79% | 1.50% | 1.20x |
+| all results | 63s | CHAR_MATCHED_IND | 47,970 | 183 | 8.31% | 1.76% | 1.50% | 1.17x |
+| SUE-eligible | 63s | MKT | 38,706 | 176 | 8.39% | 1.81% | 1.50% | 1.20x |
+| SUE-eligible | 63s | CHAR_MATCHED | 38,706 | 176 | 8.36% | 1.78% | 1.50% | 1.19x |
+| SUE-eligible | 63s | CHAR_MATCHED_IND | 38,706 | 176 | 8.34% | 1.78% | 1.50% | 1.19x |
 
 ## How to read it
 
