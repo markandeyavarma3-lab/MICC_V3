@@ -229,3 +229,36 @@ def test_export_stocks_never_rebinds_its_deal_list():
     targets = [t for n in ast.walk(fn) if isinstance(n, (ast.For, ast.comprehension, ast.Assign))
                for t in ast.walk(n.target if hasattr(n, "target") else n.targets[0]) if isinstance(t, ast.Name)]
     assert "rows" not in {t.id for t in targets}
+
+
+def test_share_counts_divide_out_a_paid_up_capital_filed_in_lakh_or_rupees():
+    # FIVESTAR 2026-06-30: paid-up 29,51,797.88 (lakh), face 1, profit 271.41 cr, EPS 9.19.
+    lakh = X.share_counts([(2951797.88, 271.41, 9.19), (29.4469, 286.14, 9.72)])
+    assert lakh[0] == pytest.approx(29.518, rel=1e-3) and lakh[1] == pytest.approx(29.4469)
+    rupees = X.share_counts([(1.012e8, 50.0, 4.94)])
+    assert rupees[0] == pytest.approx(10.12)
+
+
+def test_share_counts_leave_a_real_split_alone():
+    # A 10-for-1 split: every quarter after it is ten times the ones before.
+    rows = [(100.0, 50.0, 0.5), (100.0, 48.0, 0.48), (10.0, 45.0, 4.5), (10.0, 40.0, 4.0)]
+    assert X.share_counts(rows) == [100.0, 100.0, 10.0, 10.0]
+
+
+def test_share_counts_fix_one_quarter_ten_times_off_its_neighbours():
+    rows = [(60.78, None, None), (6.078, None, None), (60.78, None, None)]
+    assert X.share_counts(rows)[1] == pytest.approx(60.78)
+
+
+def test_a_newest_quarter_far_off_the_two_before_takes_their_count():
+    rows = [(0.002, None, None), (609.36, None, None), (609.36, None, None)]
+    assert X.share_counts(rows)[0] == 609.36
+
+
+def test_no_market_cap_when_shares_still_disagree_with_profit_over_eps():
+    def q(qe, shares, pat, eps):
+        return [qe, True, 100.0, 0.0, 0.0, pat, pat, eps, 0.0, 0.0, shares, False, qe]
+    bad = [q("2026-06-30", 0.01, 26.4, 1.0)]
+    assert X.valuation(bad, 500.0)["mcap_cr"] is None
+    ok = [q("2026-06-30", 26.4, 26.4, 1.0)]
+    assert X.valuation(ok, 500.0)["mcap_cr"] == 13200
