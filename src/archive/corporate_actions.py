@@ -109,7 +109,15 @@ def _get(op, url: str, referer: str) -> bytes:
                 with op.open(req, timeout=TIMEOUT) as resp:  # noqa: S310 - fixed https host
                     return resp.read()
             return bounded(_get, DEADLINE, what=url)
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except HTTPError as exc:
+            # A 404/410 is the server saying the file does not exist: asking again
+            # seconds later cannot change that, and the two retries with backoff
+            # cost ~17 s per dead page (2026-10-30: 15 of 549 old results pages).
+            # The message keeps "HTTP Error 404" for callers that read it.
+            if exc.code in (404, 410):
+                raise RuntimeError(f"not found, not retried, for {url}: {exc}") from exc
+            last = exc
+        except (URLError, TimeoutError) as exc:
             last = exc
     raise RuntimeError(f"all {RETRIES} attempts failed for {url}: {last}")
 
