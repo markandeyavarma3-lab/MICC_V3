@@ -61,10 +61,19 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
-# Default: the iCloud Drive folder the owner created for this. Overridable —
-# an external SSD is the intended second destination:
-#   BACKUP_DEST=/Volumes/<ssd>/institutional-research-backup ./scripts/backup.sh
-DEST="${BACKUP_DEST:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/institutional research/backup}"
+# THE PEN DRIVE ONLY (owner, 2026-10-30, decision 0093): no iCloud, no
+# OneDrive. Nightly bundles go to <pen>/nightly; the static leg stays at the
+# pen drive's root, where it already is. Overridable for a different drive:
+#   BACKUP_PEN_DRIVE=/Volumes/<drive>/institutional-research_backup ./scripts/backup.sh
+PEN="${BACKUP_PEN_DRIVE:-/Volumes/NO NAME/institutional-research_backup}"
+DEST="${BACKUP_DEST:-/Volumes/NO NAME/institutional-research_backup/nightly}"
+[ -n "${BACKUP_PEN_DRIVE:-}" ] && [ -z "${BACKUP_DEST:-}" ] && DEST="$PEN/nightly"
+# One destination means a missing drive is a missing backup: say so and stop,
+# rather than report a run that wrote nothing anywhere.
+if [ ! -d "${PEN:h}" ]; then
+  echo "BACKUP: FAILED — the pen drive is not plugged in (${PEN:h}); nothing was backed up. Plug it in; the next run catches up."
+  exit 1
+fi
 STAMP="$(date +%Y%m%d-%H%M%S)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"; rmdir "$LOCK" 2>/dev/null || true' EXIT
@@ -169,23 +178,18 @@ echo "$STAMP" >> "$INDEX"
 # The directories that never change and cannot be re-fetched. One verified copy
 # per destination, driven from a local fingerprint and verified by stat of
 # known paths — never by listing the destination, which launchd cannot do under
-# TCC (see prune_generations.zsh). iCloud always; the pen drive whenever it is
-# mounted. A failed leg makes the RUN report it, but does not block the tarball
+# TCC (see prune_generations.zsh). The pen drive is the one destination
+# (decision 0093). A failed leg makes the RUN report it, but does not block the tarball
 # above, which has already been written and drilled.
 STATIC_STAMP="$REPO/logs/backup_static.txt"
 STATIC_DIRS=(data/raw/v1_export data/raw/v1_increments data/raw/salvaged)
 STATIC_RC=0
-"${0:A:h}/lib/static_sync.zsh" "$REPO" "$DEST/static" "$STATIC_STAMP" $STATIC_DIRS || STATIC_RC=1
-PEN="${BACKUP_PEN_DRIVE:-/Volumes/NO NAME/institutional-research_backup}"
-if [ -d "$PEN" ]; then
-  "${0:A:h}/lib/static_sync.zsh" "$REPO" "$PEN" "$STATIC_STAMP" $STATIC_DIRS || STATIC_RC=1
-else
-  echo "  static: pen drive not mounted ($PEN) — iCloud copy only this run"
-fi
+mkdir -p "$PEN"
+"${0:A:h}/lib/static_sync.zsh" "$REPO" "$PEN" "$STATIC_STAMP" $STATIC_DIRS || STATIC_RC=1
 
 echo "  wrote: $(du -ch "$DEST"/repo-$STAMP.bundle "$DEST"/state-$STAMP.tar.gz | tail -1 | cut -f1)"
 if [ "$STATIC_RC" -ne 0 ]; then
-  echo "BACKUP: GREEN for the nightly bundle, STATIC LEG FAILED — the 9.1 GB is not verified at every destination"
+  echo "BACKUP: GREEN for the nightly bundle, STATIC LEG FAILED — the 9.1 GB is not verified on the pen drive"
   exit 1
 fi
 echo "BACKUP: GREEN"
