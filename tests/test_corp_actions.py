@@ -303,3 +303,29 @@ def test_fund_units_are_not_collected_into_the_price_spine():
         f"                  'IVZINNIFTY','HEALTHADD','MIDQ50ADD')"
     ).fetchone()[0]
     assert leaked == 0, f"{leaked} fund-unit rows collected; 0040 excludes them"
+
+
+def test_a_404_is_final_at_once_and_a_network_error_is_retried(monkeypatch):
+    """A missing file is not asked for twice more with backoff (~17 s each,
+    2026-10-30); a dropped connection still gets its three attempts."""
+    import io
+    from urllib.error import HTTPError, URLError
+
+    from src.archive import corporate_actions as ca
+    monkeypatch.setattr(ca.time, "sleep", lambda s: None)
+    calls = []
+
+    class Op:
+        def __init__(self, exc): self.exc = exc
+        def open(self, req, timeout=None):
+            calls.append(req.full_url)
+            raise self.exc
+
+    import pytest
+    with pytest.raises(RuntimeError, match="HTTP Error 404"):
+        ca._get(Op(HTTPError("u", 404, "Not Found", {}, io.BytesIO())), "https://x/a", "r")
+    assert len(calls) == 1
+    calls.clear()
+    with pytest.raises(RuntimeError, match="all 3 attempts failed"):
+        ca._get(Op(URLError("nodename nor servname provided")), "https://x/b", "r")
+    assert len(calls) == ca.RETRIES == 3
