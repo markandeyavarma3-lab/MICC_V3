@@ -26,6 +26,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import math
 import re
 import sys
 from collections import defaultdict
@@ -760,7 +761,64 @@ def fundamentals() -> dict[str, list]:
     for sym, qe, cons, rev, oi, pbt, pat, pat_o, eps, fin, dep, paid, fv, bank, filed in rows:
         shares = (paid / fv) if paid and fv else None          # crore shares (paid-up Rs cr / face Rs)
         out[sym].append([qe, bool(cons), r2(rev), r2(oi), r2(pbt), r2(pat), r2(pat_o), r2(eps), r2(fin), r2(dep),
-                         None if shares is None else round(shares, 4), bool(bank), filed])
+                         shares, bool(bank), filed])
+    for res in out.values():
+        for r, sh in zip(res, share_counts([(r[10], r[6], r[7]) for r in res]), strict=True):
+            r[10] = None if sh is None else round(sh, 4)
+    return out
+
+
+#: Powers of ten a filing's paid-up capital has been seen in, other than crore:
+#: rupees (10^7), lakh (10^5), thousand (10^4) and odd ones in between.
+#: Measured 2026-10-31: 1,226 of 48,537 quarters disagree with profit / EPS by
+#: one of these; FIVESTAR's showed a market cap of Rs 1,17,14,20,989 crore.
+_SCALES = range(2, 8)
+
+
+def share_counts(rows: list[tuple]) -> list[float | None]:
+    """Shares in crore for each quarter of one company, newest first, from
+    (paid-up / face value, profit to owners, EPS) per quarter.
+
+    Filings give paid-up capital in crore, but some in rupees, thousands or
+    lakh. Where profit / EPS gives an independent count (crore profit / rupee
+    EPS = crore shares) and paid-up / face value is a power of ten (100 or
+    more) above it, the power is divided out. A quarter without a usable EPS
+    is checked the same way against the company's median corrected count.
+    Counts BELOW profit / EPS are left alone: there it is the profit or the EPS
+    that is misreported, and neither is used for the share count."""
+    def snap(sh: float, ref: float) -> float:
+        lg = math.log10(sh / ref)
+        k = round(lg)
+        return sh / 10 ** k if k in _SCALES and abs(lg - k) < 0.35 else sh
+
+    out: list[float | None] = []
+    for sh, pat, eps in rows:
+        if sh and sh > 0 and pat and eps and abs(eps) > 0.05 and pat / eps > 0:
+            sh = snap(sh, pat / eps)
+        out.append(sh if sh and sh > 0 else None)
+    good = sorted(v for v, (_, pat, eps) in zip(out, rows, strict=True)
+                  if v and pat and eps and abs(eps) > 0.05 and pat / eps > 0)
+    if good:
+        med = good[len(good) // 2]
+        out = [None if v is None else snap(v, med) for v in out]
+    # A single quarter ten times off both its neighbours, which agree with each
+    # other, is a unit slip too (KIOCL, RELIABLE). A real split moves every
+    # later quarter, never one alone, so this cannot undo one.
+    for i in range(1, len(out) - 1):
+        a, v, b = out[i - 1], out[i], out[i + 1]
+        if a and v and b and abs(math.log10(a / b)) < 0.05:
+            k = round(math.log10(v / a))
+            if k != 0 and abs(math.log10(v / a) - k) < 0.05:
+                out[i] = v / 10 ** k
+    # The newest quarter has no newer neighbour, and some filings give a count
+    # that is no power of ten off (BHARTIARTL 0.002 crore against 609; FIVESTAR
+    # was the other kind). More than ~16 times off the two quarters before it,
+    # which agree, it takes theirs: no split or bonus on record moves a count
+    # that far in one quarter (BAJAJFINSV's 2022 split plus bonus was 10 times).
+    if len(out) >= 3 and all(out[:3]):
+        v, a, b = out[:3]
+        if abs(math.log10(a / b)) < 0.05 and abs(math.log10(v / a)) > 1.2:
+            out[0] = a
     return out
 
 
@@ -776,6 +834,12 @@ def valuation(res: list, last_close: float | None) -> dict | None:
     if not res or not last_close:
         return None
     shares = res[0][10]
+    pat, eps = res[0][6], res[0][7]
+    # Still more than 30 times off profit / EPS after share_counts: one of the
+    # three is misreported and nothing says which (14 companies on 2026-10-31).
+    # No market cap beats a wrong one.
+    if shares and pat and eps and abs(eps) > 0.05 and pat / eps > 0 and abs(math.log10(shares * eps / pat)) > 1.5:
+        shares = None
     mcap = last_close * shares if shares else None          # Rs crore: price x crore shares
     ttm = None
     if len(res) >= 4:
