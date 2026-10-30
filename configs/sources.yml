@@ -362,6 +362,21 @@ deferred:
 # deliberate act with a date and a reason attached, not a threshold that decays.
 acknowledged_gaps:
   - source_id: nse_bulk_deals
+    session: 2026-10-27
+    acknowledged: 2026-10-30
+    reason: >-
+      the Mac woke for the 18:30 and 21:00 runs before Wi-Fi had reconnected,
+      and every fetch failed with "nodename nor servname provided"; by the next
+      evening NSE had replaced the file. Unrecoverable (the historical endpoint
+      answers 503). The start-of-run network wait (src/monitor/netcheck.py,
+      2026-10-28) exists because of this day.
+  - source_id: fii_dii_cash
+    session: 2026-10-27
+    acknowledged: 2026-10-30
+    reason: >-
+      the same network outage as the bulk-deal gap on the same session;
+      fiidiiTradeReact serves only the latest day, so it was gone by the next run.
+  - source_id: nse_bulk_deals
     session: 2026-08-19
     acknowledged: 2026-09-05
     reason: >-
