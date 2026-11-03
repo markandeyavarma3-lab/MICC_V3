@@ -24,6 +24,20 @@ STAMP = "20260901-070000"
 TAKEN = datetime(2026, 9, 1, 7, 0, 0).astimezone().astimezone(UTC)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_cloud_stamp(tmp_path, monkeypatch):
+    """Every test starts with no Google Drive snapshot. The real
+    logs/backup_cloud.txt gains a line every night, and the bundle-only cases
+    below must not quietly turn green because of it."""
+    monkeypatch.setattr(backup_state, "CLOUD_STAMP", tmp_path / "no_cloud_stamp")
+
+
+def _cloud(tmp_path, monkeypatch, when: datetime):
+    stamp = tmp_path / "backup_cloud.txt"
+    stamp.write_text(f"ab12cd34\t{when:%Y-%m-%dT%H:%M:%SZ}\t246510\t21000000000\trclone:gdrive:x\n")
+    monkeypatch.setattr(backup_state, "CLOUD_STAMP", stamp)
+
+
 def _dest(tmp_path, monkeypatch, *, with_bundle=True):
     d = tmp_path / "backup"
     d.mkdir()
@@ -153,3 +167,48 @@ def test_a_verified_static_copy_clears_the_static_alert_and_is_named(tmp_path):
                         datetime(2026, 9, 17, tzinfo=UTC)),))
     assert not s.alerting
     assert "verified at iCloud 2026-09-17" in s.summary
+
+
+# --- Google Drive (0096) --------------------------------------------------------
+
+
+def test_a_drive_snapshot_alone_is_a_backup_when_the_pen_drive_is_out(tmp_path, monkeypatch):
+    """THE CASE 0096 WAS WRITTEN FOR. From 2026-10-31 the pen drive was not
+    plugged in and every run reported no backup. A confirmed Drive snapshot
+    holds the whole project, static leg included, and must count."""
+    monkeypatch.setenv("BACKUP_DEST", str(tmp_path / "pen_not_plugged_in"))
+    _manifest(tmp_path, monkeypatch, [_rec(TAKEN - timedelta(hours=3))])
+    _cloud(tmp_path, monkeypatch, TAKEN)
+
+    s = backup_state.read()
+    assert s.bundle is None and s.cloud is not None
+    assert s.sessions_at_risk == 0
+    assert not s.alerting
+    assert "Google Drive" in s.summary and "pen drive none" in s.summary
+
+
+def test_a_session_after_the_drive_snapshot_still_alerts(tmp_path, monkeypatch):
+    monkeypatch.setenv("BACKUP_DEST", str(tmp_path / "pen_not_plugged_in"))
+    _manifest(tmp_path, monkeypatch, [_rec(TAKEN + timedelta(hours=3))])
+    _cloud(tmp_path, monkeypatch, TAKEN)
+
+    s = backup_state.read()
+    assert s.sessions_at_risk == 1
+    assert s.alerting
+
+
+def test_sessions_are_counted_against_the_newer_of_the_two_legs(tmp_path, monkeypatch):
+    """An old pen-drive bundle must not put at risk a session the newer Drive
+    snapshot already holds."""
+    _dest(tmp_path, monkeypatch)
+    _manifest(tmp_path, monkeypatch, [_rec(TAKEN + timedelta(hours=3))])
+    _cloud(tmp_path, monkeypatch, TAKEN + timedelta(days=1))
+
+    assert backup_state.read().sessions_at_risk == 0
+
+
+def test_a_malformed_drive_stamp_reads_as_no_snapshot(tmp_path):
+    stamp = tmp_path / "backup_cloud.txt"
+    stamp.write_text("garbage\nab\tnot-a-date\n")
+    assert backup_state.cloud_latest(stamp) is None
+    assert backup_state.cloud_latest(tmp_path / "absent") is None

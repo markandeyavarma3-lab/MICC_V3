@@ -78,31 +78,49 @@ class BackupState:
     #: that never changes, and when. Empty means it has never been verified
     #: anywhere — which was true, silently, from 2026-09-01 to 2026-09-17.
     static_verified: tuple[tuple[str, datetime], ...] = ()
+    #: The newest Google Drive snapshot (0096): (short id, when). It holds the
+    #: whole project, static leg included, so on its own it is a full backup.
+    cloud: tuple[str, datetime] | None = None
 
     @property
     def alerting(self) -> bool:
-        """No backup at all, an irreplaceable session sitting outside one, or the
-        static 9.1 GB verified at no destination."""
-        return self.bundle is None or self.sessions_at_risk > 0 or not self.static_verified
+        """No backup at all, an irreplaceable session sitting outside the newest
+        one, or the static 9.1 GB in no backup."""
+        if self.bundle is None and self.cloud is None:
+            return True
+        return self.sessions_at_risk > 0 or not (self.static_verified or self.cloud)
 
     @property
     def summary(self) -> str:
-        if self.destination is None:
+        if self.destination is None and self.cloud is None:
             return "no destination configured"
-        if self.bundle is None:
-            return f"NO BACKUP in {self.destination}"
-        when = self.taken_at.strftime("%Y-%m-%d %H:%M") if self.taken_at else "unknown"
-        if self.static_verified:
+        if self.bundle is None and self.cloud is None:
+            return f"NO BACKUP in {self.destination} or Google Drive"
+        legs = []
+        if self.cloud is not None:
+            legs.append(f"Google Drive {self.cloud[1]:%Y-%m-%d %H:%M} UTC (snapshot {self.cloud[0]})")
+        if self.bundle is not None:
+            when = self.taken_at.strftime("%Y-%m-%d %H:%M") if self.taken_at else "unknown"
+            legs.append(f"pen drive {when} UTC, {self.generations} generation(s)")
+        else:
+            legs.append("pen drive none")
+        if self.cloud is not None:
+            # Named first: it is re-sent every run, while a static stamp can be
+            # months old and its destination gone (iCloud's was, by 0095).
+            static = "static 9.1 GB in Google Drive"
+        elif self.static_verified:
             static = "static 9.1 GB verified at " + ", ".join(
                 f"{_short(d)} {ts:%Y-%m-%d}" for d, ts in self.static_verified)
         else:
             static = "static 9.1 GB VERIFIED NOWHERE"
-        return (f"newest {when} UTC, {self.generations} generation(s), "
+        return (f"newest {'; '.join(legs)}; "
                 f"{self.commits_behind} commit(s) and "
                 f"{self.sessions_at_risk} archived session(s) not in it; {static}")
 
 
 STATIC_STAMP = ROOT / "logs" / "backup_static.txt"
+#: One line per confirmed Google Drive snapshot, written by cloud_backup.zsh.
+CLOUD_STAMP = ROOT / "logs" / "backup_cloud.txt"
 
 
 def _short(dest: str) -> str:
@@ -133,6 +151,31 @@ def static_verified(stamp: Path | None = None) -> tuple[tuple[str, datetime], ..
         if parts[1] not in out or ts > out[parts[1]]:
             out[parts[1]] = ts
     return tuple(sorted(out.items()))
+
+
+def cloud_latest(stamp: Path | None = None) -> tuple[str, datetime] | None:
+    """The newest confirmed Google Drive snapshot, from cloud_backup.zsh's stamp.
+
+    A line is written only after the snapshot was read back from the
+    repository. Read-only; a missing or malformed stamp reads as "none".
+    """
+    stamp = stamp or CLOUD_STAMP
+    best: tuple[str, datetime] | None = None
+    try:
+        lines = stamp.read_text().splitlines()
+    except OSError:
+        return None
+    for ln in lines:
+        parts = ln.split("\t")
+        if len(parts) < 2:
+            continue
+        try:
+            ts = datetime.fromisoformat(parts[1].replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if best is None or ts > best[1]:
+            best = (parts[0], ts)
+    return best
 
 
 def _sessions_after(cut: datetime) -> int:
@@ -185,22 +228,37 @@ def _commits_behind(bundle: Path) -> int:
         return -1
 
 
+def _commits_since(when: datetime) -> int:
+    """Commits on HEAD made after a Drive snapshot, which carries .git whole."""
+    try:
+        out = subprocess.run(["git", "rev-list", "--count", f"--since={when.isoformat()}", "HEAD"],
+                             capture_output=True, text=True, timeout=60, cwd=ROOT)
+        return int(out.stdout.strip()) if out.returncode == 0 else -1
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return -1
+
+
 def read() -> BackupState:
-    """Read-only. Never writes, never runs a backup."""
+    """Read-only. Never writes, never runs a backup.
+
+    Sessions at risk are counted against the NEWER of the two legs: either one
+    holds the archive whole (0096).
+    """
     dest = destination()
-    if dest is None or not dest.is_dir():
-        return BackupState(dest, None, None, -1, _sessions_after(datetime.min.replace(tzinfo=UTC)), 0,
-                           static_verified())
-
-    stamped = sorted(
-        ((m.group(1), p) for p in dest.glob("repo-*.bundle") if (m := STAMP_RE.search(p.name))),
-    )
-    if not stamped:
-        return BackupState(dest, None, None, -1,
-                           _sessions_after(datetime.min.replace(tzinfo=UTC)), 0, static_verified())
-
-    stamp, newest = stamped[-1]
-    # The stamp is local time (backup.sh uses `date +...`); compare in UTC.
-    taken = datetime.strptime(stamp, "%Y%m%d-%H%M%S").astimezone().astimezone(UTC)
-    return BackupState(dest, newest, taken, _commits_behind(newest),
-                       _sessions_after(taken), len(stamped), static_verified())
+    cloud = cloud_latest()
+    bundle, taken, behind, generations = None, None, -1, 0
+    if dest is not None and dest.is_dir():
+        stamped = sorted(
+            ((m.group(1), p) for p in dest.glob("repo-*.bundle") if (m := STAMP_RE.search(p.name))),
+        )
+        if stamped:
+            stamp, bundle = stamped[-1]
+            # The stamp is local time (backup.sh uses `date +...`); compare in UTC.
+            taken = datetime.strptime(stamp, "%Y%m%d-%H%M%S").astimezone().astimezone(UTC)
+            behind, generations = _commits_behind(bundle), len(stamped)
+    if cloud is not None and (taken is None or cloud[1] > taken):
+        behind = _commits_since(cloud[1])
+    newest = max((t for t in (taken, cloud[1] if cloud else None) if t is not None),
+                 default=datetime.min.replace(tzinfo=UTC))
+    return BackupState(dest, bundle, taken, behind, _sessions_after(newest), generations,
+                       static_verified(), cloud)

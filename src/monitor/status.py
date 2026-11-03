@@ -388,8 +388,9 @@ def steps() -> list[Step]:
              # the actual obstacle — a destination nobody had launched — went
              # unexamined. It is derived now: WIRED means a generation exists in
              # the destination backup.sh writes to, VERIFIED means nothing
-             # irreplaceable is sitting outside it.
-             wired=lambda c: c.backup.bundle is not None,
+             # irreplaceable is sitting outside it. A Google Drive snapshot
+             # counts as a generation too (0096).
+             wired=lambda c: c.backup.bundle is not None or c.backup.cloud is not None,
              verified=lambda c: not c.backup.alerting
                                 and c.tested(r"test_backup_state_notices_a_session_outside_the_backup"),
              note=lambda c: c.backup.summary),
