@@ -61,17 +61,32 @@ if ! mkdir "$LOCK" 2>/dev/null; then
 fi
 trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
 
-# THE PEN DRIVE ONLY (owner, 2026-10-30, decision 0093): no iCloud, no
-# OneDrive. Nightly bundles go to <pen>/nightly; the static leg stays at the
-# pen drive's root, where it already is. Overridable for a different drive:
+# GOOGLE DRIVE FIRST, EVERY RUN (decision 0096, amending 0093). The whole
+# project and the website, encrypted by restic, to the owner's Google One. It
+# runs before the pen drive is even looked for, because the pen drive is
+# usually not plugged in and from 2026-10-31 that alone meant no backup at all.
+# BACKUP_CLOUD=0 skips it (a test, or a run with no network on purpose).
+CLOUD_RC=0
+if [ "${BACKUP_CLOUD:-1}" != "0" ]; then
+  CLOUD_PATHS=("$REPO")
+  [ -d "${REPO:h}/research-website" ] && CLOUD_PATHS+=("${REPO:h}/research-website")
+  "${0:A:h}/lib/cloud_backup.zsh" "$REPO/logs/backup_cloud.txt" $CLOUD_PATHS || CLOUD_RC=1
+fi
+
+# THE PEN DRIVE, WHEN IT IS PLUGGED IN (0093, made optional by 0096). Nightly
+# bundles go to <pen>/nightly; the static leg stays at the pen drive's root.
+# Overridable for a different drive:
 #   BACKUP_PEN_DRIVE=/Volumes/<drive>/institutional-research_backup ./scripts/backup.sh
 PEN="${BACKUP_PEN_DRIVE:-/Volumes/NO NAME/institutional-research_backup}"
 DEST="${BACKUP_DEST:-/Volumes/NO NAME/institutional-research_backup/nightly}"
 [ -n "${BACKUP_PEN_DRIVE:-}" ] && [ -z "${BACKUP_DEST:-}" ] && DEST="$PEN/nightly"
-# One destination means a missing drive is a missing backup: say so and stop,
-# rather than report a run that wrote nothing anywhere.
+# No pen drive: the run stands on Google Drive alone, and says which.
 if [ ! -d "${PEN:h}" ]; then
-  echo "BACKUP: FAILED — the pen drive is not plugged in (${PEN:h}); nothing was backed up. Plug it in; the next run catches up."
+  if [ "$CLOUD_RC" -eq 0 ] && [ "${BACKUP_CLOUD:-1}" != "0" ]; then
+    echo "BACKUP: GREEN — Google Drive (the pen drive is not plugged in; its copy catches up the next run it is)"
+    exit 0
+  fi
+  echo "BACKUP: FAILED — Google Drive did not take a backup and the pen drive is not plugged in (${PEN:h}); nothing was backed up."
   exit 1
 fi
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -192,4 +207,8 @@ if [ "$STATIC_RC" -ne 0 ]; then
   echo "BACKUP: GREEN for the nightly bundle, STATIC LEG FAILED — the 9.1 GB is not verified on the pen drive"
   exit 1
 fi
-echo "BACKUP: GREEN"
+if [ "$CLOUD_RC" -ne 0 ]; then
+  echo "BACKUP: GREEN on the pen drive, GOOGLE DRIVE FAILED — see the cloud lines above"
+  exit 1
+fi
+echo "BACKUP: GREEN — pen drive$([ "${BACKUP_CLOUD:-1}" != "0" ] && echo " and Google Drive")"

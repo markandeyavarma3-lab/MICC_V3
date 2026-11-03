@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-30
 **Decided by:** Owner: "from now we will backup only in pendrive, no icloud or onecloud".
-**Status:** ACTIVE
+**Status:** AMENDED by 0096 (2026-11-03): Google Drive every run; the pen drive is the second copy, optional
 **Related:** 0075 (the static leg), `scripts/backup.sh`, `src/monitor/backup_state.py`.
 
 ## What changed

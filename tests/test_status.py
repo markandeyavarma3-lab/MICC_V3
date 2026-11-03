@@ -106,6 +106,8 @@ def test_risk_8_is_derived_from_the_destination_not_asserted(tmp_path, monkeypat
     assert not s.blocked, "1.10 must not carry a hand-written status again"
 
     monkeypatch.setenv("BACKUP_DEST", str(tmp_path))  # exists, holds no backup
+    from src.monitor import backup_state  # and no Google Drive snapshot (0096)
+    monkeypatch.setattr(backup_state, "CLOUD_STAMP", tmp_path / "no_cloud_stamp")
     assert s.level(status.Ctx()) == "BUILT", (
         "an empty destination must grade below WIRED — that was the real state "
         "for eight days while the page said BLOCKED for the wrong reason"
