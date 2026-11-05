@@ -342,3 +342,9 @@ def test_delivery_is_weighted_by_quantity_and_leaves_debt_series_out(tmp_path):
     assert got["dlv"]["rows"] == [["2026-01", 18.0]], "a plain mean of 90% and 10% would say 50%"
     assert got["dlv_s"]["s20"] == 18.0 and got["dlv_s"]["as_of"] == "2026-01-06"
     assert got["dlv_d"]["rows"][-1] == ["2026-01-06", 10.0, 900.0]
+
+
+def test_one_early_scheme_does_not_make_a_new_month_latest():
+    """5 rows dated 31 October blanked the fund holdings on every stock page."""
+    assert X.latest_full_month(["2026-09-30"] * 1300 + ["2026-10-31"]) == "2026-09-30"
+    assert X.latest_full_month(["2026-09-30"] * 500 + ["2026-10-31"] * 800) == "2026-10-31"

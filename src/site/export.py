@@ -30,7 +30,7 @@ import json
 import math
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -1001,6 +1001,19 @@ def is_equity_isin(isin: str) -> bool:
     return len(isin) == 12 and isin.startswith("INE") and isin[7:9] == "01"
 
 
+def latest_full_month(as_ofs: list[str]) -> str:
+    """The newest month most schemes have reached.
+
+    Not simply the newest. On 2026-11-05 one scheme's 5 rows dated 31 October
+    made October "latest" over 1,300 schemes at September, and the fund holdings
+    went blank on all 4,417 stock pages. Houses file through the month, so a new
+    month counts once it holds at least half as many schemes as the fullest one.
+    """
+    counts = Counter(as_ofs)
+    full = max(counts.values())
+    return max(m for m, n in counts.items() if n >= full / 2)
+
+
 def mf_holdings() -> dict | None:
     """The monthly scheme portfolios (src/ingest/mf_portfolios.py), shaped for
     the site: per scheme its latest month and the one before; per ISIN the
@@ -1041,7 +1054,7 @@ def mf_holdings() -> dict | None:
         schemes[(amc, scheme)] = {"amc": amc, "house": names.get(amc, amc), "scheme": scheme,
                                   "sid": slug(f"{amc} {scheme}"), "as_of": last, "prev_as_of": prev,
                                   "now": by[last], "prev": by[prev] if prev else {}}
-    latest = max(s["as_of"] for s in schemes.values())
+    latest = latest_full_month([s["as_of"] for s in schemes.values()])
     by_isin: dict[str, dict] = defaultdict(lambda: {"rows": [], "exits": []})
     for s in schemes.values():
         if s["as_of"] != latest:
