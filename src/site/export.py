@@ -23,6 +23,7 @@ names are stable.
 
 from __future__ import annotations
 
+import bisect
 import gzip
 import hashlib
 import json
@@ -37,7 +38,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import duckdb  # noqa: E402
 
-from src.common.paths import ARCHIVE, COLLECTED, ROOT, research_db, warehouse_dir  # noqa: E402
+from src.common.paths import (  # noqa: E402
+    ARCHIVE,
+    COLLECTED,
+    ROOT,
+    SEED,
+    research_db,
+    warehouse_dir,
+)
 
 SITE_DATA = ROOT.parent / "research-website" / "public" / "data"
 CR = 1e7   # rupees per crore
@@ -390,14 +398,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                       ON l.isin = h.isin AND l.quarter_end = h.quarter_end AND l.b = h.broadcast_date
                     GROUP BY 1, 2 ORDER BY 1, 2""").fetchall():
                 own[isin].append([qe, *vals])
-        ins_path = COLLECTED / "insider" / "insider_trading.parquet"
-        insider: dict[str, list] = defaultdict(list)
-        if ins_path.exists():
-            for sym, *v in q.execute(f"""
-                    SELECT symbol, filing_date, person, category, transaction_type, quantity,
-                           round(value / {CR}, 2), mode
-                    FROM read_parquet('{ins_path}') ORDER BY symbol, filing_date""").fetchall():
-                insider[sym].append(v)
+        insider = insider_rows(q)
+        delivery = delivery_series(q)
         adj_dir = warehouse_dir(env) / "price_spine_adj"
         adj = str(adj_dir / "**" / "*.parquet")
         weekly: dict[str, list] = defaultdict(list)
@@ -426,7 +428,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "status": i.get("status"), "history": history.get(sym, []),
                "deals": _cols(["d", "who", "pid", "type", "side", "qty", "px", "cr", "rt", "kind"], deals.get(sym, [])),
                "own": _cols(["q", *OWNERSHIP], own.get(isin, []) if isin else []),
-               "insider": _cols(["d", "person", "cat", "txn", "qty", "cr", "mode"], insider.get(sym, [])),
+               **insider_doc(insider.get(sym, []), weekly.get(sym, []), _newest_shares(fund.get(sym, []))),
+               **delivery.get(sym, DELIVERY_NONE),
                "px": _cols(["d", "close"], weekly.get(sym, [])),
                "holders": _holders_doc(by_co.get(isin) if isin else None),
                "industry": ms_["industry"].get(sym), "indices": ms_["indices"].get(sym, []),
@@ -454,6 +457,136 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
+
+
+INSIDER_COLS = ["d", "person", "cat", "txn", "qty", "cr", "mode"]
+INSIDER_SUM_COLS = ["y", "group", "n", "buy_cr", "sell_cr", "pledge_cr", "revoke_cr", "invoke_cr"]
+#: The rows a stock page carries. HDFCBANK alone has 33,721 filings, nearly all
+#: employee option sales; the whole history is in the yearly summary instead.
+INSIDER_KEEP = 300
+#: The seed files one trade a few days away from where the collected XBRL dates
+#: it (measured 2026-11-05: 2 to 4 days around May-July 2026).
+INSIDER_SAME_TRADE_DAYS = 10
+_INSIDER_GROUP = {"Promoters": "Promoter", "Promoter Group": "Promoter",
+                  "Director": "Director or manager", "Key Managerial Personnel": "Director or manager",
+                  "Employees/Designated Employees": "Employee", "Designated Person": "Employee"}
+_INSIDER_TXN_COL = {"Buy": 3, "Sell": 4, "Pledge": 5, "Pledge Revoke": 6, "Pledge Invoke": 7}
+
+
+def insider_rows(q, seed: Path | None = None, collected: Path | None = None) -> dict[str, list]:
+    """Insider filings per symbol, seed plus collected, oldest first: [d, person,
+    cat, txn, qty, cr, mode].
+
+    The seed holds 2,83,281 filings from 2016 and the collector only what came
+    after May 2026; this read the collector's file alone until 2026-11-05, so
+    TCS showed none. A seed row the collector also holds is dropped. A quantity
+    of 0 means "not stated" (0046: most seed sells carry value, not quantity),
+    so it is None and never displayed as zero shares.
+    """
+    seed = seed or SEED / "insider_trading.parquet"
+    collected = collected or COLLECTED / "insider" / "insider_trading.parquet"
+    if not seed.exists() and not collected.exists():
+        return {}
+    none = ("SELECT NULL::VARCHAR AS symbol, NULL::VARCHAR AS d, NULL::VARCHAR AS person, NULL::VARCHAR AS cat, "
+            "NULL::VARCHAR AS txn, NULL::DOUBLE AS qty, NULL::DOUBLE AS value, NULL::VARCHAR AS mode WHERE false")
+    k_sql = (f"SELECT symbol, filing_date d, person, category cat, transaction_type txn, quantity qty, value, mode "
+             f"FROM read_parquet('{collected}')") if collected.exists() else none
+    s_sql = (f"SELECT DISTINCT symbol, filing_date d, name person, category cat, transaction_type txn, "
+             f"quantity::DOUBLE qty, value, mode FROM read_parquet('{seed}')") if seed.exists() else none
+    out: dict[str, list] = defaultdict(list)
+    for sym, *v in q.execute(f"""
+            WITH k AS ({k_sql}), s AS ({s_sql}),
+            fresh AS (SELECT s.* FROM s WHERE NOT EXISTS (
+                SELECT 1 FROM k WHERE k.symbol = s.symbol AND k.txn = s.txn
+                  AND lower(trim(k.person)) = lower(trim(s.person))
+                  AND round(coalesce(k.value, 0)) = round(coalesce(s.value, 0))
+                  AND abs(date_diff('day', TRY_CAST(k.d AS DATE), TRY_CAST(s.d AS DATE)))
+                      <= {INSIDER_SAME_TRADE_DAYS}))
+            SELECT symbol, d, trim(person),
+                   CASE WHEN cat IN ('-', '') OR cat IS NULL THEN 'Not stated'
+                        WHEN cat = 'Employee' THEN 'Employees/Designated Employees' ELSE cat END,
+                   CASE WHEN txn IN ('-', 'Unknown', '') OR txn IS NULL THEN 'Not stated' ELSE txn END,
+                   NULLIF(qty, 0), round(NULLIF(value, 0) / {CR}, 2), mode
+            FROM (SELECT * FROM k UNION ALL SELECT * FROM fresh)
+            ORDER BY symbol, d""").fetchall():
+        out[sym].append(v)
+    return out
+
+
+def _newest_shares(res: list) -> float | None:
+    """Newest known share count in crore (index 10 of RESULT_COLS), for the check below."""
+    return next((r[10] for r in res if r[10]), None)
+
+
+def insider_doc(rows: list, px: list, shares_cr: float | None) -> dict:
+    """The stock page's insider fields: the newest rows, a summary of all of them
+    by year and group, and how many values were impossible.
+
+    A FILING LARGER THAN THE COMPANY IS NOT A FILING WE CAN SHOW. The seed holds
+    a Rs 54.98 lakh crore "sale" of SJS and a Rs 2.12 lakh crore sale of ZEEL.
+    Value above the company's market value that week (split-adjusted close x
+    newest share count) is blanked and counted, not corrected: what the real
+    figure was cannot be known from here. Without a price or share count the
+    check cannot run and the value stands.
+    """
+    days = [p[0] for p in px]
+    doubt = 0
+    kept: list[list] = []
+    summary: dict[tuple, list] = {}
+    for d, person, cat, txn, qty, cr, mode in rows:
+        if cr is not None and shares_cr and days:
+            i = min(bisect.bisect_left(days, d), len(days) - 1)
+            if cr > px[i][1] * shares_cr:
+                cr, doubt = None, doubt + 1
+        kept.append([d, person, cat, txn, qty, cr, mode])
+        key = (d[:4], _INSIDER_GROUP.get(cat, "Other"))
+        e = summary.setdefault(key, [*key, 0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        e[2] += 1
+        if cr is not None and txn in _INSIDER_TXN_COL:
+            e[_INSIDER_TXN_COL[txn]] = round(e[_INSIDER_TXN_COL[txn]] + cr, 2)
+    return {"insider": _cols(INSIDER_COLS, kept[-INSIDER_KEEP:]),
+            "insider_n": len(kept), "insider_doubt": doubt,
+            "insider_sum": _cols(INSIDER_SUM_COLS, [summary[k] for k in sorted(summary)])}
+
+
+DELIVERY_NONE = {"dlv": _cols(["m", "pct"], []), "dlv_d": _cols(["d", "pct", "qty"], []), "dlv_s": None}
+#: Debt series (GB, GS, N2...) share a symbol-like code; equity series only.
+DELIVERY_SERIES = ("EQ", "BE", "BZ", "SM", "ST")
+
+
+def delivery_series(q, path: Path | None = None) -> dict[str, dict]:
+    """Share of traded quantity that ended in delivery, per symbol: by month for
+    the whole history, by day for the last 60 sessions, and quantity-weighted
+    over the last 20 and 250 sessions. Weighted, so a thin day cannot swing a
+    month. A description of trading, not a judgement of it.
+    """
+    path = path or COLLECTED / "delivery" / "delivery.parquet"
+    if not path.exists():
+        return {}
+    series = ", ".join(f"'{x}'" for x in DELIVERY_SERIES)
+    src = f"""SELECT symbol, date, sum(traded_qty) t, sum(deliverable_qty) dq FROM read_parquet('{path}')
+              WHERE series IN ({series}) AND traded_qty > 0 GROUP BY 1, 2"""
+    out: dict[str, dict] = {}
+    months: dict[str, list] = defaultdict(list)
+    for sym, m, pct in q.execute(f"""
+            SELECT symbol, substr(date, 1, 7) m, round(100 * sum(dq) / sum(t), 1)
+            FROM ({src}) GROUP BY 1, 2 ORDER BY 1, 2""").fetchall():
+        months[sym].append([m, pct])
+    recent: dict[str, list] = defaultdict(list)
+    for sym, d, t, dq in q.execute(f"""
+            SELECT symbol, date, t, dq FROM ({src})
+            WHERE date >= (SELECT strftime(max(date)::DATE - INTERVAL 400 DAY, '%Y-%m-%d') FROM read_parquet('{path}'))
+            QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY date DESC) <= 250
+            ORDER BY 1, 2""").fetchall():
+        recent[sym].append((d, t, dq))
+    for sym, ms in months.items():
+        r = recent.get(sym, [])
+        weighted = lambda w: round(100 * sum(x[2] for x in w) / sum(x[1] for x in w), 1)  # noqa: E731
+        out[sym] = {"dlv": _cols(["m", "pct"], ms),
+                    "dlv_d": _cols(["d", "pct", "qty"], [[d, round(100 * dq / t, 1), t] for d, t, dq in r[-60:]]),
+                    "dlv_s": {"as_of": r[-1][0], "s20": weighted(r[-20:]), "s250": weighted(r),
+                              "n250": len(r)} if r else None}
+    return out
 
 
 SCREEN_COLS = ["sym", "sid", "co", "industry", "indices", "close", "mcap_cr", "pe", "rev_yoy", "pat_yoy",
