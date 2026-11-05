@@ -262,3 +262,83 @@ def test_no_market_cap_when_shares_still_disagree_with_profit_over_eps():
     assert X.valuation(bad, 500.0)["mcap_cr"] is None
     ok = [q("2026-06-30", 26.4, 26.4, 1.0)]
     assert X.valuation(ok, 500.0)["mcap_cr"] == 13200
+
+
+# --- insider history and delivery (2026-11-05) ----------------------------------
+
+
+def _insider_files(tmp_path, seed_rows, collected_rows):
+    con = duckdb.connect()
+    con.execute("""CREATE TABLE s (symbol VARCHAR, filing_date VARCHAR, name VARCHAR, category VARCHAR,
+                   transaction_type VARCHAR, quantity BIGINT, value DOUBLE, mode VARCHAR)""")
+    con.execute("""CREATE TABLE k (symbol VARCHAR, filing_date VARCHAR, person VARCHAR, category VARCHAR,
+                   transaction_type VARCHAR, quantity DOUBLE, value DOUBLE, mode VARCHAR)""")
+    for name, rows in (("s", seed_rows), ("k", collected_rows)):
+        if rows:
+            con.executemany(f"INSERT INTO {name} VALUES (?,?,?,?,?,?,?,?)", rows)
+    seed, coll = tmp_path / "seed.parquet", tmp_path / "coll.parquet"
+    con.execute(f"COPY s TO '{seed}' (FORMAT PARQUET)")
+    con.execute(f"COPY k TO '{coll}' (FORMAT PARQUET)")
+    return con, seed, coll
+
+
+def test_insider_history_comes_from_the_seed_too(tmp_path):
+    """Until 2026-11-05 only the collector's file was read: TCS, with 131 seed
+    filings, showed none."""
+    con, seed, coll = _insider_files(
+        tmp_path, [("TCS", "2022-03-30", "Tata Sons", "Promoters", "Sell", 0, 1e9, None)], [])
+    got = X.insider_rows(con, seed, coll)
+    assert got["TCS"] == [["2022-03-30", "Tata Sons", "Promoters", "Sell", None, 100.0, None]], (
+        "a quantity of 0 in the seed means not stated, never zero shares")
+
+
+def test_one_trade_in_both_files_counts_once_though_their_dates_differ(tmp_path):
+    """The seed dated these 2 to 4 days away from the collected XBRL."""
+    con, seed, coll = _insider_files(
+        tmp_path,
+        [("X", "2026-05-23", "A Person ", "Promoters", "Buy", 10, 1e7, None),
+         ("X", "2026-01-02", "A Person", "Promoters", "Buy", 10, 1e7, None)],
+        [("X", "2026-05-26", "a person", "Promoters", "Buy", 10.0, 1e7, "Market")])
+    rows = X.insider_rows(con, seed, coll)["X"]
+    assert [r[0] for r in rows] == ["2026-01-02", "2026-05-26"], "the same value months apart is another trade"
+
+
+def test_a_filing_larger_than_the_company_is_blanked_and_counted():
+    """The seed's Rs 54.98 lakh crore sale of SJS. 10 crore shares at Rs 100 is
+    Rs 1,000 crore of company."""
+    rows = [["2023-08-23", "Big", "Promoters", "Sell", None, 5e6, None],
+            ["2023-08-23", "Real", "Promoters", "Sell", None, 500.0, None]]
+    doc = X.insider_doc(rows, [["2023-08-25", 100.0]], 10.0)
+    assert doc["insider_doubt"] == 1
+    assert [r[5] for r in doc["insider"]["rows"]] == [None, 500.0]
+    assert doc["insider_sum"]["rows"] == [["2023", "Promoter", 2, 0.0, 500.0, 0.0, 0.0, 0.0]], (
+        "an impossible value must not reach a total either")
+
+
+def test_a_value_stands_when_the_check_has_nothing_to_check_against():
+    doc = X.insider_doc([["2023-08-23", "P", "Other", "Buy", None, 5e6, None]], [], None)
+    assert doc["insider_doubt"] == 0 and doc["insider"]["rows"][0][5] == 5e6
+
+
+def test_the_page_carries_the_newest_filings_and_the_summary_all_of_them():
+    rows = [[f"20{10 + i % 10}-01-01", "P", "Employee", "Sell", None, 1.0, None] for i in range(X.INSIDER_KEEP + 50)]
+    rows.sort(key=lambda r: r[0])
+    doc = X.insider_doc(rows, [], None)
+    assert len(doc["insider"]["rows"]) == X.INSIDER_KEEP
+    assert doc["insider"]["rows"][-1][0] == rows[-1][0]
+    assert doc["insider_n"] == X.INSIDER_KEEP + 50
+    assert sum(r[2] for r in doc["insider_sum"]["rows"]) == X.INSIDER_KEEP + 50
+
+
+def test_delivery_is_weighted_by_quantity_and_leaves_debt_series_out(tmp_path):
+    con = duckdb.connect()
+    con.execute("""CREATE TABLE d AS SELECT * FROM (VALUES
+        ('2026-01-05', 'X', 'EQ', 100.0, 90.0),
+        ('2026-01-06', 'X', 'EQ', 900.0, 90.0),
+        ('2026-01-06', 'X', 'GB', 500.0, 500.0)) t(date, symbol, series, traded_qty, deliverable_qty)""")
+    path = tmp_path / "d.parquet"
+    con.execute(f"COPY d TO '{path}' (FORMAT PARQUET)")
+    got = X.delivery_series(con, path)["X"]
+    assert got["dlv"]["rows"] == [["2026-01", 18.0]], "a plain mean of 90% and 10% would say 50%"
+    assert got["dlv_s"]["s20"] == 18.0 and got["dlv_s"]["as_of"] == "2026-01-06"
+    assert got["dlv_d"]["rows"][-1] == ["2026-01-06", 10.0, 900.0]
