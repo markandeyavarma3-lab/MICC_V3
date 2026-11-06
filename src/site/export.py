@@ -31,8 +31,8 @@ import math
 import re
 import sys
 from collections import Counter, defaultdict
-from functools import lru_cache
 from datetime import UTC, date, datetime
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -436,7 +436,13 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
             # The ISINs the pages use, not the identity table's: it can still hold
             # the old ISIN for a symbol whose deals carry the new one (CANBK,
             # CLEDUCATE), which read as two live securities and merged nothing.
-            own = chain_isins(own, set(isin_of.values()))
+            filed_as = dict(q.execute(f"SELECT isin, any_value(symbol) FROM read_parquet('{shp}')"
+                                      " WHERE symbol IS NOT NULL AND symbol <> '' GROUP BY 1").fetchall())
+            # Live means on NSE's lists today. A dead symbol's page keeps its ISIN but
+            # must not block the renamed company: PHILIPCARB's page held INE602A01023,
+            # which read as a live security, so PCBL lost its 2018-2021 filings.
+            live = {isin_of[s] for s in isin_of if s in listed_now} or set(isin_of.values())
+            own = chain_isins(own, live, filed_as, isin_of)
         insider = insider_rows(q)
         delivery = delivery_series(q)
         adj_dir = warehouse_dir(env) / "price_spine_adj"
@@ -484,6 +490,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                                       sorted(ms_["ann"].get(sym, {}).values(), key=lambda a: a[0], reverse=True)[:80]),
                "meetings": _cols(["d", "purpose", "desc"], sorted(ms_["meet"].get(sym, set()), reverse=True)[:40]),
                "results": _cols(RESULT_COLS, fund.get(sym, [])),
+               "results_withheld": WITHHELD.get(sym, []),
                "valuation": valuation(fund.get(sym, []), px_of(sym)[-1][1] if px_of(sym) else None),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
@@ -507,6 +514,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
 
 #: A symbol priced within this many days of the newest session is still trading.
 STILL_TRADING_DAYS = 30
+#: Reasons a current price overrules. UNKNOWN: NESTLEIND and HNDFDS read "delisted"
+#: with a price from this week. LEFT_UNIVERSE stands: nine symbols last traded on the
+#: very date recorded, which is what leaving looks like.
+STILL_TRADING_OVERRULES = {"ISIN_CHANGE", "UNKNOWN"}
 
 
 def listing_state(i: dict, px: list, last_day: str) -> dict:
@@ -516,10 +527,10 @@ def listing_state(i: dict, px: list, last_day: str) -> dict:
     as MERGED with a delisting date and reason ISIN_CHANGE. For a symbol that
     goes on trading that is a change of ISIN, not a delisting: 99 pages including
     HAVELLS, GRASIM and BEL said "delisted (ISIN_CHANGE)" until 2026-11-06.
-    Only this reason is overruled by a current price. security_master is unchanged.
+    Only STILL_TRADING_OVERRULES give way to a current price. security_master is unchanged.
     """
     state = {"delisted": i.get("delisted"), "reason": i.get("reason"), "status": i.get("status")}
-    if i.get("reason") == "ISIN_CHANGE" and px and last_day:
+    if i.get("reason") in STILL_TRADING_OVERRULES and px and last_day:
         age = (date.fromisoformat(str(last_day)[:10]) - date.fromisoformat(str(px[-1][0])[:10])).days
         if age <= STILL_TRADING_DAYS:
             return {"delisted": None, "reason": None, "status": "ACTIVE"}
@@ -560,40 +571,48 @@ def fund_industries(path: Path | None = None) -> dict[str, str]:
     return out
 
 
-#: Quarters an old and a current ISIN may both report and still be one security:
-#: a filing or two around the change. 321 of 325 pairs share none, 4 share one or
-#: two, none more (2026-11-06). Two live share classes would share nearly all.
-CHAIN_MAX_SHARED = 2
+def _near(a: str, b: str) -> bool:
+    """Same length, at most two characters apart: a mistyped ISIN."""
+    return len(a) == len(b) and a != b and sum(x != y for x, y in zip(a, b, strict=True)) <= 2
 
 
-def chain_isins(own: dict[str, list], current: set[str]) -> dict[str, list]:
-    """Each current ISIN's quarters, with those filed under the ISINs it replaced.
+def chain_isins(own: dict[str, list], current: set[str], symbol_of: dict[str, str] | None = None,
+                isin_of: dict[str, str] | None = None) -> dict[str, list]:
+    """Each current ISIN's quarters, with those filed under ISINs that are the same shares.
 
     A share split or consolidation gives the same shares a new ISIN: IEX went
     INE022Q01012 -> INE022Q01020. Filings under the old one were lost to a page
     keyed on today's. The first nine characters (country, issuer, security type)
     survive the change. The quarters interleave rather than meet end to end:
     2016-17 filings are stored under the ISIN the seed knows today, so 'the old
-    one ends before the new one starts' rejected nearly every company. So the
-    old ISIN only fills quarters the current one lacks, and only if the two
-    report at most CHAIN_MAX_SHARED quarters in common. Another current ISIN is
-    a live security and is never absorbed.
+    one ends before the new one starts' rejected nearly every company. So an old
+    ISIN fills any quarter the current one lacks, and the current one wins a
+    quarter both report. No overlap test: a shareholding pattern is filed for the
+    company, so a filing under the same issuer describes the same owners. Two
+    such tests refused PCBL and DOLPHIN. Another current ISIN has its own page
+    and is never absorbed.
+
+    Filers also mistype: INE0LEZO1016, a letter O for a zero. Such an ISIN joins
+    its company only if the filing's own symbol is that company's and the two
+    differ by at most two characters (`symbol_of` filing ISIN -> symbol, `isin_of`
+    symbol -> page ISIN): the characters alone could be another issuer.
     """
     groups: dict[str, list[str]] = defaultdict(list)
     for isin in own:
         if isin.startswith("INE") and len(isin) == 12:
             groups[isin[:9]].append(isin)
+    for typo, sym in (symbol_of or {}).items():
+        page = (isin_of or {}).get(sym)
+        if typo in own and page and typo not in current and _near(typo, page):
+            groups[page[:9]].append(typo)
     out = dict(own)
     for isin in current:
         if isin not in own:
             continue
         rows = {r[0]: r for r in own[isin]}
         for o in groups.get(isin[:9], []):
-            if o == isin or o in current:
-                continue
-            theirs = {r[0]: r for r in own[o]}
-            if len(theirs.keys() & {r[0] for r in own[isin]}) <= CHAIN_MAX_SHARED:
-                rows = {**theirs, **rows}
+            if o != isin and o not in current:
+                rows = {**{r[0]: r for r in own[o]}, **rows}
         out[isin] = [rows[q] for q in sorted(rows)]
     return out
 
@@ -1037,7 +1056,42 @@ def fundamentals() -> dict[str, list]:
     for res in out.values():
         for r, sh in zip(res, share_counts([(r[10], r[6], r[7]) for r in res]), strict=True):
             r[10] = None if sh is None else round(sh, 4)
+    for sym, res in out.items():
+        if gone := withhold_mis_scaled(res):
+            WITHHELD[sym] = gone
     return out
+
+
+#: Symbol -> quarters withhold_mis_scaled blanked, for the page to say so.
+WITHHELD: dict[str, list[str]] = {}
+#: Rupee fields of a results row (RESULT_COLS): withheld together, as a filing that
+#: mis-scales its revenue mis-scales its statement.
+_RUPEE_AT = (2, 3, 4, 5, 6, 8, 9)
+
+
+def withhold_mis_scaled(res: list[list]) -> list[str]:
+    """Blank a quarter whose revenue is an exact power of ten off both neighbours
+    that agree with each other, and return those quarters.
+
+    The filing itself is wrong: COROMANDEL's 2026-03-31 states Rs 60 crore against
+    about Rs 6,000 crore either side, and PFC, SRF and LICHSGFIN do the same; 128 of
+    73,798 quarters (2026-11-06). Blanked, never rescaled: a guess at the true figure
+    would read as a filed one. The EPS is kept: it is not stated in rupee scale.
+    """
+    out = []
+    for i in range(1, len(res) - 1):
+        a, x, b = res[i - 1][2], res[i][2], res[i + 1][2]
+        if not (a and x and b and a > 0 and x > 0 and b > 0) or abs(math.log10(a / b)) > 0.3:
+            continue
+        off = math.log10(x / math.sqrt(a * b))
+        # Tighter at ten times, which a lumpy business can truly do in a quarter;
+        # a hundred times cannot be real, and COROMANDEL's sits 0.15 from it.
+        if round(off) != 0 and abs(off - round(off)) < (0.12 if abs(round(off)) == 1 else 0.25):
+            out.append(i)
+    for i in out:
+        for k in _RUPEE_AT:
+            res[i][k] = None
+    return [res[i][0] for i in out]
 
 
 #: Powers of ten a filing's paid-up capital has been seen in, other than crore:

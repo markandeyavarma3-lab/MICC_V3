@@ -37,7 +37,7 @@ from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.common.paths import ARCHIVE, SEED, research_db  # noqa: E402
+from src.common.paths import ARCHIVE, COLLECTED, SEED, research_db  # noqa: E402
 
 ROOT_DIR = ARCHIVE / "SHP_BSE"
 MANIFEST = ROOT_DIR / "manifest.jsonl"
@@ -70,8 +70,19 @@ def done(manifest: Path | None = None) -> set[str]:
     return out
 
 
+def _needed_sql() -> str:
+    """Before NSE's window, every filing. Inside it, only a quarter no filing of this
+    issuer already covers: BSE-first companies such as LLOYDSME are absent from NSE's
+    index, and 1,475 of their quarters since 2021 had no file (found 2026-11-06)."""
+    held = COLLECTED / "shp" / "shp_holdings.parquet"
+    if not held.exists():
+        return f"quarter_end_date < '{NSE_WINDOW_START}'"
+    return (f"quarter_end_date < '{NSE_WINDOW_START}' OR (substr(isin, 1, 9), quarter_end_date) NOT IN "
+            f"(SELECT substr(isin, 1, 9), CAST(quarter_end AS VARCHAR) FROM read_parquet('{held}'))")
+
+
 def targets(env: str | None = None) -> list[dict]:
-    """The seed's current pre-NSE-window filings for known companies, newest
+    """The seed's current filings for known companies that need fetching, newest
     quarter first (the most useful quarters land first if a run is cut short)."""
     import duckdb
     con = duckdb.connect(str(research_db(env)), read_only=True)
@@ -79,9 +90,10 @@ def targets(env: str | None = None) -> list[dict]:
         rows = con.execute(f"""
             SELECT filing_id, isin, scrip_code, quarter_end_date, broadcast_datetime, source_url
             FROM read_parquet('{SEED / 'shp_filing.parquet'}')
-            WHERE quarter_end_date < '{NSE_WINDOW_START}' AND is_current_version = 1
+            WHERE is_current_version = 1
               AND source_url LIKE 'https://www.bseindia.com/%'
               AND isin IN (SELECT isin FROM security_master)
+              AND ({_needed_sql()})
             ORDER BY quarter_end_date DESC, isin""").fetchall()
     finally:
         con.close()

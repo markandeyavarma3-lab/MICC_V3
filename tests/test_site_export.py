@@ -373,14 +373,10 @@ def test_on_a_quarter_both_report_the_current_isin_wins():
     assert got == [["2019-09-30", 2.0], ["2021-03-31", 9.0], ["2021-06-30", 9.5]]
 
 
-def test_two_share_classes_filing_side_by_side_are_not_merged():
-    qs = ["2020-03-31", "2020-06-30", "2020-09-30", "2020-12-31"]
-    own = {"INE001A01011": [[q, 1.0] for q in qs] + [["2019-12-31", 1.0]],
-           "INE001A01029": [[q, 2.0] for q in qs]}
-    got = X.chain_isins(own, {"INE001A01029"})
-    assert [r[0] for r in got["INE001A01029"]] == qs, "four quarters in common: two securities"
+def test_an_isin_with_its_own_page_is_never_absorbed():
     both = {"INE001A01011": [["2019-12-31", 1.0]], "INE001A01029": [["2020-03-31", 2.0]]}
-    assert X.chain_isins(both, set(both)) == both, "both current: neither absorbs the other"
+    assert X.chain_isins(both, set(both)) == both
+    assert [r[0] for r in X.chain_isins(both, {"INE001A01029"})["INE001A01029"]] == ["2019-12-31", "2020-03-31"]
 
 
 def test_a_fund_industry_is_the_majority_label_for_an_equity_isin_only(tmp_path):
@@ -421,3 +417,44 @@ def test_a_share_split_on_a_stock_still_trading_is_not_a_delisting():
     assert X.listing_state(split, [["2014-08-01", 100.0]], "2026-11-06")["delisted"] == "2014-08-06", "no current price: it stands"
     left = {"delisted": "2026-10-20", "reason": "LEFT_UNIVERSE", "status": "DELISTED"}
     assert X.listing_state(left, [["2026-10-16", 50.0]], "2026-11-06")["delisted"] == "2026-10-20", "only this reason is overruled"
+
+
+def test_overlapping_quarters_do_not_stop_an_old_isin_filling_the_rest():
+    """PCBL and DOLPHIN: most of the old ISIN's quarters are the current one's too."""
+    own = {"INE602A01023": [[f"20{y}-03-31", 1.0] for y in (18, 19, 20, 21, 22)],
+           "INE602A01031": [[f"20{y}-03-31", 2.0] for y in (19, 20, 21, 22)]}
+    got = X.chain_isins(own, {"INE602A01031"})["INE602A01031"]
+    assert [(r[0][:4], r[1]) for r in got] == [("2018", 1.0), ("2019", 2.0), ("2020", 2.0), ("2021", 2.0), ("2022", 2.0)]
+
+
+def test_a_mistyped_isin_joins_only_on_the_filing_s_own_symbol():
+    own = {"INE0LEZ01016": [["2026-06-30", 1.0]], "INE0LEZO1016": [["2026-03-31", 2.0]]}
+    page = {"ATHERENERG": "INE0LEZ01016"}
+    got = X.chain_isins(own, {"INE0LEZ01016"}, {"INE0LEZO1016": "ATHERENERG"}, page)
+    assert [r[0] for r in got["INE0LEZ01016"]] == ["2026-03-31", "2026-06-30"]
+    other = X.chain_isins(own, {"INE0LEZ01016"}, {"INE0LEZO1016": "SOMEONE"}, page)
+    assert len(other["INE0LEZ01016"]) == 1, "near characters alone could be another issuer"
+
+
+def _quarter(qe, rev):
+    return [qe, True, rev, 1.0, 2.0, 3.0, 3.0, 4.75, 5.0, 6.0, None, False, "x"]
+
+
+def test_a_quarter_an_exact_power_of_ten_off_its_neighbours_is_withheld():
+    """COROMANDEL 2026-03-31 filed Rs 60 crore against about Rs 6,000 either side."""
+    res = [_quarter("2026-06-30", 8165.0), _quarter("2026-03-31", 60.0), _quarter("2025-12-31", 8779.0)]
+    assert X.withhold_mis_scaled(res) == ["2026-03-31"], "140 times off, COROMANDEL's real figures"
+    assert res[1][2] is None and res[1][5] is None, "blanked, not rescaled"
+    assert res[1][7] == 4.75 and res[0][2] == 8165.0
+
+
+def test_a_real_jump_is_not_withheld():
+    jump = [_quarter("2026-06-30", 6000.0), _quarter("2026-03-31", 3000.0), _quarter("2025-12-31", 100.0)]
+    assert X.withhold_mis_scaled(jump) == [], "neighbours that disagree prove nothing"
+    near = [_quarter("2026-06-30", 100.0), _quarter("2026-03-31", 300.0), _quarter("2025-12-31", 100.0)]
+    assert X.withhold_mis_scaled(near) == [], "three times is not a slip of a power of ten"
+
+
+def test_an_unknown_delisting_gives_way_to_a_current_price():
+    nestle = {"delisted": "2019-12-06", "reason": "UNKNOWN", "status": "DELISTED"}
+    assert X.listing_state(nestle, [["2026-11-06", 1200.0]], "2026-11-06")["status"] == "ACTIVE"
