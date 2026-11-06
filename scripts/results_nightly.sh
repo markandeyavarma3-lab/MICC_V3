@@ -52,6 +52,9 @@ mkdir -p "$REPO/logs"
   # Investor label corrections for the site, for participants seen since last night.
   "$REPO/.venv/bin/python" -m src.site.labels
   echo "labels=$?"
+  # SME closes for the site, from the bhavcopies; the archive part only, in seconds.
+  "$REPO/.venv/bin/python" -m src.site.sme_prices
+  echo "sme_prices=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
   # The SME platform's results, under their own index (2026-11-06); capped so the
