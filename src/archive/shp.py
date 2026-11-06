@@ -67,6 +67,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.archive import listing  # noqa: E402
 from src.common.bounded import bounded  # noqa: E402
 from src.common.hashing import hash_bytes  # noqa: E402
 from src.common.paths import ARCHIVE  # noqa: E402
@@ -78,7 +79,7 @@ MASTER_SOURCE, MASTER_TYPE = "nse_shp_master", "SHP"
 XBRL_SOURCE, XBRL_TYPE = "nse_shp_xbrl", "SHP_XBRL"
 
 MASTER_URL = ("https://www.nseindia.com/api/corporate-share-holdings-master"
-              "?index=equities&symbol={symbol}")
+              "?index={index}&symbol={symbol}")
 WARMUP = "https://www.nseindia.com/companies-listing/corporate-filings-shareholding-pattern"
 REFERER = WARMUP
 
@@ -280,6 +281,8 @@ def _fresh_masters(rows: list[dict], days: int = MASTER_FRESH_DAYS,
             continue
         if "&" in r["symbol"] and quote(r["symbol"], safe="") not in (r.get("url") or ""):
             continue  # asked as `symbol=M&M`, which NSE reads as `M`: not an answer (2026-11-06)
+        if not listing.asked_rightly(r["symbol"], r.get("url") or ""):
+            continue  # an SME symbol asked under the main board's index: not an answer either
         if r["symbol"] not in latest or r["fetched_at"] > latest[r["symbol"]]["fetched_at"]:
             latest[r["symbol"]] = r
     for s, r in latest.items():
@@ -331,7 +334,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
     instead of fetching it — a fresh index whose XBRL is still owed."""
     today = today or datetime.now(UTC).date()
     streak = streak if streak is not None else [0]
-    url = MASTER_URL.format(symbol=quote(symbol, safe=""))
+    url = MASTER_URL.format(index=listing.index_of(symbol), symbol=quote(symbol, safe=""))
     base = {"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
             "symbol": symbol, "url": url, "session_date": today.isoformat(),
             "fetched_at": datetime.now(UTC).isoformat()}
@@ -563,10 +566,12 @@ def main() -> int:
     ap.add_argument("--symbols", nargs="*", help="override the bhavcopy universe")
     ap.add_argument("--max-detail", type=int, default=MAX_DETAIL_PER_RUN)
     ap.add_argument("--force", action="store_true", help="re-fetch masters stored recently")
+    ap.add_argument("--sme", action="store_true", help="the SME platform's companies, not the bhavcopy universe")
     ap.add_argument("--max-minutes", type=int, default=MAX_MINUTES)
     args = ap.parse_args()
 
-    results = collect(args.symbols or None, args.max_detail, args.force, args.max_minutes)
+    symbols = sorted(listing.sme_symbols()) if args.sme else args.symbols
+    results = collect(symbols or None, args.max_detail, args.force, args.max_minutes)
     for r in results:
         if r.status in {"FAILED", "STOPPED"} or r.details:
             flag = {"STORED": "ok   ", "DUPLICATE": "dup  ", "EMPTY": "empty", "FAILED": "FAIL ", "STOPPED": "stop "}.get(r.status, r.status)

@@ -51,6 +51,10 @@ mkdir -p "$REPO/logs"
   echo "listing=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
+  # The SME platform's results, under their own index (2026-11-06); capped so the
+  # long downloads below still get their night.
+  "$REPO/.venv/bin/python" -m src.archive.results --sme --quarters 90 --max-files 5000 --max-minutes 45
+  echo "results_sme=$?"
   # Then the long, resumable downloads, side by side (different hosts), for up
   # to ten hours: results (NSE, back to 2005) and pre-2021 shareholding (BSE).
   "$REPO/.venv/bin/python" -m src.archive.bse_shp --max-files 40000 --max-minutes 600 &

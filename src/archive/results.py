@@ -38,13 +38,14 @@ from urllib.parse import quote
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.archive import corporate_actions as ca  # noqa: E402
+from src.archive import listing  # noqa: E402
 from src.common.paths import ARCHIVE  # noqa: E402
 
 ROOT_DIR = ARCHIVE / "RESULTS"
 MANIFEST = ROOT_DIR / "manifest.jsonl"
 API = "https://www.nseindia.com/api/"
-OLD = "corporates-financial-results?index=equities&symbol={sym}&period=Quarterly"
-NEW = "integrated-filing-results?index=equities&symbol={sym}"
+OLD = "corporates-financial-results?index={index}&symbol={sym}&period=Quarterly"
+NEW = "integrated-filing-results?index={index}&symbol={sym}"
 REFERER = "https://www.nseindia.com/companies-listing/corporate-integrated-filing"
 QUARTERS = 8
 LISTING_FRESH_DAYS = 20
@@ -85,7 +86,8 @@ def asked_as_named(r: dict) -> bool:
     ARE&M...), counted as fresh, so their results were never fetched.
     """
     sym = r.get("symbol") or ""
-    return "&" not in sym or quote(sym, safe="") in (r.get("url") or "")
+    url = r.get("url") or ""
+    return ("&" not in sym or quote(sym, safe="") in url) and listing.asked_rightly(sym, url)
 
 
 def gone(manifest: Path | None = None) -> set[str]:
@@ -199,7 +201,7 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
         if listed.get(sym, "") < fresh:
             for route, path in (("old", OLD), ("new", NEW)):
                 time.sleep(RATE_LIMIT)
-                url = API + path.format(sym=quote(sym, safe=""))
+                url = API + path.format(index=listing.index_of(sym), sym=quote(sym, safe=""))
                 base = {"kind": "listing", "symbol": sym, "route": route, "url": url,
                         "fetched_at": datetime.now(UTC).isoformat()}
                 try:
@@ -273,8 +275,10 @@ def main() -> int:
     ap.add_argument("--max-minutes", type=float, default=120)
     ap.add_argument("--quarters", type=int, default=QUARTERS)
     ap.add_argument("--symbols", default="")
+    ap.add_argument("--sme", action="store_true", help="the SME platform's companies, not the main-board universe")
     a = ap.parse_args()
-    syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()] or universe()
+    syms = (sorted(listing.sme_symbols()) if a.sme
+            else [s.strip().upper() for s in a.symbols.split(",") if s.strip()] or universe())
     st = sweep(syms, a.max_files, a.max_minutes, a.quarters)
     _, stored = state()
     print(f"  RESULTS: {st['symbols']:,} symbols, {st['listings']:,} listings, {st['files']:,} XBRL stored, "

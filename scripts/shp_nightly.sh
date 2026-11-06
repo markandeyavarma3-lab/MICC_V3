@@ -32,6 +32,10 @@ mkdir -p "$REPO/logs"
   "$REPO/.venv/bin/python" -m src.archive.shp --max-detail 2500 --max-minutes 130
   RC=$?
   echo "shp=$RC"
+  # The SME platform's filings, under their own index (2026-11-06). Its own exit
+  # code: a thin night here does not page as the main sweep failing.
+  "$REPO/.venv/bin/python" -m src.archive.shp --sme --max-detail 1500 --max-minutes 40
+  echo "shp_sme=$?"
   # LAND WHAT THE SESSION JUST ARCHIVED (2026-09-18). Re-parses every archived
   # filing into data/raw/collected/shp/shp_holdings.parquet — one row per
   # (ISIN, quarter, category), scale-normalised, joined to broadcast_date on

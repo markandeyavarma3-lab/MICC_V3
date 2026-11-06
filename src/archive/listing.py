@@ -21,6 +21,7 @@ import io
 import sys
 import time
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -80,6 +81,30 @@ def latest(root: Path | None = None) -> dict[str, dict]:
         if files:
             out.update(parse(gzip.decompress(files[-1].read_bytes())))
     return out
+
+
+@lru_cache(maxsize=1)
+def sme_symbols() -> frozenset[str]:
+    """Symbols on the SME platform today, not also on the main board. NSE files
+    their results and shareholding under `index=sme`; asked under `index=equities`
+    every one of 566 answered empty (measured 2026-11-06)."""
+    files = sorted(ROOT_DIR.glob("sme_*.csv.gz"))
+    if not files:
+        return frozenset()
+    main_files = sorted(ROOT_DIR.glob("main_*.csv.gz"))
+    board = set(parse(gzip.decompress(main_files[-1].read_bytes()))) if main_files else set()
+    return frozenset(set(parse(gzip.decompress(files[-1].read_bytes()))) - board)
+
+
+def index_of(symbol: str) -> str:
+    """The `index=` NSE's company endpoints file this symbol under."""
+    return "sme" if symbol in sme_symbols() else "equities"
+
+
+def asked_rightly(symbol: str, url: str) -> bool:
+    """False for an SME symbol asked under the main board's index: an empty answer
+    to the wrong question, which must not count as fresh."""
+    return symbol not in sme_symbols() or "index=sme" in url
 
 
 def main() -> int:
