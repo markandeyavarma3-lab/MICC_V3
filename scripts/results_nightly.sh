@@ -49,6 +49,9 @@ mkdir -p "$REPO/logs"
   # NSE's current company lists: a name and ISIN for SME symbols the deals carry.
   "$REPO/.venv/bin/python" -m src.archive.listing
   echo "listing=$?"
+  # Investor label corrections for the site, for participants seen since last night.
+  "$REPO/.venv/bin/python" -m src.site.labels
+  echo "labels=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
   # The SME platform's results, under their own index (2026-11-06); capped so the

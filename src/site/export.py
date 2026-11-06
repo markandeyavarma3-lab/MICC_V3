@@ -31,6 +31,7 @@ import math
 import re
 import sys
 from collections import Counter, defaultdict
+from functools import lru_cache
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -46,6 +47,7 @@ from src.common.paths import (  # noqa: E402
     research_db,
     warehouse_dir,
 )
+from src.site import labels  # noqa: E402
 
 SITE_DATA = ROOT.parent / "research-website" / "public" / "data"
 CR = 1e7   # rupees per crore
@@ -111,10 +113,18 @@ def _deals_sql() -> str:
     """
 
 
+@lru_cache(maxsize=1)
+def site_labels() -> dict[str, str]:
+    return labels.load()
+
+
 def _deal(row) -> dict:
     (_d, sym, isin, company, client, pname, ptype, method, house, side, qty, px, val,
      exch, kind, rt, elig) = row
     t = ptype or "UNKNOWN"
+    fixed = site_labels().get(pname)  # the page's label only; the research table keeps its own (src/site/labels.py)
+    if fixed:
+        t, method = fixed, labels.METHOD
     return {"sym": sym, "sid": sym_file(sym), "isin": isin, "co": company, "client": client,
             "who": pname or client, "pid": slug(pname or client),
             "type": t, "label": TYPE_LABEL.get(t, t), "how": method, "house": house_name(house),
@@ -1277,6 +1287,9 @@ def export_participants(out: Path, rows: list, env: str | None = None,
                            pm.confidence_level, pm.review_status, pm.review_notes, fh.canonical_name
                     FROM participant_master pm
                     LEFT JOIN participant_master fh ON fh.participant_id = pm.parent_group_id""").fetchall()}
+        for name, fixed in site_labels().items():
+            if name in master:
+                master[name].update(type=fixed, how=labels.METHOD)
         spellings: dict[str, list] = defaultdict(list)
         for name, raw in con.execute("""
                 SELECT pm.canonical_name, pa.raw_name FROM participant_aliases pa
