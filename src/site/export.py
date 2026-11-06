@@ -211,10 +211,30 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
     return meta
 
 
+def nifty_valuation(q, collected: Path, seed: Path | None = None) -> list[list]:
+    """NIFTY 50 P/E, P/B and yield by day: the collected series (from 2021-10-18)
+    and, before it, the seed's, back to 2005. The two agree to 0.00% on P/E over
+    all 1,154 days they share (measured 2026-11-06), so this is one series."""
+    seed = seed or SEED
+    rows = [[str(d), c, pe, pb, dy] for d, c, pe, pb, dy in q.execute(
+        f"SELECT date, close, pe, pb, div_yield FROM read_parquet('{collected}') WHERE index_key = 'NIFTY50'"
+        " AND pe IS NOT NULL ORDER BY date").fetchall()]
+    val, idx = seed / "index_valuation.parquet", seed / "indices_data.parquet"
+    if not rows or not val.exists():
+        return rows
+    close = f"(SELECT date, close FROM read_parquet('{idx}') WHERE name = 'NIFTY 50')" if idx.exists() \
+        else "(SELECT NULL::VARCHAR AS date, NULL::DOUBLE AS close WHERE false)"
+    older = q.execute(f"""SELECT v.date, c.close, v.pe, v.pb, v.div_yield FROM read_parquet('{val}') v
+                          LEFT JOIN {close} c ON c.date = v.date
+                          WHERE v.index_name = 'NIFTY 50' AND v.pe IS NOT NULL AND v.date < '{rows[0][0]}'
+                          ORDER BY v.date""").fetchall()
+    return [[str(d), c, pe, pb, dy] for d, c, pe, pb, dy in older] + rows
+
+
 def export_markets(out: Path, env: str | None = None) -> None:
     """data/markets.json: foreign-investor flows (NSDL, 1999+), FII/DII cash,
     F&O index-futures positioning by category (2014+), the NIFTY 500 total
-    return (1995+) and NIFTY 50 valuation (2021+). Levels and flows only."""
+    return (1995+) and NIFTY 50 valuation (2005+). Levels and flows only."""
     q = duckdb.connect()
     doc: dict = {}
     try:
@@ -239,9 +259,7 @@ def export_markets(out: Path, env: str | None = None) -> None:
                 " WHERE index_key = 'NIFTY500' AND tri > 0 GROUP BY 1 ORDER BY 1").fetchall()])
         ic = COLLECTED / "index_close" / "index_close.parquet"
         if ic.exists():
-            doc["nifty50_valuation"] = _cols(["d", "close", "pe", "pb", "dy"], [[str(d), c, pe, pb, dy] for d, c, pe, pb, dy in q.execute(
-                f"SELECT date, close, pe, pb, div_yield FROM read_parquet('{ic}') WHERE index_key = 'NIFTY50'"
-                " AND pe IS NOT NULL ORDER BY date").fetchall()])
+            doc["nifty50_valuation"] = _cols(["d", "close", "pe", "pb", "dy"], nifty_valuation(q, ic))
     finally:
         q.close()
     flows = fii_dii()
@@ -377,6 +395,13 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     for sym, i in ident.items():
         if i["isin"]:
             isin_of.setdefault(sym, i["isin"])
+    # NSE's current lists, for a symbol the identity layer does not know: mostly
+    # the SME platform, which bulk deals name and security_master does not hold.
+    from src.archive import listing
+    listed_now = listing.latest()
+    for sym in deals:
+        if sym not in isin_of and sym in listed_now:
+            isin_of[sym] = listed_now[sym]["isin"]
     q = duckdb.connect()
     try:
         shp = str(COLLECTED / "shp" / "shp_holdings.parquet")
@@ -398,6 +423,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                       ON l.isin = h.isin AND l.quarter_end = h.quarter_end AND l.b = h.broadcast_date
                     GROUP BY 1, 2 ORDER BY 1, 2""").fetchall():
                 own[isin].append([qe, *vals])
+            # The ISINs the pages use, not the identity table's: it can still hold
+            # the old ISIN for a symbol whose deals carry the new one (CANBK,
+            # CLEDUCATE), which read as two live securities and merged nothing.
+            own = chain_isins(own, set(isin_of.values()))
         insider = insider_rows(q)
         delivery = delivery_series(q)
         adj_dir = warehouse_dir(env) / "price_spine_adj"
@@ -412,6 +441,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
         q.close()
     by_co = (holdings or ({}, {}, {}, {}))[1]
     fund = fundamentals()
+    fund_ind = fund_industries()
     ms_ = structure or {"industry": {}, "indices": {}, "actions": {}, "ann": {}, "meet": {}, "pledge": {}}
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
     last_day = max((r[0] for r in rows), default="")
@@ -420,7 +450,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     for sym in syms:
         i = ident.get(sym, {})
         isin = isin_of.get(sym)
-        name = co.get(sym) or i.get("co")
+        name = co.get(sym) or i.get("co") or listed_now.get(sym, {}).get("co")
         if (not name or name.upper() == sym) and isin in shp_co:
             name = shp_co[isin]
         doc = {"sym": sym, "co": name, "isin": isin,
@@ -433,6 +463,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "px": _cols(["d", "close"], weekly.get(sym, [])),
                "holders": _holders_doc(by_co.get(isin) if isin else None),
                "industry": ms_["industry"].get(sym), "indices": ms_["indices"].get(sym, []),
+               "industry_funds": None if ms_["industry"].get(sym) or not isin else fund_ind.get(isin),
                "actions": _cols(["ex", "subject", "record"], sorted(ms_["actions"].get(sym, set()), reverse=True)),
                "announcements": _cols(["t", "desc", "text", "file"],
                                       sorted(ms_["ann"].get(sym, {}).values(), key=lambda a: a[0], reverse=True)[:80]),
@@ -457,6 +488,78 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
+
+
+def fund_industries(path: Path | None = None) -> dict[str, str]:
+    """ISIN -> the industry most fund houses file it under, from the monthly
+    scheme portfolios: equity ISINs only (a bond's 'industry' is its rating),
+    case folded, junk ('N.A.', bare numbers) dropped, and nothing where two
+    labels tie. For companies outside every NSE index, which carry no NSE
+    industry; shown under its own name, never mixed into NSE's for peers.
+    """
+    from src.ingest import mf_portfolios as mfi
+    path = path or mfi.OUT
+    if not path.exists():
+        return {}
+    q = duckdb.connect()
+    try:
+        rows = q.execute(f"""SELECT isin, trim(industry), count(DISTINCT amc) FROM read_parquet('{path}')
+                             WHERE industry IS NOT NULL GROUP BY 1, 2""").fetchall()
+    finally:
+        q.close()
+    votes: dict[str, Counter] = defaultdict(Counter)
+    spelling: dict[str, Counter] = defaultdict(Counter)
+    for isin, label, n in rows:
+        if not is_equity_isin(isin or "") or not re.search(r"[A-Za-z]{3}", label or "") \
+                or re.fullmatch(r"n\.?\s*a\.?|-+|others?", label.strip().lower()):
+            continue
+        key = re.sub(r"\s+", " ", label.lower())
+        votes[isin][key] += n
+        spelling[key][label] += n
+    out = {}
+    for isin, v in votes.items():
+        top = v.most_common(2)
+        if len(top) == 1 or top[0][1] > top[1][1]:
+            out[isin] = spelling[top[0][0]].most_common(1)[0][0]
+    return out
+
+
+#: Quarters an old and a current ISIN may both report and still be one security:
+#: a filing or two around the change. 321 of 325 pairs share none, 4 share one or
+#: two, none more (2026-11-06). Two live share classes would share nearly all.
+CHAIN_MAX_SHARED = 2
+
+
+def chain_isins(own: dict[str, list], current: set[str]) -> dict[str, list]:
+    """Each current ISIN's quarters, with those filed under the ISINs it replaced.
+
+    A share split or consolidation gives the same shares a new ISIN: IEX went
+    INE022Q01012 -> INE022Q01020. Filings under the old one were lost to a page
+    keyed on today's. The first nine characters (country, issuer, security type)
+    survive the change. The quarters interleave rather than meet end to end:
+    2016-17 filings are stored under the ISIN the seed knows today, so 'the old
+    one ends before the new one starts' rejected nearly every company. So the
+    old ISIN only fills quarters the current one lacks, and only if the two
+    report at most CHAIN_MAX_SHARED quarters in common. Another current ISIN is
+    a live security and is never absorbed.
+    """
+    groups: dict[str, list[str]] = defaultdict(list)
+    for isin in own:
+        if isin.startswith("INE") and len(isin) == 12:
+            groups[isin[:9]].append(isin)
+    out = dict(own)
+    for isin in current:
+        if isin not in own:
+            continue
+        rows = {r[0]: r for r in own[isin]}
+        for o in groups.get(isin[:9], []):
+            if o == isin or o in current:
+                continue
+            theirs = {r[0]: r for r in own[o]}
+            if len(theirs.keys() & {r[0] for r in own[isin]}) <= CHAIN_MAX_SHARED:
+                rows = {**theirs, **rows}
+        out[isin] = [rows[q] for q in sorted(rows)]
+    return out
 
 
 INSIDER_COLS = ["d", "person", "cat", "txn", "qty", "cr", "mode"]

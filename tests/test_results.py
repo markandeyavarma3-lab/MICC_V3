@@ -141,3 +141,73 @@ def test_an_empty_results_page_is_missing_for_good_not_a_refusal(tmp_path, monke
     assert st["stopped"] == "" and st["failed"] == 10                  # all ten tried; no breaker
     assert len(R.gone(R.MANIFEST)) == 10                                # and none asked for again
     assert all("404" in json.loads(ln)["error"] for ln in R.MANIFEST.read_text().splitlines())
+
+
+def test_a_half_yearly_bank_filing_is_read_but_kept_only_in_line_with_its_neighbours():
+    """KARURVYSYA and INDUSINDBK filed September and March as 'Half yearly' /
+    'Yearly' 2018-2021, and every one was dropped: 576 bank quarters. OneD is
+    usually the quarter, but 8% measured ~2x their neighbours, a half-year."""
+    def f(quarter, end, interest):
+        return (f'<in-bse-fin:ReportingQuarter contextRef="OneD">{quarter}</in-bse-fin:ReportingQuarter>'
+                f'<in-bse-fin:DateOfEndOfReportingPeriod contextRef="OneD">{end}</in-bse-fin:DateOfEndOfReportingPeriod>'
+                f'<in-bse-fin:InterestEarned contextRef="OneD" unitRef="INR">{interest}</in-bse-fin:InterestEarned>')
+    p = I.parse(f("Half yearly", "2019-09-30", 15000000000))
+    assert p["period_end"] == "2019-09-30" and p["span_unchecked"]
+    row = lambda qe, rev, **k: {"symbol": "B", "qe": qe, "consolidated": False, "revenue": rev, **k}  # noqa: E731
+    rows = [row("2019-06-30", 1490.0), row("2019-12-31", 1500.0),
+            row("2019-09-30", 1500.0, span_unchecked=True),     # a quarter: kept
+            row("2020-03-31", 3000.0, span_unchecked=True),     # a half-year's worth: out
+            row("2021-09-30", 1500.0, span_unchecked=True)]     # no neighbour to check: out
+    out, kept, unsure = I.check_spans(rows)
+    assert [r["qe"] for r in out] == ["2019-06-30", "2019-12-31", "2019-09-30"]
+    assert (kept, unsure) == (1, 2) and not any("span_unchecked" in r for r in out)
+
+
+def test_a_symbol_with_an_ampersand_is_asked_for_by_its_whole_name():
+    """`symbol=M&M` reaches NSE as `symbol=M`: 17 companies, no results, and
+    their shareholding stopped at 2021. The old empty answers do not count."""
+    from src.archive import shp
+    good = {"symbol": "M&M", "url": "https://x/api?index=equities&symbol=M%26M"}
+    bad = {"symbol": "M&M", "url": "https://x/api?index=equities&symbol=M&M"}
+    assert R.asked_as_named(good) and not R.asked_as_named(bad)
+    assert R.asked_as_named({"symbol": "TCS", "url": "https://x/api?symbol=TCS"})
+    now = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()
+    done, _ = shp._fresh_masters([{"source_id": shp.MASTER_SOURCE, "symbol": "M&M", "fetched_at": now,
+                                   "status": "EMPTY", **{k: bad[k] for k in ("url",)}}])
+    assert "M&M" not in done, "an empty answer to the wrong question must be asked again"
+
+
+def test_a_half_year_oned_is_not_read_as_a_quarter():
+    """AARTIIND's 2026-09-30 'quarter' was April to September."""
+    rev = '<in-capmkt:RevenueFromOperations contextRef="{c}" unitRef="INR">{v}</in-capmkt:RevenueFromOperations>'
+    h1 = _xbrl(rev.format(c="OneD", v=60000000000), start="2026-04-01", end="2026-09-30")
+    assert I.parse(h1) is None
+    q2 = ('<xbrli:context id="Q2"><xbrli:entity/><xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate>'
+          '<xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>' + rev.format(c="Q2", v=31000000000))
+    assert I.parse(h1 + q2)["revenue"] == 3100.0, "the filing's own quarter column is used when it has one"
+
+
+def _insurer(**facts) -> str:
+    return _xbrl("".join(f'<in-capmkt:{k} contextRef="OneD" unitRef="INR">{v}</in-capmkt:{k}>' for k, v in facts.items()),
+                 start="2026-07-01", end="2026-09-30")
+
+
+def test_a_life_insurer_reads_net_premium_as_revenue():
+    # LICI 2026-09-30: every insurer parsed to nothing until 2026-11-06.
+    r = I.parse(_insurer(NetPremiumIncome=1474331500000, ProfitLossBeforeTax=121745600000,
+                         ProfitLossAfterTaxAndExtraordinaryItems=121147800000,
+                         BasicAndDilutedEPSAfterExtraordinaryItemsNetOfTaxExpenseForThePeriodNotToBeAnnualized=9.58))
+    assert r["revenue"] == 147433.15 and r["pbt"] == 12174.56 and r["pat"] == 12114.78 and r["eps"] == 9.58
+
+
+def test_a_general_insurer_reads_premium_earned_as_revenue():
+    # GICRE 2026-09-30; premium earned, not written, is the period's revenue.
+    r = I.parse(_insurer(GrossPremiumsWritten=111713700000, NetPremiumWritten=105776600000, PremiumEarned=107116100000,
+                         ProfitOrLossBeforeTax=36190400000, ProfitLossAfterTax=29656900000))
+    assert r["revenue"] == 10711.61 and r["pbt"] == 3619.04 and r["pat"] == 2965.69
+
+
+def test_an_ordinary_company_is_not_read_through_the_insurer_names():
+    r = I.parse(_insurer(RevenueFromOperations=10000000000, PremiumEarned=50000000000,
+                         ProfitLossForPeriod=1000000000, ProfitLossAfterTax=9000000000))
+    assert r["revenue"] == 1000.0 and r["pat"] == 100.0

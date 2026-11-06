@@ -33,6 +33,7 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -69,11 +70,22 @@ def state(manifest: Path | None = None) -> tuple[dict[str, str], set[str]]:
                 r = json.loads(ln)
             except json.JSONDecodeError:
                 continue
-            if r.get("kind") == "listing" and r.get("status") == "STORED":
+            if r.get("kind") == "listing" and r.get("status") == "STORED" and asked_as_named(r):
                 listed[r["symbol"]] = max(listed.get(r["symbol"], ""), r["fetched_at"])
             elif r.get("kind") in ("xbrl", "html") and r.get("status") == "STORED":
                 stored.add(r["url"])
     return listed, stored
+
+
+def asked_as_named(r: dict) -> bool:
+    """False for a fetch whose URL carried the symbol's '&' unencoded.
+
+    Until 2026-11-06 the listing URL read `symbol=M&M`, which NSE takes as
+    `symbol=M`: an empty listing for all 17 such companies (M&M, J&KBANK,
+    ARE&M...), counted as fresh, so their results were never fetched.
+    """
+    sym = r.get("symbol") or ""
+    return "&" not in sym or quote(sym, safe="") in (r.get("url") or "")
 
 
 def gone(manifest: Path | None = None) -> set[str]:
@@ -187,7 +199,7 @@ def sweep(symbols: list[str], max_files: int = 2500, max_minutes: float = 120,
         if listed.get(sym, "") < fresh:
             for route, path in (("old", OLD), ("new", NEW)):
                 time.sleep(RATE_LIMIT)
-                url = API + path.format(sym=sym)
+                url = API + path.format(sym=quote(sym, safe=""))
                 base = {"kind": "listing", "symbol": sym, "route": route, "url": url,
                         "fetched_at": datetime.now(UTC).isoformat()}
                 try:

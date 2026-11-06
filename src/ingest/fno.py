@@ -27,12 +27,12 @@ from __future__ import annotations
 import gzip
 import sys
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.common.paths import ARCHIVE, COLLECTED, research_db  # noqa: E402
+from src.common.paths import ARCHIVE, COLLECTED, SALVAGED, research_db  # noqa: E402
 from src.governance import provenance as prov  # noqa: E402
 from src.ingest import fo_bhavcopy as fo  # noqa: E402
 
@@ -77,6 +77,38 @@ def archived_participant_oi() -> list[tuple[date, Path]]:
 def landed_fo_sessions() -> set[date]:
     return {date.fromisoformat(p.name[len("date="):-len(".parquet")])
             for p in OUT_DIR.glob("date=*.parquet")}
+
+
+#: The hole in fno_spine: no seed, increment or collected session between these
+#: dates, 110 sessions, while the predecessor's raw bhavcopies for exactly those
+#: 110 sessions sit in salvaged/v1_raw/nse_fo (found 2026-11-06). Decision 0097.
+SALVAGED_FO = SALVAGED / "v1_raw" / "nse_fo"
+SALVAGED_GAP = (date(2026, 1, 1), date(2026, 6, 16))
+
+
+def land_salvaged(dry_run: bool = False, src: Path | None = None) -> list[Landed]:
+    """The salvaged bhavcopies inside SALVAGED_GAP -> OUT_DIR, parsed exactly as
+    an archived session is, and refused if a file's own date disagrees with its
+    name. They precede the spine's last date, so `append_sessions` raises until
+    a full build takes them in: main() allows this only with --build-spine."""
+    done = landed_fo_sessions()
+    out: list[Landed] = []
+    for path in sorted((src or SALVAGED_FO).glob("fo_*.zip")):
+        session = datetime.strptime(path.stem[3:], "%Y%m%d").date()
+        if not SALVAGED_GAP[0] <= session <= SALVAGED_GAP[1] or session in done:
+            continue
+        leg = fo.to_legacy_spine(fo.parse_udiff_bytes(path.read_bytes()))
+        got = {date.fromisoformat(d) for d in leg["date"].unique()}
+        if got != {session}:
+            raise fo.FoParseError(f"{path.name}: file says {sorted(got)}, name says {session}")
+        dest = OUT_DIR / f"date={session.isoformat()}.parquet"
+        if not dry_run:
+            OUT_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(".parquet.partial")
+            leg.to_parquet(tmp, index=False)
+            tmp.replace(dest)
+        out.append(Landed(session, len(leg), dest if not dry_run else None))
+    return out
 
 
 def land_fo(dry_run: bool = False) -> list[Landed]:
@@ -175,9 +207,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--append", action="store_true",
                     help="after landing, append the new sessions to fno_spine, rewriting only their "
                          "year partition (0066: the nightly path collect_daily.sh calls)")
+    ap.add_argument("--salvaged", action="store_true",
+                    help="also land the salvaged bhavcopies for the 2026 hole (0097); needs --build-spine or --dry-run")
     a = ap.parse_args(argv)
     if a.build_spine and a.append:
         ap.error("--build-spine and --append are different decisions; pick one")
+    if a.salvaged and not (a.build_spine or a.dry_run):
+        ap.error("--salvaged without --build-spine would make every later --append refuse (0097)")
+    if a.salvaged:
+        got = land_salvaged(dry_run=a.dry_run)
+        print(f"  salvaged fno: {len(got)} session(s), {sum(r.rows for r in got):,} rows"
+              + (f", {got[0].session} .. {got[-1].session}" if got else ""))
 
     print("F&O LAND (decision 0065)" + ("  [DRY RUN]" if a.dry_run else ""))
     fo_rows = land_fo(dry_run=a.dry_run)

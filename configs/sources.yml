@@ -212,6 +212,18 @@ sources:
     note: "Per-symbol, not a bulk file: ~2,000 symbols x 2s = ~1.1 h per full
       sweep; quarterly cadence makes that fine. Probe only, decision pending."
 
+  - id: nse_equity_list
+    exchange: NSE
+    report_type: LISTING
+    status: CONFIRMED_SNAPSHOT_ONLY  # 2026-11-06: 200, main board 2,630 rows, SME 583 rows
+    cadence: daily
+    licence: public_disclosure
+    automated_use_permitted: "yes"
+    route: "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv and /emerge/corporates/content/SME_EQUITY_L.csv"
+    route_kind: rolling_current_day
+    collector: src/archive/listing.py
+    note: "Names symbols the identity layer does not know, on the site only. Today's list: a delisted company is absent."
+
   - id: nse_corporate_actions
     exchange: NSE
     report_type: CORPACT

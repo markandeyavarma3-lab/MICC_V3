@@ -62,6 +62,7 @@ from datetime import UTC, date, datetime, timedelta
 from http.cookiejar import CookieJar
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -277,6 +278,8 @@ def _fresh_masters(rows: list[dict], days: int = MASTER_FRESH_DAYS,
     for r in rows:
         if r.get("source_id") != MASTER_SOURCE or not (r.get("symbol") and r.get("fetched_at")):
             continue
+        if "&" in r["symbol"] and quote(r["symbol"], safe="") not in (r.get("url") or ""):
+            continue  # asked as `symbol=M&M`, which NSE reads as `M`: not an answer (2026-11-06)
         if r["symbol"] not in latest or r["fetched_at"] > latest[r["symbol"]]["fetched_at"]:
             latest[r["symbol"]] = r
     for s, r in latest.items():
@@ -328,7 +331,7 @@ def capture_symbol(op, symbol: str, seen: set[str], budget: list[int],
     instead of fetching it — a fresh index whose XBRL is still owed."""
     today = today or datetime.now(UTC).date()
     streak = streak if streak is not None else [0]
-    url = MASTER_URL.format(symbol=symbol)
+    url = MASTER_URL.format(symbol=quote(symbol, safe=""))
     base = {"source_id": MASTER_SOURCE, "exchange": EXCHANGE, "report_type": MASTER_TYPE,
             "symbol": symbol, "url": url, "session_date": today.isoformat(),
             "fetched_at": datetime.now(UTC).isoformat()}
