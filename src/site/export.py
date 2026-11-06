@@ -47,7 +47,7 @@ from src.common.paths import (  # noqa: E402
     research_db,
     warehouse_dir,
 )
-from src.site import labels  # noqa: E402
+from src.site import labels, sme_prices  # noqa: E402
 
 SITE_DATA = ROOT.parent / "research-website" / "public" / "data"
 CR = 1e7   # rupees per crore
@@ -452,6 +452,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     by_co = (holdings or ({}, {}, {}, {}))[1]
     fund = fundamentals()
     fund_ind = fund_industries()
+    # The SME platform is outside the price spine by decision (0045): its closes
+    # come from the bhavcopies, as traded, for a symbol with no spine price.
+    sme_px = sme_prices.weekly()
+    px_of = lambda s: weekly.get(s) or sme_px.get(s, [])  # noqa: E731
     ms_ = structure or {"industry": {}, "indices": {}, "actions": {}, "ann": {}, "meet": {}, "pledge": {}}
     syms = set(deals) | {s for s, i in ident.items() if i["isin"] in own}
     last_day = max((r[0] for r in rows), default="")
@@ -464,13 +468,14 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
         if (not name or name.upper() == sym) and isin in shp_co:
             name = shp_co[isin]
         doc = {"sym": sym, "co": name, "isin": isin,
-               **listing_state(i, weekly.get(sym, []), last_day),
+               **listing_state(i, px_of(sym), last_day),
                "listed": i.get("listed"), "history": history.get(sym, []),
                "deals": _cols(["d", "who", "pid", "type", "side", "qty", "px", "cr", "rt", "kind"], deals.get(sym, [])),
                "own": _cols(["q", *OWNERSHIP], own.get(isin, []) if isin else []),
-               **insider_doc(insider.get(sym, []), weekly.get(sym, []), _newest_shares(fund.get(sym, []))),
+               **insider_doc(insider.get(sym, []), px_of(sym), _newest_shares(fund.get(sym, []))),
                **delivery.get(sym, DELIVERY_NONE),
-               "px": _cols(["d", "close"], weekly.get(sym, [])),
+               "px": _cols(["d", "close"], px_of(sym)),
+               "px_as_traded": not weekly.get(sym) and bool(sme_px.get(sym)),
                "holders": _holders_doc(by_co.get(isin) if isin else None),
                "industry": ms_["industry"].get(sym), "indices": ms_["indices"].get(sym, []),
                "industry_funds": None if ms_["industry"].get(sym) or not isin else fund_ind.get(isin),
@@ -479,7 +484,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                                       sorted(ms_["ann"].get(sym, {}).values(), key=lambda a: a[0], reverse=True)[:80]),
                "meetings": _cols(["d", "purpose", "desc"], sorted(ms_["meet"].get(sym, set()), reverse=True)[:40]),
                "results": _cols(RESULT_COLS, fund.get(sym, [])),
-               "valuation": valuation(fund.get(sym, []), weekly[sym][-1][1] if weekly.get(sym) else None),
+               "valuation": valuation(fund.get(sym, []), px_of(sym)[-1][1] if px_of(sym) else None),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
                          if sym in ms_["pledge"] else None,
