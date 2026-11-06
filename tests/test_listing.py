@@ -31,3 +31,31 @@ def test_the_newest_file_is_read_and_the_main_board_wins(tmp_path):
 
 def test_no_archive_names_nothing(tmp_path):
     assert listing.latest(tmp_path) == {}
+
+
+def test_an_sme_symbol_is_asked_under_its_own_index(monkeypatch):
+    """All 566 answered empty under index=equities; IEML has 7 filings under sme."""
+    from src.archive import results, shp
+    monkeypatch.setattr(listing, "sme_symbols", lambda: frozenset({"IEML"}))
+    assert listing.index_of("IEML") == "sme" and listing.index_of("TCS") == "equities"
+    wrong = "https://x/api?index=equities&symbol=IEML"
+    right = "https://x/api?index=sme&symbol=IEML"
+    assert not results.asked_as_named({"symbol": "IEML", "url": wrong})
+    assert results.asked_as_named({"symbol": "IEML", "url": right})
+    assert results.asked_as_named({"symbol": "TCS", "url": "https://x/api?index=equities&symbol=TCS"})
+    from datetime import UTC, datetime
+    now = datetime.now(UTC).isoformat()
+    row = {"source_id": shp.MASTER_SOURCE, "symbol": "IEML", "fetched_at": now, "status": "EMPTY", "url": wrong}
+    assert "IEML" not in shp._fresh_masters([row])[0], "an empty answer to the wrong index is asked again"
+    assert "IEML" in shp._fresh_masters([{**row, "url": right}])[0]
+
+
+def test_a_symbol_on_both_lists_is_the_main_board_s(tmp_path, monkeypatch):
+    (tmp_path / "main_2026-11-06.csv.gz").write_bytes(gzip.compress(MAIN))
+    (tmp_path / "sme_2026-11-06.csv.gz").write_bytes(gzip.compress(SME))
+    monkeypatch.setattr(listing, "ROOT_DIR", tmp_path)
+    listing.sme_symbols.cache_clear()
+    try:
+        assert listing.sme_symbols() == frozenset({"XYZ"})
+    finally:
+        listing.sme_symbols.cache_clear()
