@@ -12,6 +12,11 @@ ProfitLossForThePeriod, BasicEarningsPerShareAfterExtraordinaryItems. Each
 field below lists its synonyms in priority order; `bank` records which taxonomy
 answered. Amounts are rupees in the filing and Rs crore here.
 
+INSURERS FILE A THIRD TAXONOMY (INTEGRATED_FILING_LI / _GI, measured 2026-11-06
+on LICI and GICRE): no revenue line and no ProfitLossForPeriod, so every one
+parsed to nothing. `revenue` is net premium for them, NetPremiumIncome for life
+and PremiumEarned for general; they state no paid-up capital, so no share count.
+
 Paid-up equity capital / face value = shares outstanding, which with a price
 gives market capitalisation on the site.
 
@@ -36,19 +41,20 @@ OUT = COLLECTED / "results" / "results_quarterly.parquet"
 CR = 1e7
 
 FIELDS: dict[str, tuple[str, ...]] = {
-    "revenue": ("RevenueFromOperations", "InterestEarned"),
+    "revenue": ("RevenueFromOperations", "InterestEarned", "NetPremiumIncome", "PremiumEarned"),
     "other_income": ("OtherIncome",),
     "total_income": ("Income", "TotalIncome"),
     "expenses": ("Expenses", "TotalExpenses"),
     "finance_costs": ("FinanceCosts", "InterestExpended"),
     "depreciation": ("DepreciationDepletionAndAmortisationExpense",),
     "operating_expenses": ("OperatingExpenses",),
-    "pbt": ("ProfitBeforeTax", "ProfitLossFromOrdinaryActivitiesBeforeTax"),
+    "pbt": ("ProfitBeforeTax", "ProfitLossFromOrdinaryActivitiesBeforeTax", "ProfitLossBeforeTax", "ProfitOrLossBeforeTax"),
     "tax": ("TaxExpense",),
-    "pat": ("ProfitLossForPeriod", "ProfitLossForThePeriod"),
+    "pat": ("ProfitLossForPeriod", "ProfitLossForThePeriod", "ProfitLossAfterTaxAndExtraordinaryItems", "ProfitLossAfterTax"),
     "pat_owners": ("ProfitOrLossAttributableToOwnersOfParent",),
     "eps": ("BasicEarningsLossPerShareFromContinuingOperations", "BasicEarningsPerShareAfterExtraordinaryItems",
-            "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations"),
+            "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations",
+            "BasicAndDilutedEPSAfterExtraordinaryItemsNetOfTaxExpenseForThePeriodNotToBeAnnualized"),
     "face_value": ("FaceValueOfEquityShareCapital",),
     "paid_up": ("PaidUpValueOfEquityShareCapital",),
 }
@@ -70,11 +76,17 @@ def quarter_context(text: str) -> str | None:
         s, e = _START.search(body), _END.search(body)
         if s and e:
             spans[cid] = (date.fromisoformat(s.group(1)), date.fromisoformat(e.group(1)))
-    if "OneD" in spans:
+    quarter = lambda c: 80 <= (spans[c][1] - spans[c][0]).days <= 100  # noqa: E731
+    if "OneD" in spans and quarter("OneD"):
         return "OneD"
-    for cid, (s, e) in spans.items():
-        if 80 <= (e - s).days <= 100:
+    # A defined OneD longer than a quarter is a half-year or year filing (365 of
+    # them read as quarters until 2026-11-06: AARTIIND's 2026-09-30 was April to
+    # September). Its quarter column, if it has one, is another context.
+    for cid in spans:
+        if quarter(cid):
             return cid
+    if "OneD" in spans:
+        return None
     # NSE's 2016-2023 '_WEB' renderings (INDAS, NBFC, BANKING) reference OneD
     # without defining it (ALKEM 2021-06-30, measured 2026-10-21); their
     # dimensioned 'One...' contexts span the quarter, so OneD is the quarter.
@@ -117,11 +129,23 @@ def parse(text: str) -> dict | None:
                 return None
         except (TypeError, ValueError):
             k = _QUARTER_NO.get((facts.get("ReportingQuarter") or "").strip().lower())
+            if not k:
+                # 'Half yearly' / 'Yearly' with no start date: banks filed their
+                # September and March quarters this way 2018-2021 (KARURVYSYA,
+                # INDUSINDBK). OneD is usually the quarter, but 8% of them came
+                # out ~2x their neighbours, a half-year. Kept only if main()
+                # finds the figure in line with the quarters either side.
+                if (facts.get("ReportingQuarter") or "").strip().lower() not in ("half yearly", "yearly"):
+                    return None
+                try:
+                    row["period_end"] = date.fromisoformat(e or "").isoformat()
+                except ValueError:
+                    return None
+                row["span_unchecked"] = True
+                return row if any(k in row for k in ("revenue", "pat")) else None
             try:
                 fy = date.fromisoformat(facts.get("DateOfStartOfFinancialYear") or "")
             except ValueError:
-                return None
-            if not k:
                 return None
             y, m = divmod(fy.year * 12 + fy.month - 1 + 3 * k, 12)
             row["period_end"] = (date(y, m + 1, 1) - timedelta(days=1)).isoformat()
@@ -201,9 +225,42 @@ def parse_html(text: str) -> dict | None:
     return row if any(k in row for k in ("revenue", "pat")) else None
 
 
+def _q(qe: str, k: int) -> str:
+    """The quarter-end k quarters from `qe`."""
+    y, m = divmod(int(qe[:4]) * 12 + int(qe[5:7]) - 1 + 3 * k, 12)  # m: 0-based month
+    first_after = date(y + 1, 1, 1) if m == 11 else date(y, m + 2, 1)
+    return (first_after - timedelta(days=1)).isoformat()
+
+
+#: A quarter's revenue against the mean of the quarters either side. A
+#: half-year comes out near 2, a year near 4; 0.6-1.5 holds 85% of real ones.
+SPAN_BAND = (0.6, 1.5)
+
+
+def check_spans(rows: list[dict]) -> tuple[list[dict], int, int]:
+    """Keep a 'Half yearly'/'Yearly' figure only when its revenue sits within
+    SPAN_BAND of the neighbouring quarters of the same company and basis. No
+    neighbour, no revenue, or out of band: left out, not guessed."""
+    rev = {(r["symbol"], r["qe"], r["consolidated"]): r.get("revenue")
+           for r in rows if not r.get("span_unchecked")}
+    out, kept, unsure = [], 0, 0
+    for r in rows:
+        if not r.pop("span_unchecked", False):
+            out.append(r)
+            continue
+        nb = [v for k in (-1, 1) if (v := rev.get((r["symbol"], _q(r["qe"], k), r["consolidated"])))]
+        if r.get("revenue") and nb and SPAN_BAND[0] <= r["revenue"] / (sum(nb) / len(nb)) <= SPAN_BAND[1]:
+            out.append(r)
+            kept += 1
+        else:
+            unsure += 1
+    return out, kept, unsure
+
+
 def main() -> int:
     import duckdb
     rows = []
+    relabel: list[dict] = []
     bad = mislabelled = 0
     for ln in R.MANIFEST.read_text().splitlines() if R.MANIFEST.exists() else []:
         r = json.loads(ln)
@@ -221,10 +278,21 @@ def main() -> int:
             # NSE's index files some filings under the wrong quarter (AEGISLOG's
             # '2017-03-31' is Jan-Mar 2018; 13 of 35,901 on 2026-10-21). The file's own
             # period is right, but relabelling could collide with a genuine filing: drop it.
-            mislabelled += 1
+            relabel.append({"symbol": r["symbol"], "qe": p["period_end"], "consolidated": r["consolidated"],
+                            "filed": r["filed"], "route": r["route"], **p})
             continue
         rows.append({"symbol": r["symbol"], "qe": r["qe"], "consolidated": r["consolidated"], "filed": r["filed"],
                      "route": r["route"], **p})
+    rows, checked, unsure = check_spans(rows)
+    held = {(r["symbol"], r["qe"], r["consolidated"]) for r in rows}
+    for r in relabel:
+        # The file's own period, where no other filing holds that quarter. Where
+        # one does, relabelling would collide with a genuine filing: dropped.
+        if (r["symbol"], r["qe"], r["consolidated"]) in held or r["qe"][5:] not in ("03-31", "06-30", "09-30", "12-31"):
+            mislabelled += 1
+        else:
+            held.add((r["symbol"], r["qe"], r["consolidated"]))
+            rows.append(r)
     cols = ["symbol", "qe", "consolidated", "filed", "route", "nature", "audited", "bank", "period_start",
             "period_end", *FIELDS]
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -241,7 +309,9 @@ def main() -> int:
     finally:
         con.close()
     print(f"  RESULTS: {len(rows):,} quarterly rows for {len({r['symbol'] for r in rows}):,} companies"
-          f" ({bad} files without a quarter or a revenue/profit line; {mislabelled} filed under the wrong quarter, dropped) -> {OUT.name}")
+          f" ({bad} files without a quarter or a revenue/profit line; {mislabelled} filed under the wrong quarter and"
+          f" colliding, dropped; {len(relabel) - mislabelled} re-dated to their own quarter; {checked} half-yearly/yearly"
+          f" kept as in line with their neighbours, {unsure} left out) -> {OUT.name}")
     return 0
 
 

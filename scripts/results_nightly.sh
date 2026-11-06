@@ -46,6 +46,9 @@ mkdir -p "$REPO/logs"
   # Point-in-time industries, extracted from the month-end portfolios (step 3.5).
   "$REPO/.venv/bin/python" -m src.warehouse.sector_history
   echo "sector_history=$?"
+  # NSE's current company lists: a name and ISIN for SME symbols the deals carry.
+  "$REPO/.venv/bin/python" -m src.archive.listing
+  echo "listing=$?"
   "$REPO/scripts/site_publish.sh"
   echo "site=$?"
   # Then the long, resumable downloads, side by side (different hosts), for up

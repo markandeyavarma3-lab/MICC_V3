@@ -348,3 +348,66 @@ def test_one_early_scheme_does_not_make_a_new_month_latest():
     """5 rows dated 31 October blanked the fund holdings on every stock page."""
     assert X.latest_full_month(["2026-09-30"] * 1300 + ["2026-10-31"]) == "2026-09-30"
     assert X.latest_full_month(["2026-09-30"] * 500 + ["2026-10-31"] * 800) == "2026-10-31"
+
+
+def test_a_share_split_s_new_isin_keeps_the_shareholding_filed_before_it():
+    """IEX: INE022Q01012 until the split, INE022Q01020 after."""
+    own = {"INE022Q01012": [["2018-03-31", 1.0], ["2021-06-30", 2.0]],
+           "INE022Q01020": [["2021-09-30", 3.0], ["2026-06-30", 4.0]]}
+    got = X.chain_isins(own, {"INE022Q01020"})
+    assert [r[0] for r in got["INE022Q01020"]] == ["2018-03-31", "2021-06-30", "2021-09-30", "2026-06-30"]
+
+
+def test_quarters_filed_under_an_old_isin_fill_in_though_they_interleave():
+    """Most companies look like this: 2016-17 under today's ISIN, 2018-21 under
+    the old one, then today's again. CLEDUCATE, 12 quarters."""
+    own = {"INE201M01029": [["2017-03-31", 1.0], ["2021-09-30", 3.0]],
+           "INE201M01011": [["2018-06-30", 2.0], ["2021-06-30", 2.5]]}
+    got = X.chain_isins(own, {"INE201M01029"})["INE201M01029"]
+    assert [r[0] for r in got] == ["2017-03-31", "2018-06-30", "2021-06-30", "2021-09-30"]
+
+
+def test_on_a_quarter_both_report_the_current_isin_wins():
+    own = {"INE389K01028": [["2021-03-31", 9.0], ["2021-06-30", 9.5]], "INE389K01010": [["2021-03-31", 1.0], ["2019-09-30", 2.0]]}
+    got = X.chain_isins({k: sorted(v) for k, v in own.items()}, {"INE389K01028"})["INE389K01028"]
+    assert got == [["2019-09-30", 2.0], ["2021-03-31", 9.0], ["2021-06-30", 9.5]]
+
+
+def test_two_share_classes_filing_side_by_side_are_not_merged():
+    qs = ["2020-03-31", "2020-06-30", "2020-09-30", "2020-12-31"]
+    own = {"INE001A01011": [[q, 1.0] for q in qs] + [["2019-12-31", 1.0]],
+           "INE001A01029": [[q, 2.0] for q in qs]}
+    got = X.chain_isins(own, {"INE001A01029"})
+    assert [r[0] for r in got["INE001A01029"]] == qs, "four quarters in common: two securities"
+    both = {"INE001A01011": [["2019-12-31", 1.0]], "INE001A01029": [["2020-03-31", 2.0]]}
+    assert X.chain_isins(both, set(both)) == both, "both current: neither absorbs the other"
+
+
+def test_a_fund_industry_is_the_majority_label_for_an_equity_isin_only(tmp_path):
+    con = duckdb.connect()
+    con.execute("""CREATE TABLE m AS SELECT * FROM (VALUES
+        ('a', 'INE429E01023', 'Consumer Durables'), ('b', 'INE429E01023', 'CONSUMER DURABLES'),
+        ('c', 'INE429E01023', 'N.A.'), ('d', 'INE429E01023', '69.8'),
+        ('a', 'INE134E08NP7', 'CRISIL AAA'),
+        ('a', 'INE111A01011', 'Banks'), ('b', 'INE111A01011', 'Finance')) t(amc, isin, industry)""")
+    path = tmp_path / "m.parquet"
+    con.execute(f"COPY m TO '{path}' (FORMAT PARQUET)")
+    got = X.fund_industries(path)
+    assert got["INE429E01023"].lower() == "consumer durables"
+    assert "INE134E08NP7" not in got, "a bond's rating is not an industry"
+    assert "INE111A01011" not in got, "a tie names nothing"
+
+
+def test_nifty_valuation_runs_the_seed_back_from_where_the_collected_series_starts(tmp_path):
+    con = duckdb.connect()
+    con.execute("""CREATE TABLE i AS SELECT DATE '2021-10-18' AS date, 'NIFTY50' AS index_key, 18000.0::DOUBLE AS close, 27.0::DOUBLE AS pe, 4.5::DOUBLE AS pb, 1.1::DOUBLE AS div_yield""")
+    con.execute("""CREATE TABLE v AS SELECT * FROM (VALUES
+        ('NIFTY 50', '2005-01-03', 15.0, 3.0, 1.5), ('NIFTY 50', '2021-10-18', 99.0, 9.0, 9.0),
+        ('NIFTY IT', '2005-01-03', 50.0, 5.0, 0.5)) t(index_name, date, pe, pb, div_yield)""")
+    con.execute("""CREATE TABLE c AS SELECT 'NIFTY 50' AS name, '2005-01-03' AS date, 2000.0 AS close""")
+    con.execute(f"COPY i TO '{tmp_path}/i.parquet' (FORMAT PARQUET)")
+    con.execute(f"COPY v TO '{tmp_path}/index_valuation.parquet' (FORMAT PARQUET)")
+    con.execute(f"COPY c TO '{tmp_path}/indices_data.parquet' (FORMAT PARQUET)")
+    got = X.nifty_valuation(con, tmp_path / "i.parquet", tmp_path)
+    assert got == [["2005-01-03", 2000.0, 15.0, 3.0, 1.5], ["2021-10-18", 18000.0, 27.0, 4.5, 1.1]], (
+        "the collected series wins on its own dates; another index stays out")
