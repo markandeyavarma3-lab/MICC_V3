@@ -27,6 +27,12 @@ sessions. A dry run parsed all of them through the collector's parser: 48,60,684
   own they would stop the collector's F&O stage that night.
 - The 2026-06-17 to 07-07 stretch with raw UDiFF codes (0062, 0065) is untouched.
 
+- The Phase 1 reconciliation's frozen F&O count stays 174,272,768. Those 110 sessions
+  fall inside its date range, and they raised the count by exactly the 48,60,684 rows
+  landed. The figure is not edited: the measurement now leaves them out by name
+  (`reconcile.FNO_NOT_FROM_MICCV2`), the same scoping the horizon already uses, and a
+  new test checks them row for row against their files.
+
 ## Why
 
 The bytes are the exchange's and are already held; the parser is the one every
@@ -45,5 +51,6 @@ rebuild.
 
 ## Cost accepted
 
-- About 49 lakh more rows on disk, roughly 60 MB.
+- About 49 lakh more rows on disk.
+- The reconciliation gate names a window it does not measure. A wrong date range there would hide rows, so the window is exact and the row-for-row test stands behind it.
 - One full spine rebuild, run outside the collector window.

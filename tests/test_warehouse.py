@@ -186,11 +186,30 @@ def test_spine_row_counts(name, expected):
     # three spines now: the frozen figure measures what MICCV2 supplied, and the
     # collected sessions are verified separately, not by moving this constant.
     where = f" WHERE date <= '{reconcile.MICCV2_HORIZON}'"
+    if name == "fno_spine":
+        # The 110 sessions of decision 0097 were never MICCV2's; next test.
+        a, b = reconcile.FNO_NOT_FROM_MICCV2
+        where += f" AND date NOT BETWEEN '{a}' AND '{b}'"
     got = con.execute(
         f"SELECT COUNT(*) FROM read_parquet('{warehouse_dir('prod') / name}/**/*.parquet')"
         + where
     ).fetchone()[0]
     assert got == expected
+
+
+@needs_spine
+def test_the_f_and_o_sessions_outside_the_oracle_match_their_files_row_for_row():
+    """Decision 0097. Left out of the frozen count, so verified here: every salvaged
+    session is in the spine with exactly the rows its file parsed to, and nothing
+    else sits in that window."""
+    from src.common.paths import COLLECTED
+    a, b = reconcile.FNO_NOT_FROM_MICCV2
+    con = duckdb.connect()
+    per = (f"SELECT date, COUNT(*) n FROM read_parquet('{{}}') WHERE date BETWEEN '{a}' AND '{b}' GROUP BY 1")
+    spine_rows = dict(con.execute(per.format(f"{warehouse_dir('prod')}/fno_spine/**/*.parquet")).fetchall())
+    file_rows = dict(con.execute(per.format(f"{COLLECTED}/fno/date=2026-0[1-6]-*.parquet")).fetchall())
+    assert len(spine_rows) == 110, "the hole 0097 filled is open again"
+    assert spine_rows == file_rows
 
 
 @needs_spine

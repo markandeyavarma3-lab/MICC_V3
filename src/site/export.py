@@ -454,8 +454,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
         if (not name or name.upper() == sym) and isin in shp_co:
             name = shp_co[isin]
         doc = {"sym": sym, "co": name, "isin": isin,
-               "listed": i.get("listed"), "delisted": i.get("delisted"), "reason": i.get("reason"),
-               "status": i.get("status"), "history": history.get(sym, []),
+               **listing_state(i, weekly.get(sym, []), last_day),
+               "listed": i.get("listed"), "history": history.get(sym, []),
                "deals": _cols(["d", "who", "pid", "type", "side", "qty", "px", "cr", "rt", "kind"], deals.get(sym, [])),
                "own": _cols(["q", *OWNERSHIP], own.get(isin, []) if isin else []),
                **insider_doc(insider.get(sym, []), weekly.get(sym, []), _newest_shares(fund.get(sym, []))),
@@ -488,6 +488,27 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                     for s in syms), key=lambda x: -x[3])
     (out / "stocks.json").write_text(json.dumps(index, separators=(",", ":")))
     return len(syms)
+
+
+#: A symbol priced within this many days of the newest session is still trading.
+STILL_TRADING_DAYS = 30
+
+
+def listing_state(i: dict, px: list, last_day: str) -> dict:
+    """delisted, reason and status as the page shows them.
+
+    A share split ends the old ISIN's security, and security_master records it
+    as MERGED with a delisting date and reason ISIN_CHANGE. For a symbol that
+    goes on trading that is a change of ISIN, not a delisting: 99 pages including
+    HAVELLS, GRASIM and BEL said "delisted (ISIN_CHANGE)" until 2026-11-06.
+    Only this reason is overruled by a current price. security_master is unchanged.
+    """
+    state = {"delisted": i.get("delisted"), "reason": i.get("reason"), "status": i.get("status")}
+    if i.get("reason") == "ISIN_CHANGE" and px and last_day:
+        age = (date.fromisoformat(str(last_day)[:10]) - date.fromisoformat(str(px[-1][0])[:10])).days
+        if age <= STILL_TRADING_DAYS:
+            return {"delisted": None, "reason": None, "status": "ACTIVE"}
+    return state
 
 
 def fund_industries(path: Path | None = None) -> dict[str, str]:

@@ -411,3 +411,13 @@ def test_nifty_valuation_runs_the_seed_back_from_where_the_collected_series_star
     got = X.nifty_valuation(con, tmp_path / "i.parquet", tmp_path)
     assert got == [["2005-01-03", 2000.0, 15.0, 3.0, 1.5], ["2021-10-18", 18000.0, 27.0, 4.5, 1.1]], (
         "the collected series wins on its own dates; another index stays out")
+
+
+def test_a_share_split_on_a_stock_still_trading_is_not_a_delisting():
+    """HAVELLS read "delisted 2014-08-06 (ISIN_CHANGE)" with a price from this week."""
+    split = {"delisted": "2014-08-06", "reason": "ISIN_CHANGE", "status": "MERGED"}
+    assert X.listing_state(split, [["2026-11-06", 1500.0]], "2026-11-06") == {
+        "delisted": None, "reason": None, "status": "ACTIVE"}
+    assert X.listing_state(split, [["2014-08-01", 100.0]], "2026-11-06")["delisted"] == "2014-08-06", "no current price: it stands"
+    left = {"delisted": "2026-10-20", "reason": "LEFT_UNIVERSE", "status": "DELISTED"}
+    assert X.listing_state(left, [["2026-10-16", 50.0]], "2026-11-06")["delisted"] == "2026-10-20", "only this reason is overruled"

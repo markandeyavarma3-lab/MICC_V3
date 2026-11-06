@@ -63,6 +63,12 @@ class Check:
 #: `v1_export` and `v1_increments`.
 MICCV2_HORIZON = "2026-08-14"
 
+#: Sessions inside that horizon which MICCV2 did NOT supply to the spine: the 110
+#: F&O sessions landed from the salvaged bhavcopies by decision 0097. Same rule as
+#: the horizon: the oracle stands and the measurement is scoped back to what it
+#: was always measuring. tests/test_warehouse.py checks them row for row instead.
+FNO_NOT_FROM_MICCV2 = ("2026-01-01", "2026-06-16")
+
 
 def run(env: str | None = None) -> list[Check]:
     """Every gate check, measured against the rebuilt spines. Read-only.
@@ -135,7 +141,8 @@ def run(env: str | None = None) -> list[Check]:
             # UDiFF F&O was first landed and the unbounded count stopped being
             # the seed reconciliation it claims to be.
             c.execute(f"SELECT COUNT(*) FROM read_parquet('{fno}')"
-                      f" WHERE date <= '{horizon}'").fetchone()[0],
+                      f" WHERE date <= '{horizon}' AND date NOT BETWEEN"
+                      f" '{FNO_NOT_FROM_MICCV2[0]}' AND '{FNO_NOT_FROM_MICCV2[1]}'").fetchone()[0],
             "distinct rows after resolving the ten-date seed/increment overlap "
             "(decision 0029); the predecessor's 174,616,363 was a naive sum",
         ),
