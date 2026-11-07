@@ -373,6 +373,16 @@ def test_report_states_the_real_test_count():
     )
 
 
+def test_the_review_report_states_the_real_counts():
+    """REVIEW_REPORT.md is what a panel reads, so its test count is bound like the
+    plan-time report's, to the same collection total."""
+    r = (DOCS / "report" / "REVIEW_REPORT.md").read_text()
+    assert "@@" not in r, "an unfilled placeholder reached the review report"
+    plan = (DOCS / "report" / "PROJECT_REPORT.md").read_text()
+    stated = re.search(r"discipline framework with ([\d,]+) tests", plan).group(1)
+    assert f"**{stated} automated tests**" in r
+
+
 def test_every_plan_pdf_is_newer_than_its_source():
     """Caught 2026-08-18: three plan PDFs were a day stale and PLAN_4 had none.
 

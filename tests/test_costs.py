@@ -130,6 +130,7 @@ def test_three_levels_are_ordered_and_none_is_chosen_for_the_reader():
     assert totals == sorted(totals), "pessimistic must not cost less than gross"
 
 
+@pytest.mark.needs_data
 def test_the_fee_schedule_table_matches_the_config():
     """The table is the queryable form of costs.yml, not a second source of
     truth. Drift between them is how a study charges rates nobody approved."""

@@ -36,6 +36,12 @@ if [ -z "$ORIGIN" ]; then
   exit 0
 fi
 
+# Decision 0094: after-event returns may exist on this laptop, never online.
+if [ -e "$SITE/dist/lab" ] || [ -e "$SITE/dist/data/lab" ]; then
+  echo "  site NOT published: the Research lab is in dist (decision 0094: remove it before any publishing)"
+  exit 0
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cp -R "$SITE/dist/." "$TMP/"
