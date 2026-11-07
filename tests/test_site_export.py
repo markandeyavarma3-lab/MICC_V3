@@ -458,3 +458,23 @@ def test_a_real_jump_is_not_withheld():
 def test_an_unknown_delisting_gives_way_to_a_current_price():
     nestle = {"delisted": "2019-12-06", "reason": "UNKNOWN", "status": "DELISTED"}
     assert X.listing_state(nestle, [["2026-11-06", 1200.0]], "2026-11-06")["status"] == "ACTIVE"
+
+
+def test_half_year_results_keep_consolidated_and_are_kept_from_the_quarters(tmp_path):
+    con = duckdb.connect()
+    con.execute("""CREATE TABLE h AS SELECT * FROM (VALUES
+        ('X', '2025-09-30', false, '2025-11-01', 10.0::DOUBLE, 2.0::DOUBLE, 1.0::DOUBLE, 0.5::DOUBLE),
+        ('X', '2025-09-30', true, '2025-11-02', 12.0::DOUBLE, 3.0::DOUBLE, 2.0::DOUBLE, 0.6::DOUBLE),
+        ('X', '2025-03-31', false, '2025-05-01', 9.0::DOUBLE, 1.0::DOUBLE, 1.0::DOUBLE, 0.4::DOUBLE))
+        v(symbol, period_end, consolidated, filed, revenue, pbt, pat, eps)""")
+    p = tmp_path / "h.parquet"
+    con.execute(f"COPY h TO '{p}' (FORMAT PARQUET)")
+    got = X.half_results(p)["X"]
+    assert [r[0] for r in got] == ["2025-09-30", "2025-03-31"]
+    assert got[0][:3] == ["2025-09-30", True, 12.0]
+
+
+def test_a_mis_scaled_half_year_is_blanked_like_a_quarter():
+    res = [["c", False, 100.0, 5.0, 4.0, 1.0, "x"], ["b", False, 1.0, 5.0, 4.0, 1.0, "x"], ["a", False, 90.0, 5.0, 4.0, 1.0, "x"]]
+    assert X.withhold_mis_scaled(res, (2, 3, 4)) == ["b"]
+    assert res[1][2:5] == [None, None, None] and res[1][5] == 1.0

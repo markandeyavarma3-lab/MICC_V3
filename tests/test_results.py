@@ -211,3 +211,19 @@ def test_an_ordinary_company_is_not_read_through_the_insurer_names():
     r = I.parse(_insurer(RevenueFromOperations=10000000000, PremiumEarned=50000000000,
                          ProfitLossForPeriod=1000000000, ProfitLossAfterTax=9000000000))
     assert r["revenue"] == 1000.0 and r["pat"] == 100.0
+
+
+def test_a_half_year_filing_is_read_apart_from_the_quarters():
+    """AAKAAR 2025-09-30: OneD is April to September. Most SME companies file so."""
+    x = _xbrl('<in-capmkt:RevenueFromOperations contextRef="OneD" unitRef="INR">253250000</in-capmkt:RevenueFromOperations>'
+              '<in-capmkt:ProfitLossForThePeriod contextRef="OneD" unitRef="INR">35408000</in-capmkt:ProfitLossForThePeriod>',
+              start="2025-04-01", end="2025-09-30")
+    assert I.parse(x) is None, "never in the quarterly file"
+    h = I.parse_half(x)
+    assert h["period_end"] == "2025-09-30" and h["revenue"] == 25.325 and h["pat"] == 3.5408
+
+
+def test_a_quarter_or_a_year_is_not_a_half_year():
+    rev = '<in-capmkt:RevenueFromOperations contextRef="OneD" unitRef="INR">1</in-capmkt:RevenueFromOperations>'
+    assert I.parse_half(_xbrl(rev, start="2025-07-01", end="2025-09-30")) is None
+    assert I.parse_half(_xbrl(rev, start="2025-04-01", end="2026-03-31")) is None

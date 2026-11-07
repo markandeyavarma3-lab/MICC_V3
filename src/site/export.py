@@ -482,6 +482,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
         q.close()
     by_co = (holdings or ({}, {}, {}, {}))[1]
     fund = fundamentals()
+    half = half_results()
     fund_ind = fund_industries()
     # The SME platform is outside the price spine by decision (0045): its closes
     # come from the bhavcopies, as traded, for a symbol with no spine price.
@@ -516,6 +517,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "meetings": _cols(["d", "purpose", "desc"], sorted(ms_["meet"].get(sym, set()), reverse=True)[:40]),
                "results": _cols(RESULT_COLS, fund.get(sym, [])),
                "results_withheld": WITHHELD.get(sym, []),
+               # Only where six-month figures say more than the quarters do.
+               "half": _cols(HALF_COLS, half.get(sym, []) if len(half.get(sym, [])) > len(fund.get(sym, [])) else []),
                "valuation": valuation(fund.get(sym, []), px_of(sym)[-1][1] if px_of(sym) else None),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
@@ -1087,6 +1090,33 @@ def fundamentals() -> dict[str, list]:
     return out
 
 
+HALF_COLS = ["pe", "consolidated", "revenue", "pbt", "pat", "eps", "filed"]
+
+
+def half_results(path: Path | None = None) -> dict[str, list]:
+    """symbol -> six-month results, newest first: consolidated where filed. Most SME
+    companies report only this way (src/ingest/results.py). Kept apart from the
+    quarterly rows: a half-year must not reach a growth figure, a margin line or a
+    P/E. The same mis-scaling check applies, blanking rather than rescaling."""
+    path = path or COLLECTED / "results" / "results_half.parquet"
+    if not path.exists():
+        return {}
+    q = duckdb.connect()
+    try:
+        rows = q.execute(f"""
+            SELECT symbol, period_end, consolidated, round(revenue, 2), round(pbt, 2), round(pat, 2), eps, filed
+            FROM (SELECT *, row_number() OVER (PARTITION BY symbol, period_end ORDER BY consolidated DESC, filed DESC) rk
+                  FROM read_parquet('{path}')) WHERE rk = 1 ORDER BY symbol, period_end DESC""").fetchall()
+    finally:
+        q.close()
+    out: dict[str, list] = defaultdict(list)
+    for sym, *r in rows:
+        out[sym].append([r[0], bool(r[1]), *r[2:]])
+    for res in out.values():
+        withhold_mis_scaled(res, (2, 3, 4))
+    return dict(out)
+
+
 #: Symbol -> quarters withhold_mis_scaled blanked, for the page to say so.
 WITHHELD: dict[str, list[str]] = {}
 #: Rupee fields of a results row (RESULT_COLS): withheld together, as a filing that
@@ -1094,7 +1124,7 @@ WITHHELD: dict[str, list[str]] = {}
 _RUPEE_AT = (2, 3, 4, 5, 6, 8, 9)
 
 
-def withhold_mis_scaled(res: list[list]) -> list[str]:
+def withhold_mis_scaled(res: list[list], rupee_at: tuple[int, ...] = _RUPEE_AT) -> list[str]:
     """Blank a quarter whose revenue is an exact power of ten off both neighbours
     that agree with each other, and return those quarters.
 
@@ -1114,7 +1144,7 @@ def withhold_mis_scaled(res: list[list]) -> list[str]:
         if round(off) != 0 and abs(off - round(off)) < (0.12 if abs(round(off)) == 1 else 0.25):
             out.append(i)
     for i in out:
-        for k in _RUPEE_AT:
+        for k in rupee_at:
             res[i][k] = None
     return [res[i][0] for i in out]
 
