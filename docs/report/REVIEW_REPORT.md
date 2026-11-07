@@ -153,7 +153,7 @@ On the website, these round trips are folded away by default, and one click show
 
 I do not assume the data is right. I test it:
 
-- **1280 automated tests** check the code and the data.
+- **1284 automated tests** check the code and the data.
 - I compared my share prices with a separate source across 2,651 companies. This found 226 missed splits and bonuses, which I corrected, and 203 bad one-day prices, which I removed.
 - A health check runs after every collection and reports any source that has gone stale.
 
@@ -302,7 +302,7 @@ A second pass runs at 21:00, for anything published late. A shareholding job run
 | Folder | What it does | Lines of code |
 |---|---|---:|
 | `src/archive` | Downloads files and stores the originals | 4,872 |
-| `src/ingest` | Reads files into tables | 4,689 |
+| `src/ingest` | Reads files into tables | 4,734 |
 | `src/warehouse` | Builds price tables and groups | 2,037 |
 | `src/identity` | Matches companies and symbols over time | 1,345 |
 | `src/mart` | Cleans deals and adds flags | 700 |
@@ -310,9 +310,9 @@ A second pass runs at 21:00, for anything published late. A shareholding job run
 | `src/scan` | Wide search over signals | 1,978 |
 | `src/governance` | Keeps a locked record of experiments | 620 |
 | `src/monitor` | Health checks, reports and alerts | 3,432 |
-| `src/site` | Prepares data for the website | 2,080 |
+| `src/site` | Prepares data for the website | 2,110 |
 | `src/common` | Shared helpers | 841 |
-| **Total** | | **31,230** |
+| **Total** | | **31,305** |
 
 ### 5.4 How the system stays safe
 
@@ -337,7 +337,7 @@ A second pass runs at 21:00, for anything published late. A shareholding job run
 | Website | **Astro** | Builds fast, simple pages that need no server |
 | Website look | **HTML, CSS, JavaScript** | Interactive charts and tables with few dependencies |
 | Scheduling | **macOS launchd** | Runs jobs by itself and survives restarts |
-| Testing | **pytest** | 1,280 automated tests |
+| Testing | **pytest** | 1,284 automated tests |
 | Version control | **Git and GitHub** | Full history of every change |
 | Backup | **restic and rclone** | Encrypted backups to Google Drive |
 | Alerts | **Telegram and email** | A short report after each run |
@@ -483,11 +483,11 @@ Figure 9. The Research page: what the tests found, in plain language.
 | **Repository** | `https://github.com/markandeyavarma3-lab/MICC_V3` |
 | **Visibility** | Public |
 | **Main branch** | `main` |
-| **Commits** | 313, since 16 August 2026 |
-| **Automated tests** | **1280 automated tests** in 103 files |
+| **Commits** | 315, since 16 August 2026 |
+| **Automated tests** | **1284 automated tests** in 103 files |
 | **Automatic checks** | GitHub Actions runs the basic tests on each push. The latest run, on 7 November 2026, passed |
 
-The website has its own separate repository, `research-website`, with 26 commits. That one stays only on my laptop, because the website is not published.
+The website has its own separate repository, `research-website`, with 27 commits. That one stays only on my laptop, because the website is not published.
 
 ### 8.2 What is on GitHub and what is not
 
@@ -495,20 +495,20 @@ The source code, tests, plans, decision records and reports are on GitHub. The d
 
 ### 8.3 Work over time
 
-The repository received 54 commits in August 2026, 116 in September, 128 in October and 15 so far in November.
+The repository received 54 commits in August 2026, 116 in September, 128 in October and 17 so far in November.
 
 ### 8.4 Latest commits
 
 | Commit | Date | What changed |
 |---|---|---|
+| `18d6945` | 2026‑11‑07 | Half-yearly results for companies that report only every six months |
+| `f401a90` | 2026‑11‑07 | Review report: trimmed to 21 pages, with the first green GitHub run recorded |
 | `aff8e78` | 2026‑11‑07 | CI: run on macOS, where the project runs |
 | `a700404` | 2026‑11‑07 | CI: install zsh, which the backup tests execute |
 | `209de3b` | 2026‑11‑07 | CI: failing test names as public annotations |
 | `87a3c4a` | 2026‑11‑07 | Review report: nine plain-English parts, Arial, with screens and the commit log |
 | `97ee4db` | 2026‑11‑07 | Research lab, market trading patterns, and GitHub's unit tests made green |
 | `47a9c8c` | 2026‑11‑06 | Shareholding through renames and typos; mis-scaled results withheld; BSE filings since 2021 |
-| `57eaecf` | 2026‑11‑06 | Site: SME prices from the bhavcopies, as traded |
-| `77dd67c` | 2026‑11‑06 | Site: investor labels corrected from the exchange's raw names; research untouched |
 
 ### 8.5 Earlier versions
 
@@ -525,7 +525,7 @@ India's free market disclosures were scattered, some disappeared daily, and they
 - **The collector** runs by itself every evening, and has saved more than 1,92,000 original files.
 - **The database** holds about 20 years of market history, with companies and investors matched across name changes.
 - **The web application** shows 4,419 stocks, 34,601 participants and 3,864 fund schemes in one place, with no advice.
-- **The checks** include 1,280 automated tests, a price check against a separate source, and a health report after every run.
+- **The checks** include 1,284 automated tests, a price check against a separate source, and a health report after every run.
 
 ### What is not finished
 
