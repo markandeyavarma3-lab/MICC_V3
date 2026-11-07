@@ -1,6 +1,6 @@
 <div style="height:62mm"></div>
 
-# Indian Market Disclosures in One Place
+# Indian Market Disclosures in One Place {: .nobreak }
 
 **A free data platform and web application for India's public stock market disclosures**
 
@@ -286,16 +286,12 @@ The design is one straight line. The website never talks to the exchange and nev
 
 ### 5.2 What happens every evening
 
-```mermaid
-flowchart TB
-  T["18:30: the scheduler starts the job"] --> F["Download the day's files and save the originals"]
-  F --> R["Read them into tables; update prices, names and labels"]
-  R --> B["Encrypted backup to Google Drive, then a health check"]
-  B --> X["Rebuild the website"]
-  X --> O["Send a report by Telegram and email"]
-```
-
-*The evening run, in order.*
+1. At 18:30, the scheduler starts the job.
+2. The system downloads the day's files and saves the originals.
+3. It reads them into tables, and updates prices, names and labels.
+4. It makes an encrypted backup to Google Drive and runs a health check.
+5. It rebuilds the website.
+6. It sends a report by Telegram and email.
 
 The run has 33 recorded stages. Each stage records whether it passed and how long it took. If one stage fails, the rest continue, and the report names the stage that failed.
 
@@ -433,29 +429,22 @@ Figure 4. The Funds page: fund houses and their schemes, from month-end portfoli
 Figure 5. The Markets page, showing how the market trades by month. The fall at the end of the turnover chart is because November 2026 is only part of a month.
 {: .caption}
 
-![Insights page](screens/insights.png)
-
-Figure 6. The Insights page: disclosed deal value each year, by type of participant.
-{: .caption}
-
-<div class="pagebreak"></div>
-
 ![Screener page](screens/screener.png)
 
-Figure 7. The Screener page: filtering companies on disclosed numbers.
+Figure 6. The Screener page: filtering companies on disclosed numbers.
 {: .caption}
 
 ![System page](screens/system.png)
 
-Figure 8. The System page. It shows each run, including a failed one. Nothing is hidden.
+Figure 7. The System page. It shows each run, including a failed one. Nothing is hidden.
+{: .caption}
+
+![Research lab page](screens/lab.png)
+
+Figure 8. The Research lab, showing one example view. It carries a clear warning, and it stays on my laptop.
 {: .caption}
 
 <div class="pagebreak"></div>
-
-![Research page](screens/research.png)
-
-Figure 9. The Research page: what the tests found, in plain language.
-{: .caption}
 
 ### 7.5 What the data showed
 
@@ -476,11 +465,11 @@ The one "yes" is this: after a company reports that its auditor, CEO or MD, CFO 
 
 The result that matters most for this project is that public disclosures are useful to read, but they are not a simple signal to buy or sell. That is one more reason the website only shows facts.
 
-Figure 10 shows the Research lab, where I can explore this kind of question further. Its numbers are only for exploring and are not findings.
+Figure 9 shows these answers on the website. The Research lab in Figure 8 lets me explore this kind of question further, but its numbers are only for exploring and are not findings.
 
-![Research lab page](screens/lab.png)
+![Research page](screens/research.png)
 
-Figure 10. The Research lab, showing one example view. It carries a clear warning, and it stays on my laptop.
+Figure 9. The Research page: what the tests found, in plain language.
 {: .caption}
 
 <div class="pagebreak"></div>
@@ -494,9 +483,9 @@ Figure 10. The Research lab, showing one example view. It carries a clear warnin
 | **Repository** | `https://github.com/markandeyavarma3-lab/MICC_V3` |
 | **Visibility** | Public |
 | **Main branch** | `main` |
-| **Commits** | 308, since 16 August 2026 |
+| **Commits** | 313, since 16 August 2026 |
 | **Automated tests** | **1280 automated tests** in 103 files |
-| **Automatic checks** | GitHub Actions runs the basic tests on each push |
+| **Automatic checks** | GitHub Actions runs the basic tests on each push. The latest run, on 7 November 2026, passed |
 
 The website has its own separate repository, `research-website`, with 26 commits. That one stays only on my laptop, because the website is not published.
 
@@ -506,39 +495,24 @@ The source code, tests, plans, decision records and reports are on GitHub. The d
 
 ### 8.3 Work over time
 
-| Month | Commits |
-|---|---:|
-| August 2026 | 54 |
-| September 2026 | 116 |
-| October 2026 | 128 |
-| November 2026 (so far) | 10 |
+The repository received 54 commits in August 2026, 116 in September, 128 in October and 15 so far in November.
 
 ### 8.4 Latest commits
 
-These are the most recent commits to the main repository.
-
 | Commit | Date | What changed |
 |---|---|---|
+| `aff8e78` | 2026‑11‑07 | CI: run on macOS, where the project runs |
+| `a700404` | 2026‑11‑07 | CI: install zsh, which the backup tests execute |
+| `209de3b` | 2026‑11‑07 | CI: failing test names as public annotations |
+| `87a3c4a` | 2026‑11‑07 | Review report: nine plain-English parts, Arial, with screens and the commit log |
 | `97ee4db` | 2026‑11‑07 | Research lab, market trading patterns, and GitHub's unit tests made green |
 | `47a9c8c` | 2026‑11‑06 | Shareholding through renames and typos; mis-scaled results withheld; BSE filings since 2021 |
 | `57eaecf` | 2026‑11‑06 | Site: SME prices from the bhavcopies, as traded |
 | `77dd67c` | 2026‑11‑06 | Site: investor labels corrected from the exchange's raw names; research untouched |
-| `0fb1368` | 2026‑11‑06 | SME companies asked under NSE's index=sme: results and shareholding, nightly |
-| `acc7d1e` | 2026‑11‑06 | 0097 run: 110 F&O sessions in the spine; a share split is not a delisting on the site |
-| `0bdf417` | 2026‑11‑06 | Fill the data gaps: & symbols, insurers, half-year filings, old ISINs, SME names |
-| `8fa35cb` | 2026‑11‑05 | Site export: the newest month most schemes have reached, not the newest month |
-| `efe199e` | 2026‑11‑05 | Site export: insider history from the seed too, impossible values blanked; delivery per stock |
-| `e6587fa` | 2026‑11‑03 | 0096: back up to Google Drive every run; the pen drive is the second copy |
 
 ### 8.5 Earlier versions
 
-This is the third version of the project. The first two are kept for the record.
-
-| Version | Period | Result |
-|---|---|---|
-| V1 (MICC) | June to July 2026 | Collected the first data, 1.13 crore rows, still in use |
-| V2 (MICCV2) | July to August 2026 | Tried to find trading strategies, and I stopped it after an audit found its costs were calculated wrongly |
-| V3 (this project) | August 2026 to now | The working platform and website |
+This is the third version of the project. V1 (June to July 2026) collected the first data, 1.13 crore rows that are still in use. V2 (July to August 2026) tried to find trading strategies, and I stopped it after an audit found its costs were calculated wrongly.
 
 <div class="pagebreak"></div>
 
