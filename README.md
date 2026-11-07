@@ -17,7 +17,7 @@ A test asserts no order-placement code exists anywhere in the repo.
 | | |
 |---|---|
 | **Steps** | [45 verified, 11 wired, 9 built, 12 specified, 2 impossible](docs/STATUS.md) |
-| **Tests** | 1,280 |
+| **Tests** | 1,284 |
 | **Decision records** | 97 |
 | **Research findings** | exp_007: stocks lag comparable stocks by 1.73% over 63 sessions after a governance resignation ([result](docs/reports/EXP007_RESULT.md)) |
 | **Application** | [`research-website`](../research-website), local only |
