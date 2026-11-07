@@ -36,7 +36,14 @@ jobs:
       - name: Unit tests
         env:
           RESEARCH_ENV: dev
-        run: pytest tests -m "unit and not needs_data" -q
+        # Failing test names go out as annotations, which anyone can read without
+        # signing in; the full log needs a GitHub login.
+        run: |
+          set -o pipefail
+          pytest tests -m "unit and not needs_data" -q --tb=line -rf 2>&1 | tee pytest.out || {
+            grep -E '^(FAILED|ERROR) ' pytest.out | head -9 | cut -c1-240 | sed 's/^/::error::/'
+            exit 1
+          }
       - name: No order-placement code exists
         env:
           RESEARCH_ENV: dev
