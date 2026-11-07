@@ -478,3 +478,85 @@ def test_a_mis_scaled_half_year_is_blanked_like_a_quarter():
     res = [["c", False, 100.0, 5.0, 4.0, 1.0, "x"], ["b", False, 1.0, 5.0, 4.0, 1.0, "x"], ["a", False, 90.0, 5.0, 4.0, 1.0, "x"]]
     assert X.withhold_mis_scaled(res, (2, 3, 4)) == ["b"]
     assert res[1][2:5] == [None, None, None] and res[1][5] == 1.0
+
+
+def _res_row(shares, pat=100.0, eps=2.0):
+    return ["2026-09-30", True, 500.0, 1.0, 120.0, pat, pat, eps, 1.0, 1.0, shares, False, "2026-10-20"]
+
+
+def test_a_filed_count_stands_in_only_where_the_results_give_none_believable():
+    filed = (50.0, "2026-06-30")
+    # The results state no count: insurers, and HAVELLS's newest quarter.
+    v = X.valuation([_res_row(None)], 10.0, filed)
+    assert (v["mcap_cr"], v["shares_filed_q"]) == (500, "2026-06-30")
+    # A believable count from the results stays, whatever the filing says.
+    v = X.valuation([_res_row(48.0)], 10.0, filed)
+    assert (v["mcap_cr"], v["shares_filed_q"]) == (480, None)
+    # Profit / EPS sides with the filing against a count ten times low.
+    v = X.valuation([_res_row(5.0)], 10.0, filed)
+    assert (v["mcap_cr"], v["shares_filed_q"]) == (500, "2026-06-30")
+    # The filing disagrees with profit / EPS: it is not used, and a blank stays blank.
+    v = X.valuation([_res_row(None)], 10.0, (500.0, "2026-06-30"))
+    assert (v["mcap_cr"], v["shares_filed_q"]) == (None, None)
+
+
+def test_a_new_listing_with_no_results_still_gets_a_market_cap_from_its_filing():
+    v = X.valuation([], 10.0, (50.0, "2026-10-23"))
+    assert (v["mcap_cr"], v["pe"], v["as_of_quarter"]) == (500, None, None)
+    assert X.valuation([], 10.0) is None
+    assert X.valuation([], None, (50.0, "2026-10-23")) is None
+
+
+def test_a_filed_count_is_dropped_when_old_or_when_shares_were_resized_since():
+    rec = (50.0, "2026-06-30")
+    assert X.usable_filed_shares(rec, [], "2026-11-06") == rec
+    assert X.usable_filed_shares(rec, [], "2027-06-30") is None
+    assert X.usable_filed_shares(None, [], "2026-11-06") is None
+    assert X.usable_filed_shares(rec, [("2026-08-01", "Bonus 1:1", "")], "2026-11-06") is None
+    assert X.usable_filed_shares(rec, [("2026-08-01", "Face Value Split (Sub-Division)", "")], "2026-11-06") is None
+    # Before the filing, it is already in the count; a dividend changes nothing.
+    assert X.usable_filed_shares(rec, [("2026-05-01", "Bonus 1:1", "")], "2026-11-06") == rec
+    assert X.usable_filed_shares(rec, [("2026-08-01", "Dividend - Rs 6 Per Share", "")], "2026-11-06") == rec
+
+
+def test_bse_index_settles_a_mangled_isin_but_never_absorbs_a_current_one():
+    own = {"INE987B01026": [["2018-06-30", 1]], "INE98B010126": [["2018-09-30", 2]], "INE111A01011": [["2018-12-31", 3]]}
+    got = X.chain_isins(own, {"INE987B01026", "INE111A01011"}, filed_for={"INE98B010126": "INE987B01026",
+                                                                           "INE111A01011": "INE987B01026"})
+    assert [r[0] for r in got["INE987B01026"]] == ["2018-06-30", "2018-09-30"]
+    assert [r[0] for r in got["INE111A01011"]] == ["2018-12-31"]
+
+
+def test_bse_filed_for_and_quarter_come_from_the_file_name(tmp_path):
+    import duckdb
+    p = tmp_path / "s.parquet"
+    con = duckdb.connect()
+    con.execute(f"""COPY (SELECT * FROM (VALUES
+        ('INE98B010126', '2018-09-30', 'INE987B01026_2018-09-30_aaaa.xml.gz'),
+        ('INE022Q01012', '2018-09-30', 'INE022Q01020_2018-09-30_bbbb.xml.gz'),
+        ('INE197J01017', '2008-03-31', 'INE197J01017_2019-09-30_cccc.xml.gz'),
+        ('INE555X01011', '2020-03-31', 'INE555Y01011_2020-03-31_dddd.xml.gz'),
+        ('INE555X01011', '2020-06-30', 'INE555Z01011_2020-06-30_eeee.xml.gz'),
+        ('INE777A01011', '2020-03-31', 'SHP_7_nse.xml.gz'))
+        AS t(isin, quarter_end, source_file)) TO '{p}' (FORMAT PARQUET)""")
+    # Old and new ISIN of one issuer is the chain's business; two claimants is no answer.
+    assert X.bse_filed_for(con, str(p)) == {"INE98B010126": "INE987B01026"}
+    got = dict(con.execute(f"SELECT source_file, {X.BSE_QUARTER_SQL} FROM read_parquet('{p}')").fetchall())
+    assert got["INE197J01017_2019-09-30_cccc.xml.gz"] == "2019-09-30"
+    assert got["SHP_7_nse.xml.gz"] == "2020-03-31"
+
+
+def test_no_trailing_figure_or_growth_rate_across_standalone_and_consolidated():
+    def row(qe, cons, rev):
+        return [qe, cons, rev, 1.0, 10.0, 8.0, 8.0, 2.0, 1.0, 1.0, 4.0, False, "2026-10-20"]
+    one = [row(q, True, 100.0) for q in ("2026-09-30", "2026-06-30", "2026-03-31", "2025-12-31")]
+    assert X.valuation(one, 10.0)["ttm_revenue_cr"] == 400
+    mixed = [*one[:3], row("2025-12-31", False, 6.0)]
+    v = X.valuation(mixed, 10.0)
+    assert (v["ttm_revenue_cr"], v["ttm_profit_cr"], v["pe"]) == (None, None, None)
+    assert v["mcap_cr"] == 40
+    doc = {"results": {"rows": [row("2026-09-30", True, 120.0), row("2025-09-30", False, 6.0)]},
+           "own": {"rows": []}, "valuation": None, "co": "X", "industry": None, "indices": []}
+    assert X._screen_row("X", doc, [], "2025-11-06")[8] is None
+    doc["results"]["rows"][1][1] = True
+    assert X._screen_row("X", doc, [], "2025-11-06")[8] == 1900.0
