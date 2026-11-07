@@ -38,6 +38,11 @@ from src.archive import results as R  # noqa: E402
 from src.common.paths import COLLECTED  # noqa: E402
 
 OUT = COLLECTED / "results" / "results_quarterly.parquet"
+#: Six-month figures, apart from the quarters: most SME companies report only this
+#: way (1,020 of 1,152 filings on 2026-11-07), and a half-year in the quarterly file
+#: would double a growth figure. The site shows them under their own heading.
+OUT_HALF = COLLECTED / "results" / "results_half.parquet"
+HALF_COLS = ["symbol", "period_end", "consolidated", "filed", "revenue", "pbt", "pat", "eps"]
 CR = 1e7
 
 FIELDS: dict[str, tuple[str, ...]] = {
@@ -154,6 +159,32 @@ def parse(text: str) -> dict | None:
     return row if any(k in row for k in ("revenue", "pat")) else None
 
 
+def parse_half(text: str) -> dict | None:
+    """A filing whose OneD spans about six months: its figures, or None. Only
+    called on a filing parse() refused, so a quarter column always wins."""
+    spans = {cid: (_START.search(b), _END.search(b)) for cid, b in _CTX.findall(text) if "xbrldi:" not in b}
+    s, e = spans.get("OneD", (None, None))
+    if not (s and e):
+        return None
+    start, end = date.fromisoformat(s.group(1)), date.fromisoformat(e.group(1))
+    if not 170 <= (end - start).days <= 190:
+        return None
+    facts: dict[str, str] = {}
+    for name, ref, val in _FACT.findall(text):
+        if ref == "OneD":
+            facts.setdefault(name, val.strip())
+    row: dict = {"period_end": end.isoformat()}
+    for field in ("revenue", "pbt", "pat", "eps"):
+        for n in FIELDS[field]:
+            try:
+                v = float(facts[n])
+            except (KeyError, ValueError):
+                continue
+            row[field] = v / CR if field in RUPEE_FIELDS else v
+            break
+    return row if any(k in row for k in ("revenue", "pat")) else None
+
+
 # --- the pre-XBRL HTML tables (2005-2017) ----------------------------------
 # NSE's nsearchives/archives/financial_results/financial_res_<SYM>_<seq>.html:
 # one <tr> per line item, label then amount, the unit stated once
@@ -260,19 +291,25 @@ def check_spans(rows: list[dict]) -> tuple[list[dict], int, int]:
 def main() -> int:
     import duckdb
     rows = []
+    halves: list[dict] = []
     relabel: list[dict] = []
     bad = mislabelled = 0
     for ln in R.MANIFEST.read_text().splitlines() if R.MANIFEST.exists() else []:
         r = json.loads(ln)
         if r.get("kind") not in ("xbrl", "html") or r.get("status") != "STORED":
             continue
+        text = ""
         try:
             text = gzip.decompress(Path(r["path"]).read_bytes()).decode("utf-8", "replace")
             p = parse_html(text) if r["kind"] == "html" else parse(text)
         except (OSError, ValueError):
             p = None
         if not p:
-            bad += 1
+            h = parse_half(text) if r["kind"] == "xbrl" and text else None
+            if h:
+                halves.append({"symbol": r["symbol"], "consolidated": r["consolidated"], "filed": r["filed"], **h})
+            else:
+                bad += 1
             continue
         if p.get("period_end") and p["period_end"] != r["qe"]:
             # NSE's index files some filings under the wrong quarter (AEGISLOG's
@@ -306,8 +343,16 @@ def main() -> int:
         tmp = OUT.with_suffix(".parquet.partial")
         con.execute(f"COPY (SELECT * FROM t ORDER BY symbol, qe) TO '{tmp}' (FORMAT PARQUET)")
         tmp.replace(OUT)
+        con.execute("CREATE TABLE h (symbol VARCHAR, period_end VARCHAR, consolidated BOOLEAN, filed VARCHAR,"
+                    " revenue DOUBLE, pbt DOUBLE, pat DOUBLE, eps DOUBLE)")
+        if halves:
+            con.executemany("INSERT INTO h VALUES (?,?,?,?,?,?,?,?)", [[r.get(c) for c in HALF_COLS] for r in halves])
+        tmp = OUT_HALF.with_suffix(".parquet.partial")
+        con.execute(f"COPY (SELECT * FROM h ORDER BY symbol, period_end) TO '{tmp}' (FORMAT PARQUET)")
+        tmp.replace(OUT_HALF)
     finally:
         con.close()
+    print(f"  RESULTS: {len(halves):,} half-yearly rows -> {OUT_HALF.name}")
     print(f"  RESULTS: {len(rows):,} quarterly rows for {len({r['symbol'] for r in rows}):,} companies"
           f" ({bad} files without a quarter or a revenue/profit line; {mislabelled} filed under the wrong quarter and"
           f" colliding, dropped; {len(relabel) - mislabelled} re-dated to their own quarter; {checked} half-yearly/yearly"
