@@ -24,6 +24,7 @@ pulled from a CDN at build time, so the report still builds with no network.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -98,6 +99,12 @@ figcaption, p.caption, .caption {
   margin: 0 auto 16px; max-width: 88%; font-style: italic; line-height: 1.4;
   page-break-before: avoid;
 }
+/* Screenshots: `alt` tells them from the rasterised diagrams, which have none. */
+img[alt] { max-width: 92%; display: block; margin: 8px auto 4px; border: 1px solid #c7ced8;
+           page-break-inside: avoid; break-inside: avoid; }
+p:has(img[alt]) { display: block; page-break-inside: avoid; break-inside: avoid;
+                  page-break-after: avoid; break-after: avoid; margin-bottom: 0; }
+.pagebreak { page-break-before: always; break-before: page; }
 .toc { font-size: 10pt; }
 .toc a { display: block; padding: 2.5px 0; border-bottom: 1px dotted #dde2e8; }
 .toc .l2 { padding-left: 17px; font-size: 9.4pt; color: #3d4653; }
@@ -143,10 +150,18 @@ def build_toc(html: str) -> str:
     return '<div class="toc">' + "".join(rows) + "</div>"
 
 
-def wrap(body: str, title: str) -> str:
+def font_css(font: str | None) -> str:
+    """A report-wide font in place of the default serif, with text set flush left."""
+    if not font:
+        return ""
+    return (f"body, h1, h2, h3, h4, th {{ font-family: {font}, Helvetica, sans-serif; }}"
+            " p { text-align: left; hyphens: none; } body { font-size: 11pt; line-height: 1.5; }")
+
+
+def wrap(body: str, title: str, font: str | None = None) -> str:
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>{title}</title>
-<style>{CSS}</style>
+<style>{CSS}{font_css(font)}</style>
 <script src="mermaid.min.js"></script>
 </head><body>
 {body}
@@ -224,8 +239,13 @@ def main(argv: list[str] | None = None) -> int:
         toc = build_toc(body)
         body = body.replace("<p>&lt;!--TOC--&gt;</p>", toc).replace("<!--TOC-->", toc)
 
+    # The HTML is rendered from BUILD, so screenshots beside the source must be there too.
+    if (src.parent / "screens").is_dir():
+        shutil.copytree(src.parent / "screens", BUILD / "screens", dirs_exist_ok=True)
+
     html_path = BUILD / (src.stem + ".html")
-    html_path.write_text(wrap(body, title))
+    font = argv[argv.index("--font") + 1] if "--font" in argv else None
+    html_path.write_text(wrap(body, title, font))
     print(f"  html  {html_path.relative_to(ROOT)}  ({len(body):,} chars)")
 
     if "--no-pdf" in argv:

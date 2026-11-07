@@ -198,7 +198,7 @@ def export(out: Path = SITE_DATA, env: str | None = None, since: str = "2005-01-
     meta = {"built_at": datetime.now(UTC).isoformat(timespec="seconds"),
             "latest_session": index[0]["date"] if index else None,
             "sessions": len(index), "deals": len(rows),
-            "source": "NSE and BSE public disclosures; participant labels by this project",
+            "source": "Public disclosures from NSE, BSE (shareholding), NSDL and fund houses; participant labels by this project",
             "health": _health()}
     export_markets(out, env)
     export_insights(out, rows)
@@ -241,13 +241,38 @@ def nifty_valuation(q, collected: Path, seed: Path | None = None) -> list[list]:
     return [[str(d), c, pe, pb, dy] for d, c, pe, pb, dy in older] + rows
 
 
+def market_micro(q, spine: str, delivery: Path) -> dict:
+    """How the market trades, by month: stocks traded, turnover, the share of
+    turnover in the ten busiest stocks, and the quantity-weighted delivery share.
+    Whole-market descriptions from the raw price files: no return, no judgement."""
+    series = ", ".join(f"'{x}'" for x in DELIVERY_SERIES)
+    dlv = dict(q.execute(f"""
+        SELECT substr(date, 1, 7), round(100 * sum(deliverable_qty) / sum(traded_qty), 1)
+        FROM read_parquet('{delivery}') WHERE series IN ({series}) AND traded_qty > 0
+        GROUP BY 1""").fetchall()) if delivery.exists() else {}
+    rows = q.execute(f"""
+        WITH t AS (SELECT substr(CAST(date AS VARCHAR), 1, 7) m, symbol, sum(close * volume) v
+                   FROM read_parquet('{spine}', hive_partitioning=true) WHERE close > 0 AND volume > 0
+                   GROUP BY 1, 2),
+        r AS (SELECT *, row_number() OVER (PARTITION BY m ORDER BY v DESC) i FROM t)
+        SELECT m, count(*), round(sum(v) / {CR}, 1), round(100 * sum(v) FILTER (WHERE i <= 10) / sum(v), 1)
+        FROM r GROUP BY 1 ORDER BY 1""").fetchall()
+    return _cols(["m", "stocks", "turnover_cr", "top10_pct", "delivery_pct"],
+                 [[m, n, cr, top, dlv.get(m)] for m, n, cr, top in rows])
+
+
 def export_markets(out: Path, env: str | None = None) -> None:
     """data/markets.json: foreign-investor flows (NSDL, 1999+), FII/DII cash,
     F&O index-futures positioning by category (2014+), the NIFTY 500 total
-    return (1995+) and NIFTY 50 valuation (2005+). Levels and flows only."""
+    return (1995+), NIFTY 50 valuation (2005+) and how the market trades by month.
+    Levels and flows only."""
     q = duckdb.connect()
     doc: dict = {}
     try:
+        spine_dir = warehouse_dir(env) / "price_spine"
+        if list(spine_dir.glob("**/*.parquet")):
+            doc["micro"] = market_micro(q, str(spine_dir / "**" / "*.parquet"),
+                                        COLLECTED / "delivery" / "delivery.parquet")
         inv = COLLECTED / "fpi_nsdl" / "fpi_investment.parquet"
         if inv.exists():
             # Equity is one line ('' route) to 2009-11 and split by route after;

@@ -7,19 +7,23 @@ whether any of it contains repeatable information.
 It places **no orders**, holds **no money**, and has **no live-trading path**.
 A test asserts no order-placement code exists anywhere in the repo.
 
-> **In progress — Phase 1 of 9.** Published early on purpose: the findings here
-> are mostly expected to be negative, and a platform whose negative results
-> appear only after they're safe is not one you should trust.
+> **Research complete for now; collection continues.** Eight experiments are
+> registered: most answered "no" or "the data is too short", and one passed its
+> pre-registered test. It is a price effect, not a trading result. Start with the
+> [review report](docs/report/REVIEW_REPORT.md).
 
-## Status — 2026-09-01
+## Status — 7 November 2026
 
 | | |
 |---|---|
-| **Phase** | 1 of 9 — skeleton, migrations, warehouse rebuild |
-| **Tests** | 789 pass |
-| **Decision records** | 51 |
-| **Research findings** | One, and it is a rejection: [Finding 001](docs/reports/FINDING_001_bulk_deal_avoidance.md) failed its own pre-registered bar |
+| **Steps** | [45 verified, 11 wired, 9 built, 12 specified, 2 impossible](docs/STATUS.md) |
+| **Tests** | 1,280 |
+| **Decision records** | 97 |
+| **Research findings** | exp_007: stocks lag comparable stocks by 1.73% over 63 sessions after a governance resignation ([result](docs/reports/EXP007_RESULT.md)) |
+| **Application** | [`research-website`](../research-website), local only |
 | **Predecessor** | [MICCV2](../MICCV2) frozen at tag `frozen-2026-08-16` |
+
+## The record as of 2026-09-01
 
 **Two things a reader should know before the numbers below.**
 
@@ -126,5 +130,6 @@ db/           gitignored — research.duckdb, governance.sqlite, review.sqlite
 ## Running
 
 ```bash
-RESEARCH_ENV=dev python -m pytest tests -q
+RESEARCH_ENV=dev python -m pytest tests -m unit -q   # no data needed
+RESEARCH_ENV=prod python -m pytest tests -q          # everything; needs data/ and about 8 GB, never between 18:25 and 21:15 IST
 ```

@@ -260,6 +260,7 @@ def test_every_acknowledged_gap_carries_a_reason_and_a_date():
         )
 
 
+@pytest.mark.needs_data
 def test_the_acknowledged_list_only_covers_gaps_that_are_real():
     """A stale acknowledgement silences a gap that has since been recovered, or
     one that never existed. Every entry must correspond to a gap health.read()

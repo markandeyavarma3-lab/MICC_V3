@@ -16,7 +16,7 @@ having no consumer at all, which is what these levels exist to make visible.
 | **IMPOSSIBLE** | measured to be undoable; evidence attached |
 | **BLOCKED** | waiting on something outside the project |
 
-VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
+VERIFIED: 45  WIRED: 11  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 
 ## Phase 0 Audit & specification
 
@@ -43,7 +43,7 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 | 1.7 | Carry the seed, hash every file into the DAG | **VERIFIED** |  |
 | 1.8 | Price spine, ADJUSTED spine, PIT universe | **VERIFIED** | adjusted spine reaches 2026-11-06; PIT universe still missing |
 | 1.9 | Provenance DAG live — every table registers artefact and edges | **VERIFIED** | 23 artefacts are test pollution and cannot be removed (append-only) |
-| 1.10 | Close Risk 8 — off-machine backup with a watched restore | **VERIFIED** | newest Google Drive 2026-11-06 14:07 UTC (snapshot 5dfedfb1); pen drive none; 1 commit(s) and 0 archived session(s) not in it; static 9.1 GB in Google Drive |
+| 1.10 | Close Risk 8 — off-machine backup with a watched restore | WIRED | newest Google Drive 2026-11-06 15:51 UTC (snapshot a38ccb35); pen drive none; 4 commit(s) and 78 archived session(s) not in it; static 9.1 GB in Google Drive |
 
 ## Phase 2 Collection
 
@@ -154,4 +154,4 @@ VERIFIED: 46  WIRED: 10  BUILT: 9  SPECIFIED: 12  IMPOSSIBLE: 2  BLOCKED: 0
 
 ---
 
-Derived at commit `0bdf417`.
+Derived at commit `47a9c8c`.
