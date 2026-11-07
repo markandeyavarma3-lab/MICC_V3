@@ -444,6 +444,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
             f"round(SUM(CASE WHEN category IN ({', '.join(repr(c) for c in cats)}) THEN pct_shares END), 3) AS {k}"
             for k, cats in OWNERSHIP.items())
         own: dict[str, list] = defaultdict(list)
+        filed_count: dict[str, tuple] = {}
         shp_co: dict[str, str] = {}
         if Path(shp).exists():
             # Some security_master rows carry the SYMBOL as company_name (TCS ->
@@ -451,10 +452,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
             shp_co = dict(q.execute(f"SELECT isin, arg_max(company, broadcast_date) FROM read_parquet('{shp}')"
                                     " WHERE company IS NOT NULL GROUP BY 1").fetchall())
             for isin, qe, *vals in q.execute(f"""
-                    WITH latest AS (SELECT isin, quarter_end, max(broadcast_date) b FROM read_parquet('{shp}')
-                                    GROUP BY 1, 2)
+                    WITH h AS (SELECT * REPLACE ({BSE_QUARTER_SQL} AS quarter_end) FROM read_parquet('{shp}')),
+                    latest AS (SELECT isin, quarter_end, max(broadcast_date) b FROM h GROUP BY 1, 2)
                     SELECT h.isin, h.quarter_end, {cases}
-                    FROM read_parquet('{shp}') h JOIN latest l
+                    FROM h JOIN latest l
                       ON l.isin = h.isin AND l.quarter_end = h.quarter_end AND l.b = h.broadcast_date
                     GROUP BY 1, 2 ORDER BY 1, 2""").fetchall():
                 own[isin].append([qe, *vals])
@@ -467,7 +468,8 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
             # must not block the renamed company: PHILIPCARB's page held INE602A01023,
             # which read as a live security, so PCBL lost its 2018-2021 filings.
             live = {isin_of[s] for s in isin_of if s in listed_now} or set(isin_of.values())
-            own = chain_isins(own, live, filed_as, isin_of)
+            own = chain_isins(own, live, filed_as, isin_of, bse_filed_for(q, shp))
+            filed_count = filed_share_counts(q, shp)
         insider = insider_rows(q)
         delivery = delivery_series(q)
         adj_dir = warehouse_dir(env) / "price_spine_adj"
@@ -493,6 +495,10 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     last_day = max((r[0] for r in rows), default="")
     cut12 = f"{int(last_day[:4]) - 1}{last_day[4:]}" if last_day else ""
     screen: list[list] = []
+
+    def filed_of(s):
+        return usable_filed_shares(filed_count.get(isin_of.get(s)), ms_["actions"].get(s, ()), last_day)
+
     for sym in syms:
         i = ident.get(sym, {})
         isin = isin_of.get(sym)
@@ -519,7 +525,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
                "results_withheld": WITHHELD.get(sym, []),
                # Only where six-month figures say more than the quarters do.
                "half": _cols(HALF_COLS, half.get(sym, []) if len(half.get(sym, [])) > len(fund.get(sym, [])) else []),
-               "valuation": valuation(fund.get(sym, []), px_of(sym)[-1][1] if px_of(sym) else None),
+               "valuation": valuation(fund.get(sym, []), px_of(sym)[-1][1] if px_of(sym) else None, filed_of(sym)),
                "pledge": dict(zip(["shp_q", "promoter_pct", "pledged_pct_of_promoter", "pledged_pct_of_total",
                                    "depository_pledged_pct", "as_of"], ms_["pledge"][sym], strict=True))
                          if sym in ms_["pledge"] else None,
@@ -531,7 +537,7 @@ def export_stocks(out: Path, rows: list, env: str | None = None, holdings: tuple
     (out / "screener.json").write_text(json.dumps(_cols(SCREEN_COLS, screen), separators=(",", ":")))
 
     def _val(s):
-        v = valuation(fund.get(s, []), weekly[s][-1][1] if weekly.get(s) else None) or {}
+        v = valuation(fund.get(s, []), weekly[s][-1][1] if weekly.get(s) else None, filed_of(s)) or {}
         return v.get("mcap_cr"), v.get("pe")
     index = sorted(([s, co.get(s) or ident.get(s, {}).get("co") or "", sym_file(s), len(deals.get(s, [])),
                      ms_["industry"].get(s), ms_["indices"].get(s, []), *_val(s)]
@@ -604,8 +610,28 @@ def _near(a: str, b: str) -> bool:
     return len(a) == len(b) and a != b and sum(x != y for x, y in zip(a, b, strict=True)) <= 2
 
 
+#: A file from BSE is named <isin>_<quarter>_<digest> from BSE's own index, which
+#: has the company and quarter right where the filer's XBRL does not.
+_BSE_FILE = r"^(IN[A-Z0-9]{10})_(\d{4}-\d{2}-\d{2})_"
+#: The quarter by BSE's index. LPDC's September 2019 file says March 2008, a real
+#: row on a wrong date that also made 35 false holes; 11 files in all (2026-11-07).
+BSE_QUARTER_SQL = (f"CASE WHEN regexp_matches(source_file, '{_BSE_FILE}') "
+                   f"THEN regexp_extract(source_file, '{_BSE_FILE}', 2) ELSE quarter_end END")
+
+
+def bse_filed_for(q, shp: str) -> dict[str, str]:
+    """Mistyped ISIN -> the ISIN BSE's index gives for those filings, where the two
+    name different issuers and every such filing points to one company."""
+    return dict(q.execute(f"""
+        SELECT isin, any_value(right_isin) FROM (
+            SELECT DISTINCT isin, regexp_extract(source_file, '{_BSE_FILE}', 1) AS right_isin
+            FROM read_parquet('{shp}') WHERE regexp_matches(source_file, '{_BSE_FILE}'))
+        WHERE substr(isin, 1, 9) <> substr(right_isin, 1, 9)
+        GROUP BY 1 HAVING count(*) = 1""").fetchall())
+
+
 def chain_isins(own: dict[str, list], current: set[str], symbol_of: dict[str, str] | None = None,
-                isin_of: dict[str, str] | None = None) -> dict[str, list]:
+                isin_of: dict[str, str] | None = None, filed_for: dict[str, str] | None = None) -> dict[str, list]:
     """Each current ISIN's quarters, with those filed under ISINs that are the same shares.
 
     A share split or consolidation gives the same shares a new ISIN: IEX went
@@ -623,7 +649,9 @@ def chain_isins(own: dict[str, list], current: set[str], symbol_of: dict[str, st
     Filers also mistype: INE0LEZO1016, a letter O for a zero. Such an ISIN joins
     its company only if the filing's own symbol is that company's and the two
     differ by at most two characters (`symbol_of` filing ISIN -> symbol, `isin_of`
-    symbol -> page ISIN): the characters alone could be another issuer.
+    symbol -> page ISIN): the characters alone could be another issuer. `filed_for`
+    (filing ISIN -> ISIN by BSE's index) settles the ones too mangled for that:
+    NATCOPHARM's INE98B010126, KUANTUM's INE529101013.
     """
     groups: dict[str, list[str]] = defaultdict(list)
     for isin in own:
@@ -632,6 +660,9 @@ def chain_isins(own: dict[str, list], current: set[str], symbol_of: dict[str, st
     for typo, sym in (symbol_of or {}).items():
         page = (isin_of or {}).get(sym)
         if typo in own and page and typo not in current and _near(typo, page):
+            groups[page[:9]].append(typo)
+    for typo, page in (filed_for or {}).items():
+        if typo in own and typo not in current:
             groups[page[:9]].append(typo)
     out = dict(own)
     for isin in current:
@@ -792,7 +823,8 @@ def _screen_row(sym: str, doc: dict, deals: list, cut12: str) -> list:
             return None
         a = res[0]
         b = next((r for r in res if r[0][5:] == a[0][5:] and int(r[0][:4]) == int(a[0][:4]) - 1), None)
-        if not b or not b[i] or a[i] is None or b[i] <= 0:
+        # Standalone against consolidated is no growth rate.
+        if not b or b[1] != a[1] or not b[i] or a[i] is None or b[i] <= 0:
             return None
         return round(100 * (a[i] / b[i] - 1), 1)
 
@@ -1207,32 +1239,82 @@ RESULT_COLS = ["qe", "consolidated", "revenue", "other_income", "pbt", "pat", "p
                "finance_costs", "depreciation", "shares_cr", "bank", "filed"]
 
 
-def valuation(res: list, last_close: float | None) -> dict | None:
+#: How old a shareholding filing's share count may be for a market cap: three
+#: quarter-ends. Of 2,445 March 2026 counts, 93% were within 1% of the next filing
+#: and 1.3% off by over 25%; a split or bonus since blanks it, and the page names
+#: the filing it came from.
+FILED_SHARES_DAYS = 280
+#: The filed count must sit this close to profit / EPS where the results give both.
+FILED_SHARES_BAND = 1.5
+_RESIZED = re.compile(r"split|sub-?division|bonus|consolidat|capital reduction", re.I)
+
+
+def filed_share_counts(q, shp: str) -> dict[str, tuple[float, str]]:
+    """isin -> (crore shares, quarter) from each company's newest shareholding filing."""
+    return {isin: (n / 1e7, qe) for isin, n, qe in q.execute(f"""
+        SELECT isin, arg_max(num_shares, (quarter_end, broadcast_date)), max(quarter_end)
+        FROM read_parquet('{shp}')
+        WHERE category = 'ShareholdingPatternMember' AND num_shares > 0 GROUP BY 1""").fetchall()}
+
+
+def usable_filed_shares(rec: tuple | None, actions, last_day: str) -> tuple | None:
+    """A filed count still true today: recent, and no split, bonus or the like since."""
+    if not rec or not last_day:
+        return None
+    if (date.fromisoformat(last_day) - date.fromisoformat(rec[1])).days > FILED_SHARES_DAYS:
+        return None
+    if any(a[0] > rec[1] and _RESIZED.search(a[1]) for a in actions):
+        return None
+    return rec
+
+
+def valuation(res: list, last_close: float | None, filed: tuple | None = None) -> dict | None:
     """Market cap and trailing P/E from the latest close: market cap = close x
     shares outstanding; P/E = market cap / the last four quarters' profit to
     owners — profit, not summed EPS, so a bonus inside the window cannot
-    distort it. Needs four consecutive quarters; None otherwise."""
-    if not res or not last_close:
+    distort it. Needs four consecutive quarters; None otherwise.
+
+    `filed` is (crore shares, quarter) from a shareholding filing, used only where
+    the results give no believable count: insurers state none, HAVELLS's newest
+    quarter left it out, and a new listing has no results yet."""
+    if not last_close or not (res or filed):
         return None
-    shares = res[0][10]
-    pat, eps = res[0][6], res[0][7]
-    # Still more than 30 times off profit / EPS after share_counts: one of the
-    # three is misreported and nothing says which (14 companies on 2026-10-31).
-    # No market cap beats a wrong one.
-    if shares and pat and eps and abs(eps) > 0.05 and pat / eps > 0 and abs(math.log10(shares * eps / pat)) > 1.5:
-        shares = None
+    shares = res[0][10] if res else None
+    pat, eps = (res[0][6], res[0][7]) if res else (None, None)
+    # Profit / EPS is a third reading of the count. Where it sides with the filing
+    # against the results, the results are the odd one out (INNOVISION stated 0.23
+    # crore; its filing says 2.38 and profit / EPS 2.47). Still more than 30 times
+    # off with no filing to settle it: one of the three is misreported and nothing
+    # says which (14 companies on 2026-10-31). No market cap beats a wrong one.
+    implied = pat / eps if pat and eps and abs(eps) > 0.05 and pat / eps > 0 else None
+
+    def off(n):
+        return abs(math.log10(n / implied))
+
+    filed_fits = bool(filed) and (implied is None or off(filed[0]) <= math.log10(FILED_SHARES_BAND))
+    filed_q = None
+    if shares and implied and off(shares) > math.log10(FILED_SHARES_BAND):
+        if filed_fits:
+            shares, filed_q = filed
+        elif off(shares) > 1.5:
+            shares = None
+    if not shares and filed_fits:
+        shares, filed_q = filed
     mcap = last_close * shares if shares else None          # Rs crore: price x crore shares
     ttm = None
-    if len(res) >= 4:
+    # Four quarters on one basis: where NSE lists only the standalone filing for one
+    # of them (BFUTILITIE: 6 crore beside 270), the sum describes nothing.
+    one_basis = len(res) >= 4 and len({r[1] for r in res[:4]}) == 1
+    if one_basis:
         qs = [date.fromisoformat(r[0]) for r in res[:4]]
         if (qs[0] - qs[3]).days <= 290 and all(r[6] is not None for r in res[:4]):
             ttm = sum(r[6] for r in res[:4])
-    rev_ttm = sum(r[2] for r in res[:4]) if len(res) >= 4 and all(r[2] is not None for r in res[:4]) else None
+    rev_ttm = sum(r[2] for r in res[:4]) if one_basis and all(r[2] is not None for r in res[:4]) else None
     return {"close": last_close, "mcap_cr": None if mcap is None else round(mcap, 0),
             "ttm_profit_cr": None if ttm is None else round(ttm, 1),
             "ttm_revenue_cr": None if rev_ttm is None else round(rev_ttm, 1),
             "pe": round(mcap / ttm, 1) if mcap and ttm and ttm > 0 else None,
-            "as_of_quarter": res[0][0]}
+            "as_of_quarter": res[0][0] if res else None, "shares_filed_q": filed_q}
 
 
 def _holders_doc(h: dict | None) -> dict | None:

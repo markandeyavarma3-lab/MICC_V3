@@ -153,7 +153,7 @@ On the website, these round trips are folded away by default, and one click show
 
 I do not assume the data is right. I test it:
 
-- **1284 automated tests** check the code and the data.
+- **1290 automated tests** check the code and the data.
 - I compared my share prices with a separate source across 2,651 companies. This found 226 missed splits and bonuses, which I corrected, and 203 bad one-day prices, which I removed.
 - A health check runs after every collection and reports any source that has gone stale.
 
@@ -484,7 +484,7 @@ Figure 9. The Research page: what the tests found, in plain language.
 | **Visibility** | Public |
 | **Main branch** | `main` |
 | **Commits** | 315, since 16 August 2026 |
-| **Automated tests** | **1284 automated tests** in 103 files |
+| **Automated tests** | **1290 automated tests** in 103 files |
 | **Automatic checks** | GitHub Actions runs the basic tests on each push. The latest run, on 7 November 2026, passed |
 
 The website has its own separate repository, `research-website`, with 27 commits. That one stays only on my laptop, because the website is not published.
