@@ -168,10 +168,10 @@ echo "  restore drill: cloned OK, HEAD matches, $RESTORED_COMMITS commits"
 
 # The ancestry the report cites as evidence must survive a restore, or the
 # backup preserves the code and loses the proof.
-if git -C "$DRILL" merge-base --is-ancestor f25608d c31e128 2>/dev/null; then
+if git -C "$DRILL" merge-base --is-ancestor aa3d4fb fb73dfe 2>/dev/null; then
   echo "  restore drill: exp_001 registration-before-result ancestry intact"
 else
-  echo "  FAILED: the f25608d -> c31e128 ancestry did not survive the restore"
+  echo "  FAILED: the aa3d4fb -> fb73dfe ancestry did not survive the restore"
   exit 1
 fi
 

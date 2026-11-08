@@ -8,7 +8,7 @@ the defects are mine
 ## Context
 
 `AUDIT_README.md` is an independent technical audit of the whole repository at
-commit `f79ac5d`. It reported three dominant findings. **All three reproduce.**
+commit `72c9e53`. It reported three dominant findings. **All three reproduce.**
 All three are mine, and all three are instances of the exact error this
 repository's thesis names — *"the artefact exists" is not "the step works"*.
 

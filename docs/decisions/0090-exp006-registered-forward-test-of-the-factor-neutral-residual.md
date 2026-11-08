@@ -12,7 +12,7 @@ the one which gives best output"); on 2026-10-15, after the audit, they wrote
 ## What is registered
 
 `exp_006_forward_residual`, family TRACK_S_PROCEDURE, registered 2026-10-15
-22:26 IST at commit c8c0f38.
+22:26 IST at commit 446dff4.
 
 | | |
 |---|---|

@@ -165,8 +165,8 @@ origin remote" until the owner creates the `research-website` repository.
 |---|---|---|
 | 1 | Every JSON source logged `rows=0` — FII/DII every day since August, with both rows present. The data was always stored and reached the site; the log line was wrong, and it is the line that would hide a genuinely empty day. | `stopgap._row_count` counts JSON records; test added. |
 | 2 | The 12 October FII/DII session was an open gap in health. | Recorded as lost, with the reason, in `configs/sources.yml`. |
-| 3 | (earlier this week) The scan universe stopped at the seed's June 2026 rebalance; the panel, benchmarks and exp_006 would have used June's membership indefinitely. | `src/warehouse/pit_universe.py`, the seed's rule matched to the rupee, nightly (commit 75acc99). |
-| 4 | (earlier this week) A results filing with no XBRL file ("-") tripped the sweep's breaker and ended a night after 73 companies. | Skipped; 404s no longer count (2295be4). |
+| 3 | (earlier this week) The scan universe stopped at the seed's June 2026 rebalance; the panel, benchmarks and exp_006 would have used June's membership indefinitely. | `src/warehouse/pit_universe.py`, the seed's rule matched to the rupee, nightly (commit e936d84). |
+| 4 | (earlier this week) A results filing with no XBRL file ("-") tripped the sweep's breaker and ended a night after 73 companies. | Skipped; 404s no longer count (32af380). |
 
 ### Found, prepared, waiting for the owner
 

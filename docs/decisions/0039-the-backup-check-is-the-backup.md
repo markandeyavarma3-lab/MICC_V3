@@ -9,7 +9,7 @@ were mine, and they are a correction of my own conduct.
 
 [0037](0037-backup-by-bundle-not-by-remote.md) was written on 2026-08-23. It
 chose bundle-plus-tarball over a git remote, shipped `scripts/backup.sh` with a
-restore drill that asserts the `f25608d -> c31e128` ancestry survives, and
+restore drill that asserts the `aa3d4fb -> fb73dfe` ancestry survives, and
 recorded honestly that the script "**writes nothing until the owner starts one
 of them**."
 

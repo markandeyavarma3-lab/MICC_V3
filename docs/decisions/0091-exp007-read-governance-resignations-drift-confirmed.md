@@ -13,7 +13,7 @@ choice, made the verdict.
 
 `exp_007_governance_resignation_drift`, family TRACK_E_EVENTS, spec ddddb17f…,
 event list 90d96da3… (8,229 frozen events, 2014–2026-08-31). The read ran once,
-at 09:12 UTC, commit 788d926. Its guards re-derived the event list and checked
+at 09:12 UTC, commit 1ad6ab3. Its guards re-derived the event list and checked
 the hash, the REGISTERED status and that no result existed. A second run is
 refused.
 

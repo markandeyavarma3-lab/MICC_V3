@@ -1,6 +1,6 @@
 # SCAN_EXPLORE_H21.md — Track S procedure test, EXPLORATION ONLY
 
-**Regime EXPLORE (2005-2015; split.yml scan.temporal). Not a finding.** run_id `88d48ded3a5f9d20`, commit `922c5edb07e8`. Recorded write-once in governance `procedure_result`. It informs the CONFIRM registration, which tests 2016+ once.
+**Regime EXPLORE (2005-2015; split.yml scan.temporal). Not a finding.** run_id `88d48ded3a5f9d20`, commit `d4dddb8095d8`. Recorded write-once in governance `procedure_result`. It informs the CONFIRM registration, which tests 2016+ once.
 
 - grid: 1,929,213 candidates — 143 base signals to depth 3 (signed rank composites, decision 0084), forward horizon 21 sessions after a one-session gap
 - panel: 2005-01-03 .. 2015-12-31, 1,321 names ever in the point-in-time top 500

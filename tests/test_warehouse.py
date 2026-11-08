@@ -181,7 +181,7 @@ def test_spine_row_counts(name, expected):
     """
     con = duckdb.connect()
     # fno_spine was exempt from the bound until 2026-09-16 because nothing had
-    # ever appended collected F&O to it. Commit 891a905 did, and the unbounded
+    # ever appended collected F&O to it. Commit ec2cff9 did, and the unbounded
     # count moved 174,272,768 -> 174,973,029 the same night. Same rule for all
     # three spines now: the frozen figure measures what MICCV2 supplied, and the
     # collected sessions are verified separately, not by moving this constant.

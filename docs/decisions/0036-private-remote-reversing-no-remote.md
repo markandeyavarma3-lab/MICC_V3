@@ -42,8 +42,8 @@ rewritten** — see the cost below.
 ## Why
 
 The history is evidence, not bookkeeping. The report cites commit hashes as
-proof, and the load-bearing one is that `f25608d` ("Register exp_001 BEFORE
-running its test") is a git-provable ancestor of `c31e128` ("Finding 001:
+proof, and the load-bearing one is that `aa3d4fb` ("Register exp_001 BEFORE
+running its test") is a git-provable ancestor of `fb73dfe` ("Finding 001:
 REJECTED by its own pre-registered rule"). That ancestry **is** the proof the
 spec was frozen before the answer was known; without it the claim reduces to the
 author's word, which is precisely what this project refuses to rely on. So the

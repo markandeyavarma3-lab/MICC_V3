@@ -49,7 +49,7 @@ reads it directly, `git bundle verify` checks it, and it cannot be half-copied.
 
 **The restore drill runs inside the script**, because Plan 3 §6 says a backup
 nobody has restored is a hypothesis. It clones what it just wrote, asserts HEAD
-matches, and asserts that `f25608d` is still an ancestor of `c31e128` — the
+matches, and asserts that `aa3d4fb` is still an ancestor of `fb73dfe` — the
 ancestry proving `exp_001` was registered before it ran. A backup that preserves
 the code and loses that proof has lost the thing that makes this project
 credible.

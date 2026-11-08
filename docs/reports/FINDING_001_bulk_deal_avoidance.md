@@ -2,7 +2,7 @@
 
 **Experiment:** `exp_001_bulk_deal_avoidance_filter`
 **Spec hash:** `7072f730dcca586844e667dcd4e909d947a7962003911a3808ba2b468e84a0ab`
-**Registered:** 2026-08-16, commit `f25608d` — *before* the test ran
+**Registered:** 2026-08-16, commit `aa3d4fb` — *before* the test ran
 **Verdict:** **REJECTED** by its own pre-registered rule
 **Trial counter at registration:** 171
 
@@ -83,7 +83,7 @@ The stock-split holdout is what separated the two, and it took about ninety
 minutes from first sighting to recorded death.
 
 **The sequence that made this trustworthy:** register → commit → test → record.
-The registration commit `f25608d` precedes the result in git history, and the
+The registration commit `aa3d4fb` precedes the result in git history, and the
 spec-freeze trigger was verified by attempting to edit the pass bar and being
 refused. A registration committed after its result is unfalsifiable regardless of
 what it says.

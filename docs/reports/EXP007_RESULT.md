@@ -1,6 +1,6 @@
 # exp_007 — the one read: **DRIFT_CONFIRMED**
 
-Read 2026-10-18T09:12 UTC at commit 788d926; spec ddddb17fa518; event list 90d96da34527.
+Read 2026-10-18T09:12 UTC at commit 1ad6ab3; spec ddddb17fa518; event list 90d96da34527.
 
 ## Primary (tested)
 

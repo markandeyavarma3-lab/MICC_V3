@@ -4,7 +4,7 @@
 **Decided by:** Owner ("yeah lets start", twice: approving the draft and its
 four owner decisions, then the registration after the rehearsal).
 **Status:** accepted. exp_005 is REGISTERED (spec_hash `96cffcb539f7…`,
-commit `59e5e1b`). The CONFIRM run started 2026-10-03 13:14 IST.
+commit `c71c749`). The CONFIRM run started 2026-10-03 13:14 IST.
 **Related:** Plan 4 §4 and §9; 0084 (the statistic); 0083 (the participant
 layer the deal signals still key on raw); draft
 `docs/plan/EXP005_SCAN_PROCEDURE_REGISTRATION_DRAFT.md` revision 2.

@@ -939,7 +939,7 @@ first experiment.** More on that in 7.3.
 
 ### 7.2 Documentation that cannot silently rot
 
-Ninety-seven decision records, each recording what was decided, by whom, why, **what
+Ninety-eight decision records, each recording what was decided, by whom, why, **what
 would reverse it**, and what it costs. An automated test fails the build if any
 record is missing those fields.
 
@@ -957,8 +957,8 @@ One full experiment has been run start to finish: `exp_001`.
 will do better than the same portfolio without that rule.
 
 **The sequence, which is the point.** The prediction and the pass mark were
-written to the database and locked in commit `f25608d`. The test was run
-afterwards. The result was recorded in commit `c31e128`. **The registration is
+written to the database and locked in commit `aa3d4fb`. The test was run
+afterwards. The result was recorded in commit `fb73dfe`. **The registration is
 earlier in the Git history than the result**, so it cannot have been written to
 fit the answer.
 
@@ -1400,7 +1400,7 @@ audited two of them to destruction, and produced:
 - A working data warehouse and collection system (V2), now frozen
 - A discipline framework with 1290 tests that enforces honest research
 - One complete experiment, correctly rejected by its own pre-registered rule
-- Ninety-seven decision records with reversal conditions
+- Ninety-eight decision records with reversal conditions
 - Four material measurements that changed the plan: a 10.04 bp cost error, 54.8%
   market-making contamination, an 8.16% unresolvable share of the deal corpus,
   and a missing industry history

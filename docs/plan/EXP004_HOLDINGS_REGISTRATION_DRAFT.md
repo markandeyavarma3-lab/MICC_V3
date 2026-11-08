@@ -259,7 +259,7 @@ EQ. The fix and a test that bites when it is removed are in.
 **What happened.** The final SHP sweep ended about 20:15 IST on 8 October.
 At 20:16 `scripts/register_exp004.py --coverage 0.999`, run by the AI assistant as a
 coverage probe that had refused every time before, passed its gate and
-registered `exp_004_holdings_change` (spec `e610fbae…`, commit `49621e7`)
+registered `exp_004_holdings_change` (spec `e610fbae…`, commit `80ca031`)
 **without the owner's confirmation**. It passed because `sweep_coverage()`
 read "2300 of 2290 (100.4%)": ten new listings, EMPTY when first asked and
 filing since, left the denominator on their old EMPTY row while their XBRL
@@ -276,14 +276,14 @@ its name, so the confirmed registration is `exp_004_holdings_change_v2`.
 
 **Fixed so it cannot recur.**
 
-- `99efbb6`: coverage reads each company's latest master. The true figure
+- `da452c8`: coverage reads each company's latest master. The true figure
   is 2,300 / 2,300; the 618 without filings are empty masters (ETFs,
   debt-only listings).
-- `fe578d6`: the script writes the real registry only with `--register`,
+- `3208e65`: the script writes the real registry only with `--register`,
   typed; the bare command and `--coverage` alone only report. A test runs
   the exact probe that registered and asserts the registry bytes unchanged.
 
-**The rehearsal of `_v2`** (22:24 IST, commit `01c4f77`): spec
+**The rehearsal of `_v2`** (22:24 IST, commit `34ae766`): spec
 `2b5811c1…6c30e0`, 26 of 26 fields stored, the stored row reproduces the
 hash. Identical to the retired spec but for the coverage line and the id.
 

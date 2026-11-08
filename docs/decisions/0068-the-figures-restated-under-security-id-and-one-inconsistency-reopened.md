@@ -63,7 +63,7 @@ dates empty files from 09-15 onward, though the 09-16 morning record was still
 
 ## 4. fno_spine: the bound, not a new number
 
-Commit 891a905 landed 21 sessions of collected UDiFF F&O and `fno_spine` grew
+Commit ec2cff9 landed 21 sessions of collected UDiFF F&O and `fno_spine` grew
 174,272,768 → 174,973,029. The reconciliation pin is a **seed** figure (0029).
 `price_spine` already bounds its count to `MICCV2_HORIZON` so collected rows
 cannot move a frozen pin; `fno_spine` was exempt only because nothing had ever

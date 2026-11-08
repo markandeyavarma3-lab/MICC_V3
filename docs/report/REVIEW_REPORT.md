@@ -483,7 +483,7 @@ Figure 9. The Research page: what the tests found, in plain language.
 | **Repository** | `https://github.com/markandeyavarma3-lab/MICC_V3` |
 | **Visibility** | Public |
 | **Main branch** | `main` |
-| **Commits** | 317, since 16 August 2026 |
+| **Commits** | 318, since 16 August 2026 |
 | **Automated tests** | **1290 automated tests** in 103 files |
 | **Automatic checks** | GitHub Actions runs the basic tests on each push. The latest run, on 7 November 2026, passed |
 
@@ -501,14 +501,14 @@ The repository received 54 commits in August 2026, 116 in September, 128 in Octo
 
 | Commit | Date | What changed |
 |---|---|---|
-| `34ab981` | 2026‑11‑07 | Market cap from shareholding filings; mistyped filings and mixed bases on the site |
-| `6cd7749` | 2026‑11‑07 | Review report and README: 1284 tests, commit log refreshed |
-| `18d6945` | 2026‑11‑07 | Half-yearly results for companies that report only every six months |
-| `f401a90` | 2026‑11‑07 | Review report: trimmed to 21 pages, with the first green GitHub run recorded |
-| `aff8e78` | 2026‑11‑07 | CI: run on macOS, where the project runs |
-| `a700404` | 2026‑11‑07 | CI: install zsh, which the backup tests execute |
-| `209de3b` | 2026‑11‑07 | CI: failing test names as public annotations |
-| `87a3c4a` | 2026‑11‑07 | Review report: nine plain-English parts, Arial, with screens and the commit log |
+| `9c6fdb8` | 2026‑11‑07 | Market cap from shareholding filings; mistyped filings and mixed bases on the site |
+| `97ba072` | 2026‑11‑07 | Review report and README: 1284 tests, commit log refreshed |
+| `4c50ee0` | 2026‑11‑07 | Half-yearly results for companies that report only every six months |
+| `a956172` | 2026‑11‑07 | Review report: trimmed to 21 pages, with the first green GitHub run recorded |
+| `464df1a` | 2026‑11‑07 | CI: run on macOS, where the project runs |
+| `fab223d` | 2026‑11‑07 | CI: install zsh, which the backup tests execute |
+| `8370acd` | 2026‑11‑07 | CI: failing test names as public annotations |
+| `9d83d72` | 2026‑11‑07 | Review report: nine plain-English parts, Arial, with screens and the commit log |
 ### 8.5 Earlier versions
 
 This is the third version of the project. V1 (June to July 2026) collected the first data, 1.13 crore rows that are still in use. V2 (July to August 2026) tried to find trading strategies, and I stopped it after an audit found its costs were calculated wrongly.

@@ -191,7 +191,7 @@ class TestLanding:
         `warehouse:deal_source_files` nodes arrived that way on 2026-08-24, and
         `artefact` is append-only so they are permanent.
 
-        This is the defect commit 7fd3e68 fixed for the trial ledger,
+        This is the defect commit 11e7758 fixed for the trial ledger,
         reintroduced for artefacts because the second database was not obvious
         from land()'s signature.
         """

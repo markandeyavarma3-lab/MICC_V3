@@ -1,6 +1,6 @@
 # SCAN_CONFIRM_H21.md — exp_005, the registered run
 
-**CONFIRM (2016+), spec_hash `96cffcb539f7`, commit `ced0fba576bd`. Run once.**
+**CONFIRM (2016+), spec_hash `96cffcb539f7`, commit `89e46acab887`. Run once.**
 
 **Verdict: NO_SEARCH_SKILL**
 

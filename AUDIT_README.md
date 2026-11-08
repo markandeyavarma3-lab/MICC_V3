@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-09-02
 **Repository:** `/Users/satya_03/Workspace/institutional-research`
-**Commit at audit:** `f79ac5d` — *"Cleanup: the 54 MB with no manifest was the real find"*
+**Commit at audit:** `72c9e53` — *"Cleanup: the 54 MB with no manifest was the real find"*
 **Scope:** full repository — 68 Python files, 19 test files, 10 configs, 5 migrations, 6 scripts, 197 markdown documents, CI, git history, live databases and the 11 GB warehouse.
 **Method:** every source, config, migration, script and CI file was read. The test suite was executed. The pipeline entry points were executed. The live DuckDB warehouse and both SQLite governance stores were queried directly. Every claim below is anchored to something read or run.
 
@@ -450,7 +450,7 @@ The commenting convention — every non-obvious decision annotated with the date
 | Linear manifest re-read per operation | `already_have`, `_manifest_rows`, `_seen_digests`, `_seen` | O(files × manifest); already 136 lines, will be tens of thousands |
 | Full re-parse to read one field | `bhavcopy.run()` unzips every archived file to read `TradDt[0]` | O(archive) per daily run |
 | Magic numbers with config equivalents | `0.005`, `0.50`, `1e7`, `0.005` bound, `5339`, `73`, `12` | Each is a claim that can silently diverge from `configs/` |
-| Hardcoded absolute paths in shell/JS | `/Applications/Google Chrome.app/...` ×2, commit SHAs `f25608d`/`c31e128` in `backup.sh` | macOS-only; breaks on any history rewrite |
+| Hardcoded absolute paths in shell/JS | `/Applications/Google Chrome.app/...` ×2, commit SHAs `aa3d4fb`/`fb73dfe` in `backup.sh` | macOS-only; breaks on any history rewrite |
 | `str.replace('"', "'")` as AppleScript escaping | `health.notify_desktop` | Backslashes unhandled; inputs are internal, so low risk |
 
 ---
@@ -869,7 +869,7 @@ Documentation is the project's best artefact class, and it is also where its fal
 **Negative signals**
 
 - **~7.2 MB of regenerable binaries tracked** (mermaid bundle + 5 PDFs) in a 22 MB history.
-- **`backup.sh` hardcodes commit SHAs** `f25608d` and `c31e128` in its restore drill. Any history rewrite breaks the backup.
+- **`backup.sh` hardcodes commit SHAs** `aa3d4fb` and `fb73dfe` in its restore drill. Any history rewrite breaks the backup.
 - **No branches, no PRs, no tags.** Fine for solo work; means no review gate existed for any of the defects in this audit.
 - **The failing test was committed.** `test_status_is_not_stale` fails at HEAD.
 
@@ -1305,4 +1305,4 @@ This is a project with **an outstanding research mind and an unfinished engineer
 
 ---
 
-*End of audit. Generated 2026-09-02 against commit `f79ac5d`. Every figure was measured at that commit; re-run the checks before citing any of them.*
+*End of audit. Generated 2026-09-02 against commit `72c9e53`. Every figure was measured at that commit; re-run the checks before citing any of them.*

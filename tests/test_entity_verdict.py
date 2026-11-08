@@ -62,7 +62,7 @@ def test_the_verdict_is_dead(v):
 
     RE-PINNED 2026-09-16. Under the substituted normal approximation this
     asserted passed_fdr == 2 and no TOP-tier passer: the bar failed on condition
-    (a). Under the REGISTERED moving-block bootstrap (b2a6b77) four entities
+    (a). Under the REGISTERED moving-block bootstrap (55eb587) four entities
     pass — all at the bootstrap floor p = 1/(B+1) on four or five deals — and
     one of them, SBI Life, is in TOP. Condition (a) is therefore MET, and the
     verdict now rests on condition (b): TOP is net-negative out-of-sample.

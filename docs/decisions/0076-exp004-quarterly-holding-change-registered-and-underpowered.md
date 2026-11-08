@@ -17,7 +17,7 @@ without their confirmation (option B).
 ## What was registered
 
 `exp_004_holdings_change_v2`, spec `2b5811c1…6c30e0`, frozen at commit
-`3196d93` from a clean tree on 9 October 00:58 IST. Every company that files
+`a75475a` from a clean tree on 9 October 00:58 IST. Every company that files
 had its filings held: 2,300 of 2,300 (the 618 without filings are empty
 masters).
 
