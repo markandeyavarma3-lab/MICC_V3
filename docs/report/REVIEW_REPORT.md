@@ -153,7 +153,7 @@ On the website, these round trips are folded away by default, and one click show
 
 I do not assume the data is right. I test it:
 
-- **1290 automated tests** check the code and the data.
+- **1294 automated tests** check the code and the data.
 - I compared my share prices with a separate source across 2,651 companies. This found 226 missed splits and bonuses, which I corrected, and 203 bad one-day prices, which I removed.
 - A health check runs after every collection and reports any source that has gone stale.
 
@@ -337,7 +337,7 @@ A second pass runs at 21:00, for anything published late. A shareholding job run
 | Website | **Astro** | Builds fast, simple pages that need no server |
 | Website look | **HTML, CSS, JavaScript** | Interactive charts and tables with few dependencies |
 | Scheduling | **macOS launchd** | Runs jobs by itself and survives restarts |
-| Testing | **pytest** | 1,290 automated tests |
+| Testing | **pytest** | 1,294 automated tests |
 | Version control | **Git and GitHub** | Full history of every change |
 | Backup | **restic and rclone** | Encrypted backups to Google Drive |
 | Alerts | **Telegram and email** | A short report after each run |
@@ -483,8 +483,8 @@ Figure 9. The Research page: what the tests found, in plain language.
 | **Repository** | `https://github.com/markandeyavarma3-lab/MICC_V3` |
 | **Visibility** | Public |
 | **Main branch** | `main` |
-| **Commits** | 318, since 16 August 2026 |
-| **Automated tests** | **1290 automated tests** in 103 files |
+| **Commits** | 319, since 16 August 2026 |
+| **Automated tests** | **1294 automated tests** in 104 files |
 | **Automatic checks** | GitHub Actions runs the basic tests on each push. The latest run, on 7 November 2026, passed |
 
 The website has its own separate repository, `research-website`, with 28 commits. That one stays only on my laptop, because the website is not published.
@@ -524,7 +524,7 @@ India's free market disclosures were scattered, some disappeared daily, and they
 - **The collector** runs by itself every evening, and has saved more than 1,92,000 original files.
 - **The database** holds about 20 years of market history, with companies and investors matched across name changes.
 - **The web application** shows 4,419 stocks, 34,601 participants and 3,864 fund schemes in one place, with no advice.
-- **The checks** include 1,290 automated tests, a price check against a separate source, and a health report after every run.
+- **The checks** include 1,294 automated tests, a price check against a separate source, and a health report after every run.
 
 ### What is not finished
 
